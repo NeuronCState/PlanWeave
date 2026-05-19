@@ -1,0 +1,17 @@
+{
+  "name": "@planweave/cli",
+  "version": "0.0.0",
+  "type": "module",
+  "bin": {
+    "planweave": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "planweave": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@planweave/runtime": "workspace:*",
+    "commander": "^14.0.2"
+  },
+  "devDependencies": {}
+}

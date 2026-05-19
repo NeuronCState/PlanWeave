@@ -1,0 +1,210 @@
+export const supportedManifestVersion = "plan-package/v0" as const;
+
+export const nodeTypes = [
+  "goal",
+  "requirement",
+  "constraint",
+  "decision",
+  "component",
+  "task",
+  "risk"
+] as const;
+
+export const edgeTypes = [
+  "implements",
+  "depends_on",
+  "constrained_by",
+  "touches",
+  "conflicts_with",
+  "supersedes"
+] as const;
+
+export const taskStatuses = [
+  "planned",
+  "ready",
+  "in_progress",
+  "implemented",
+  "needs_changes",
+  "verified",
+  "blocked",
+  "diverged"
+] as const;
+
+export const runSubmitStatuses = ["implemented", "blocked", "diverged"] as const;
+export const reviewStatuses = ["passed", "needs_changes"] as const;
+
+export type NodeType = (typeof nodeTypes)[number];
+export type EdgeType = (typeof edgeTypes)[number];
+export type TaskStatus = (typeof taskStatuses)[number];
+export type RunSubmitStatus = (typeof runSubmitStatuses)[number];
+export type ReviewStatus = (typeof reviewStatuses)[number];
+
+export type ParallelPolicy = {
+  safe: boolean;
+  locks: string[];
+};
+
+export type ManifestTaskNode = {
+  id: string;
+  type: "task";
+  title: string;
+  prompt: string;
+  acceptance: string[];
+  parallel: ParallelPolicy;
+};
+
+export type ManifestContextNode = {
+  id: string;
+  type: Exclude<NodeType, "task">;
+  title: string;
+  summary: string;
+};
+
+export type ManifestNode = ManifestTaskNode | ManifestContextNode;
+
+export type ManifestEdge = {
+  from: string;
+  to: string;
+  type: EdgeType;
+};
+
+export type PlanPackageManifest = {
+  version: typeof supportedManifestVersion;
+  project: {
+    title: string;
+    description: string;
+  };
+  execution: {
+    parallel: {
+      enabled: boolean;
+      maxConcurrent: number;
+    };
+  };
+  global_prompt: string;
+  nodes: ManifestNode[];
+  edges: ManifestEdge[];
+};
+
+export type ProjectMetadata = {
+  id: string;
+  name: string;
+  rootPath: string;
+  createdAt: string;
+};
+
+export type ProjectWorkspace = {
+  id: string;
+  rootPath: string;
+  workspaceRoot: string;
+  projectFile: string;
+  packageDir: string;
+  manifestFile: string;
+  stateFile: string;
+  resultsDir: string;
+};
+
+export type TaskState = {
+  status: TaskStatus;
+  claimedBy: string | null;
+  lastRunId: string | null;
+  blockedBy: string[];
+  divergence?: {
+    reason: string;
+    recordedAt: string;
+  };
+};
+
+export type RuntimeState = {
+  currentTaskId: string | null;
+  tasks: Record<string, TaskState>;
+};
+
+export type ValidationIssue = {
+  code: string;
+  message: string;
+  path?: string;
+};
+
+export type ValidationReport = {
+  ok: boolean;
+  errors: ValidationIssue[];
+  warnings: ValidationIssue[];
+};
+
+export type InitWorkspaceResult = {
+  workspace: ProjectWorkspace;
+  project: ProjectMetadata;
+  created: boolean;
+};
+
+export type PromptSurface = {
+  taskId: string;
+  path: string;
+  markdown: string;
+};
+
+export type RefreshPromptsResult = {
+  prompts: PromptSurface[];
+};
+
+export type ClaimResult = {
+  taskId: string | null;
+  status: "claimed" | "current" | "none";
+  task?: TaskState;
+};
+
+export type ParallelClaimResult = {
+  tasks: string[];
+  status: "claimed" | "disabled" | "current" | "none";
+};
+
+export type ResultIndex = {
+  taskId: string;
+  status: TaskStatus;
+  latestRunId: string | null;
+  runCount: number;
+  review?: {
+    status: ReviewStatus;
+    reviewedAt: string;
+    reviewer: "human";
+  };
+  divergence?: {
+    reason: string;
+    recordedAt: string;
+  };
+};
+
+export type SubmitResult = {
+  taskId: string;
+  runId: string;
+  status: RunSubmitStatus;
+  index: ResultIndex;
+};
+
+export type SubmitReviewResult = {
+  taskId: string;
+  status: ReviewStatus;
+  taskStatus: "verified" | "needs_changes";
+  index: ResultIndex;
+};
+
+export type MarkVerifiedResult = {
+  taskId: string;
+  status: "verified";
+};
+
+export type MarkDivergedResult = {
+  taskId: string;
+  status: "diverged";
+  reason: string;
+};
+
+export type PlanStatus = {
+  projectId: string;
+  projectRoot: string;
+  taskTotal: number;
+  counts: Record<TaskStatus, number>;
+  currentTaskId: string | null;
+  needsChanges: number;
+  diverged: number;
+};

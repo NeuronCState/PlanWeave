@@ -1,0 +1,45 @@
+{
+  "version": "plan-package/v0",
+  "project": {
+    "title": "Basic PlanWeave Example",
+    "description": "A single-task package for MVP-0 smoke testing."
+  },
+  "execution": {
+    "parallel": {
+      "enabled": false,
+      "maxConcurrent": 1
+    }
+  },
+  "global_prompt": "global-prompt.md",
+  "nodes": [
+    {
+      "id": "G-001",
+      "type": "goal",
+      "title": "Exercise the PlanWeave loop",
+      "summary": "The agent should claim, execute, report, and review one task through CLI-backed runtime state."
+    },
+    {
+      "id": "T-001",
+      "type": "task",
+      "title": "Implement a tiny example change",
+      "prompt": "nodes/T-001.prompt.md",
+      "acceptance": [
+        "Implementation report records what changed.",
+        "Review can move the task to needs_changes and then verified."
+      ],
+      "parallel": {
+        "safe": true,
+        "locks": [
+          "example"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "T-001",
+      "to": "G-001",
+      "type": "implements"
+    }
+  ]
+}

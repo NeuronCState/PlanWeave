@@ -11,6 +11,7 @@ import { registerSubmitReviewCommand } from "./commands/submitReview.js";
 import { registerMarkVerifiedCommand } from "./commands/markVerified.js";
 import { registerMarkDivergedCommand } from "./commands/markDiverged.js";
 import { registerStatusCommand } from "./commands/status.js";
+import { registerEditGraphCommands } from "./commands/editGraph.js";
 
 export function createProgram(): Command {
   const program = new Command();
@@ -30,6 +31,7 @@ export function createProgram(): Command {
   registerMarkVerifiedCommand(program);
   registerMarkDivergedCommand(program);
   registerStatusCommand(program);
+  registerEditGraphCommands(program);
 
   return program;
 }

@@ -1,6 +1,7 @@
 import { access, mkdir } from "node:fs/promises";
 import { constants } from "node:fs";
 import { dirname } from "node:path";
+import { compileTaskGraph } from "./graph/compileTaskGraph.js";
 import { readJsonFile, writeJsonFile } from "./json.js";
 import type { ManifestTaskNode, PlanPackageManifest, RuntimeState, TaskState } from "./types.js";
 
@@ -26,17 +27,20 @@ export async function writeState(stateFile: string, state: RuntimeState): Promis
 }
 
 export function taskNodes(manifest: PlanPackageManifest): ManifestTaskNode[] {
-  return manifest.nodes.filter((node): node is ManifestTaskNode => node.type === "task");
+  return compileTaskGraph(manifest).tasksInManifestOrder;
 }
 
-export function dependencyIds(manifest: PlanPackageManifest, taskId: string): string[] {
-  return manifest.edges
-    .filter((edge) => edge.type === "depends_on" && edge.from === taskId)
-    .map((edge) => edge.to);
+export function dependencyIds(manifest: PlanPackageManifest, taskId: string, graph = compileTaskGraph(manifest)): string[] {
+  return graph.dependenciesByTask.get(taskId) ?? [];
 }
 
-export function dependenciesSatisfied(manifest: PlanPackageManifest, state: RuntimeState, taskId: string): boolean {
-  return dependencyIds(manifest, taskId).every((id) => {
+export function dependenciesSatisfied(
+  manifest: PlanPackageManifest,
+  state: RuntimeState,
+  taskId: string,
+  graph = compileTaskGraph(manifest)
+): boolean {
+  return dependencyIds(manifest, taskId, graph).every((id) => {
     const status = state.tasks[id]?.status;
     return status === "implemented" || status === "verified";
   });
@@ -45,9 +49,10 @@ export function dependenciesSatisfied(manifest: PlanPackageManifest, state: Runt
 export function createDefaultTaskState(
   manifest: PlanPackageManifest,
   state: RuntimeState,
-  taskId: string
+  taskId: string,
+  graph = compileTaskGraph(manifest)
 ): TaskState {
-  const blockedBy = dependencyIds(manifest, taskId).filter((id) => {
+  const blockedBy = dependencyIds(manifest, taskId, graph).filter((id) => {
     const status = state.tasks[id]?.status;
     return status !== "implemented" && status !== "verified";
   });
@@ -60,14 +65,15 @@ export function createDefaultTaskState(
 }
 
 export function ensureStateForManifest(manifest: PlanPackageManifest, state: RuntimeState): RuntimeState {
+  const graph = compileTaskGraph(manifest);
   const next: RuntimeState = {
     currentTaskId: state.currentTaskId,
     tasks: { ...state.tasks }
   };
 
-  for (const task of taskNodes(manifest)) {
-    next.tasks[task.id] = next.tasks[task.id] ?? createDefaultTaskState(manifest, next, task.id);
-    if (next.tasks[task.id].status === "planned" && dependenciesSatisfied(manifest, next, task.id)) {
+  for (const task of graph.tasksInManifestOrder) {
+    next.tasks[task.id] = next.tasks[task.id] ?? createDefaultTaskState(manifest, next, task.id, graph);
+    if (next.tasks[task.id].status === "planned" && dependenciesSatisfied(manifest, next, task.id, graph)) {
       next.tasks[task.id] = {
         ...next.tasks[task.id],
         status: "ready",
@@ -76,7 +82,7 @@ export function ensureStateForManifest(manifest: PlanPackageManifest, state: Run
     } else if (next.tasks[task.id].status === "planned") {
       next.tasks[task.id] = {
         ...next.tasks[task.id],
-        blockedBy: dependencyIds(manifest, task.id).filter((id) => {
+        blockedBy: dependencyIds(manifest, task.id, graph).filter((id) => {
           const status = next.tasks[id]?.status;
           return status !== "implemented" && status !== "verified";
         })

@@ -1,16 +1,18 @@
 import { tasksHaveDependencyRelationship } from "./dependencies.js";
-import type { ManifestTaskNode, PlanPackageManifest } from "../types.js";
+import { compileTaskGraph } from "../graph/compileTaskGraph.js";
+import type { CompiledTaskGraph, ManifestTaskNode, PlanPackageManifest } from "../types.js";
 
 export function canShareParallelBatch(
   manifest: PlanPackageManifest,
   selected: ManifestTaskNode[],
-  candidate: ManifestTaskNode
+  candidate: ManifestTaskNode,
+  graph: CompiledTaskGraph = compileTaskGraph(manifest)
 ): boolean {
   if (!candidate.parallel.safe) {
     return false;
   }
   for (const task of selected) {
-    if (tasksHaveDependencyRelationship(manifest, task.id, candidate.id)) {
+    if (tasksHaveDependencyRelationship(manifest, task.id, candidate.id, graph)) {
       return false;
     }
     const locks = new Set(task.parallel.locks);

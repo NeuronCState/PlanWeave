@@ -1,12 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { dependencyIds } from "../state.js";
-import type { ManifestTaskNode, PlanPackageManifest, ProjectWorkspace, RuntimeState } from "../types.js";
+import type { CompiledTaskGraph, ManifestNode, ManifestTaskNode, PlanPackageManifest, ProjectWorkspace, RuntimeState } from "../types.js";
 import { readResultIndex } from "../results/indexFile.js";
 
 export type ManagedSectionContext = {
   workspace: ProjectWorkspace;
   manifest: PlanPackageManifest;
+  graph: CompiledTaskGraph;
   state: RuntimeState;
   task: ManifestTaskNode;
   globalPrompt: string;
@@ -25,26 +25,34 @@ async function readReviewIfNeeded(context: ManagedSectionContext): Promise<strin
   }
 }
 
-function renderGraphContext(context: ManagedSectionContext): string {
-  const related = context.manifest.edges
-    .filter((edge) => edge.from === context.task.id || edge.to === context.task.id)
-    .filter((edge) => edge.type !== "depends_on")
-    .map((edge) => {
-      const otherId = edge.from === context.task.id ? edge.to : edge.from;
-      const other = context.manifest.nodes.find((node) => node.id === otherId);
-      if (!other) {
-        return null;
-      }
-      const description = other.type === "task" ? other.title : other.summary;
-      return `- ${edge.type}: ${other.id} (${other.type}) - ${description}`;
-    })
-    .filter((line): line is string => line !== null);
+function describeNode(node: ManifestNode): string {
+  return node.type === "task" ? node.title : node.summary;
+}
 
-  return ["## Graph Context", related.length > 0 ? related.join("\n") : "- No related context nodes."].join("\n\n");
+function renderNodeGroup(title: string, nodes: ManifestNode[]): string[] {
+  if (nodes.length === 0) {
+    return [];
+  }
+  return [`### ${title}`, nodes.map((node) => `- ${node.id} (${node.type}) - ${describeNode(node)}`).join("\n")];
+}
+
+function renderGraphContext(context: ManagedSectionContext): string {
+  const related = context.graph.relatedContext(context.task.id);
+  const sections = [
+    ...renderNodeGroup("Related Goals", related.goals),
+    ...renderNodeGroup("Related Requirements", related.requirements),
+    ...renderNodeGroup("Related Constraints", related.constraints),
+    ...renderNodeGroup("Related Decisions", related.decisions),
+    ...renderNodeGroup("Touched Components", related.components),
+    ...renderNodeGroup("Conflict Warnings", related.conflicts),
+    ...renderNodeGroup("Superseded By", related.supersededBy)
+  ];
+
+  return ["## Graph Context", sections.length > 0 ? sections.join("\n\n") : "- No related context nodes."].join("\n\n");
 }
 
 function renderDependencyStatus(context: ManagedSectionContext): string {
-  const dependencies = dependencyIds(context.manifest, context.task.id);
+  const dependencies = context.graph.dependenciesByTask.get(context.task.id) ?? [];
   if (dependencies.length === 0) {
     return "## Dependency Status\n\n- No dependencies.";
   }

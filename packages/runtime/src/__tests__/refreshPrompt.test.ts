@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { refreshPrompt } from "../prompt/refreshPrompt.js";
 import { createPackageWorkspace } from "./promptTestHelpers.js";
@@ -22,6 +22,24 @@ describe("refreshPrompt", () => {
     const { root } = await createPackageWorkspace(undefined, "No user section\n");
 
     await expect(refreshPrompt({ projectRoot: root, taskId: "T-001" })).rejects.toThrow("task-body");
+    delete process.env.PLANWEAVE_HOME;
+  });
+
+  it("diagnoses malformed managed section boundaries before refresh", async () => {
+    const { root, init } = await createPackageWorkspace();
+    await writeFile(
+      `${init.workspace.packageDir}/nodes/T-001.prompt.md`,
+      [
+        "<!-- planweave:managed:start header -->",
+        "Broken header.",
+        "<!-- planweave:user:start task-body -->",
+        "Keep this body.",
+        "<!-- planweave:user:end task-body -->"
+      ].join("\n"),
+      "utf8"
+    );
+
+    await expect(refreshPrompt({ projectRoot: root, taskId: "T-001" })).rejects.toThrow("prompt_section_boundary_invalid");
     delete process.env.PLANWEAVE_HOME;
   });
 });

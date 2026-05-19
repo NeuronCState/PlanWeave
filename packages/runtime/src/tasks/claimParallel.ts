@@ -1,4 +1,5 @@
 import { loadPackage } from "../package/loadPackage.js";
+import { compileTaskGraph } from "../graph/compileTaskGraph.js";
 import { ensureStateForManifest, readState, writeState } from "../state.js";
 import { orderedClaimableTasks } from "./claimNext.js";
 import { canShareParallelBatch } from "./parallelSafety.js";
@@ -7,6 +8,7 @@ import type { ManifestTaskNode, ParallelClaimResult } from "../types.js";
 export async function claimNextParallel(options: { projectRoot: string; force?: boolean }): Promise<ParallelClaimResult> {
   const { workspace, manifest } = await loadPackage(options.projectRoot);
   const state = ensureStateForManifest(manifest, await readState(workspace.stateFile));
+  const graph = compileTaskGraph(manifest);
 
   if (!manifest.execution.parallel.enabled) {
     await writeState(workspace.stateFile, state);
@@ -21,11 +23,11 @@ export async function claimNextParallel(options: { projectRoot: string; force?: 
   }
 
   const selected: ManifestTaskNode[] = [];
-  for (const candidate of orderedClaimableTasks(manifest, state)) {
+  for (const candidate of orderedClaimableTasks(manifest, state, graph)) {
     if (selected.length >= manifest.execution.parallel.maxConcurrent) {
       break;
     }
-    if (canShareParallelBatch(manifest, selected, candidate)) {
+    if (canShareParallelBatch(manifest, selected, candidate, graph)) {
       selected.push(candidate);
     }
   }

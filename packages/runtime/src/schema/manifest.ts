@@ -28,6 +28,8 @@ const contextNodeSchema = z
   })
   .strict();
 
+export const manifestNodeSchema = z.discriminatedUnion("type", [taskNodeSchema, contextNodeSchema]);
+
 export const manifestSchema = z
   .object({
     version: z.literal(supportedManifestVersion),
@@ -48,7 +50,7 @@ export const manifestSchema = z
       })
       .strict(),
     global_prompt: z.string().min(1),
-    nodes: z.array(z.discriminatedUnion("type", [taskNodeSchema, contextNodeSchema])),
+    nodes: z.array(manifestNodeSchema),
     edges: z.array(
       z
         .object({

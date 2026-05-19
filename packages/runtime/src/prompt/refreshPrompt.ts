@@ -1,8 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadPackage } from "../package/loadPackage.js";
+import { compileTaskGraph } from "../graph/compileTaskGraph.js";
 import { readState, ensureStateForManifest, writeState } from "../state.js";
-import { formatSection, getPromptSection } from "./sections.js";
+import { assertPromptSectionsWellFormed, formatSection, getPromptSection } from "./sections.js";
 import { renderManagedSections } from "./renderManagedSections.js";
 import type { ManifestTaskNode, PromptSurface } from "../types.js";
 
@@ -16,12 +17,11 @@ function findTask(tasks: ManifestTaskNode[], taskId: string): ManifestTaskNode {
 
 export async function refreshPrompt(options: { projectRoot: string; taskId: string }): Promise<PromptSurface> {
   const { workspace, manifest } = await loadPackage(options.projectRoot);
-  const task = findTask(
-    manifest.nodes.filter((node): node is ManifestTaskNode => node.type === "task"),
-    options.taskId
-  );
+  const graph = compileTaskGraph(manifest);
+  const task = findTask(graph.tasksInManifestOrder, options.taskId);
   const promptPath = join(workspace.packageDir, task.prompt);
   const existing = await readFile(promptPath, "utf8");
+  assertPromptSectionsWellFormed(existing, task.prompt);
   const taskBody = getPromptSection(existing, "user", "task-body");
   if (taskBody === null) {
     throw new Error(`Prompt Surface for '${task.id}' is missing user section 'task-body'.`);
@@ -30,7 +30,7 @@ export async function refreshPrompt(options: { projectRoot: string; taskId: stri
   const state = ensureStateForManifest(manifest, await readState(workspace.stateFile));
   await writeState(workspace.stateFile, state);
   const globalPrompt = await readFile(join(workspace.packageDir, manifest.global_prompt), "utf8");
-  const managed = await renderManagedSections({ workspace, manifest, state, task, globalPrompt });
+  const managed = await renderManagedSections({ workspace, manifest, graph, state, task, globalPrompt });
   const markdown = [
     `# ${task.id}: ${task.title}`,
     formatSection("managed", "header", managed.header),

@@ -125,10 +125,57 @@ export type ValidationIssue = {
   path?: string;
 };
 
+export type GraphContext = {
+  goals: ManifestNode[];
+  requirements: ManifestNode[];
+  constraints: ManifestNode[];
+  decisions: ManifestNode[];
+  components: ManifestNode[];
+  conflicts: ManifestNode[];
+  supersededBy: ManifestNode[];
+};
+
+export type ClaimBuckets = {
+  needsChanges: ManifestTaskNode[];
+  ready: ManifestTaskNode[];
+};
+
+export type CompiledTaskGraph = {
+  nodesById: Map<string, ManifestNode>;
+  tasksInManifestOrder: ManifestTaskNode[];
+  manifestOrderByTask: Map<string, number>;
+  edgesByType: Map<EdgeType, ManifestEdge[]>;
+  outgoingEdgesByNode: Map<string, ManifestEdge[]>;
+  incomingEdgesByNode: Map<string, ManifestEdge[]>;
+  dependenciesByTask: Map<string, string[]>;
+  dependentsByTask: Map<string, string[]>;
+  contextEdgesByTask: Map<string, ManifestEdge[]>;
+  locksByTask: Map<string, Set<string>>;
+  dependencyAdjacency: Map<string, string[]>;
+  reverseDependencyAdjacency: Map<string, string[]>;
+  diagnostics: {
+    errors: ValidationIssue[];
+    warnings: ValidationIssue[];
+  };
+  reachable(from: string, to: string): boolean;
+  invalidateReachability(): void;
+  blockedReasonByTask(state: RuntimeState): Map<string, string[]>;
+  claimBuckets(state: RuntimeState): ClaimBuckets;
+  explainBlocked(taskId: string, state: RuntimeState): string[];
+  relatedContext(taskId: string): GraphContext;
+};
+
 export type ValidationReport = {
   ok: boolean;
   errors: ValidationIssue[];
   warnings: ValidationIssue[];
+};
+
+export type GraphEditResult = {
+  ok: boolean;
+  affectedTasks: string[];
+  diagnostics: ValidationIssue[];
+  graph?: CompiledTaskGraph;
 };
 
 export type InitWorkspaceResult = {

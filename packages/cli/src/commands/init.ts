@@ -6,10 +6,25 @@ export function registerInitCommand(program: Command): void {
   program
     .command("init")
     .description("Create the local PlanWeave workspace for the current project")
-    .option("--force", "rewrite the minimal workspace skeleton")
-    .action(async (options: { force?: boolean }) => {
-      const result = await initWorkspace({ projectRoot: resolveCliProjectRoot(), force: options.force });
+    .option("--force", "fail if an existing workspace would require overwriting package or state")
+    .option("--reset-package", "back up and recreate the Plan Package and runtime state")
+    .option("--reset-results", "back up and clear task results")
+    .option("--json", "print machine-readable output")
+    .action(async (options: { force?: boolean; resetPackage?: boolean; resetResults?: boolean; json?: boolean }) => {
+      const result = await initWorkspace({
+        projectRoot: resolveCliProjectRoot(),
+        force: options.force,
+        resetPackage: options.resetPackage,
+        resetResults: options.resetResults
+      });
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
       console.log(`Workspace: ${result.workspace.workspaceRoot}`);
       console.log(`Project: ${result.project.id}`);
+      if (result.backup) {
+        console.log(`Backup: ${result.backup.backupDir}`);
+      }
     });
 }

@@ -7,9 +7,10 @@ export function registerValidateCommand(program: Command): void {
   program
     .command("validate")
     .description("Validate the current project's Plan Package")
-    .action(async () => {
+    .option("--json", "print machine-readable output")
+    .action(async (options: { json?: boolean }) => {
       const report = await validatePackage({ projectRoot: resolveCliProjectRoot() });
-      console.log(formatValidationReport(report));
+      console.log(options.json ? JSON.stringify(report, null, 2) : formatValidationReport(report));
       if (!report.ok) {
         process.exitCode = 1;
       }

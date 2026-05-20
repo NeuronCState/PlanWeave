@@ -12,13 +12,15 @@ export function registerSubmitResultCommand(program: Command): void {
         .choices([...runSubmitStatuses])
         .default("implemented")
     )
+    .option("--reason <reason>", "required when status is blocked or diverged")
     .description("Record a task implementation run")
-    .action(async (taskId: string, options: { report: string; status: RunSubmitStatus }) => {
+    .action(async (taskId: string, options: { report: string; status: RunSubmitStatus; reason?: string }) => {
       const result = await submitRunResult({
         projectRoot: resolveCliProjectRoot(),
         taskId,
         reportPath: options.report,
-        status: options.status
+        status: options.status,
+        reason: options.reason
       });
       console.log(`Submitted ${result.taskId} ${result.runId} as ${result.status}.`);
     });

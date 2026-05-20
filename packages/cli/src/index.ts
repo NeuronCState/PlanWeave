@@ -10,7 +10,11 @@ import { registerSubmitResultCommand } from "./commands/submitResult.js";
 import { registerSubmitReviewCommand } from "./commands/submitReview.js";
 import { registerMarkVerifiedCommand } from "./commands/markVerified.js";
 import { registerMarkDivergedCommand } from "./commands/markDiverged.js";
+import { registerMarkBlockedCommand } from "./commands/markBlocked.js";
+import { registerResolveDivergenceCommand } from "./commands/resolveDivergence.js";
+import { registerUnblockCommand } from "./commands/unblock.js";
 import { registerStatusCommand } from "./commands/status.js";
+import { registerPathsCommand } from "./commands/paths.js";
 import { registerEditGraphCommands } from "./commands/editGraph.js";
 
 export function createProgram(): Command {
@@ -30,7 +34,11 @@ export function createProgram(): Command {
   registerSubmitReviewCommand(program);
   registerMarkVerifiedCommand(program);
   registerMarkDivergedCommand(program);
+  registerMarkBlockedCommand(program);
+  registerResolveDivergenceCommand(program);
+  registerUnblockCommand(program);
   registerStatusCommand(program);
+  registerPathsCommand(program);
   registerEditGraphCommands(program);
 
   return program;

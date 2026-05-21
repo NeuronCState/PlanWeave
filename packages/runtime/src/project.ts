@@ -18,7 +18,8 @@ export async function resolveProjectWorkspace(projectRoot: string): Promise<Proj
     packageDir: join(workspaceRoot, "package"),
     manifestFile: join(workspaceRoot, "package", "manifest.json"),
     stateFile: join(workspaceRoot, "state.json"),
-    resultsDir: join(workspaceRoot, "results")
+    resultsDir: join(workspaceRoot, "results"),
+    projectPromptFile: join(workspaceRoot, "policy", "project-prompt.md")
   };
 }
 

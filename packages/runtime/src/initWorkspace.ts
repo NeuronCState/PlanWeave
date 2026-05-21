@@ -1,6 +1,7 @@
 import { access, cp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { constants } from "node:fs";
+import { resolvePlanweaveHome } from "./paths.js";
 import { resolveProjectWorkspace } from "./project.js";
 import { createEmptyState } from "./state.js";
 import { writeJsonFile } from "./json.js";
@@ -8,7 +9,7 @@ import type { InitWorkspaceResult, PlanPackageManifest, ProjectMetadata } from "
 
 function initialManifest(projectName: string): PlanPackageManifest {
   return {
-    version: "plan-package/v0",
+    version: "plan-package/v1",
     project: {
       title: projectName,
       description: ""
@@ -19,7 +20,10 @@ function initialManifest(projectName: string): PlanPackageManifest {
         maxConcurrent: 1
       }
     },
-    global_prompt: "global-prompt.md",
+    review: {
+      maxFeedbackCycles: 1,
+      completionPolicy: "strict"
+    },
     nodes: [],
     edges: []
   };
@@ -52,9 +56,7 @@ export async function initWorkspace(options: {
 
   const alreadyExists = await exists(workspace.projectFile);
   if (alreadyExists && options.force) {
-    throw new Error(
-      `init --force would overwrite existing Plan Package or state at '${workspace.workspaceRoot}'. Refusing to continue.`
-    );
+    throw new Error(`init --force would overwrite existing workspace '${workspace.workspaceRoot}'.`);
   }
 
   const resetting = options.resetPackage || options.resetResults;
@@ -68,7 +70,6 @@ export async function initWorkspace(options: {
     const backupDir = join(workspace.workspaceRoot, "backups", timestamp);
     await mkdir(backupDir, { recursive: true });
     backup = { backupDir };
-
     if (options.resetPackage) {
       const packageBackup = join(backupDir, "package");
       if (await exists(workspace.packageDir)) {
@@ -83,7 +84,6 @@ export async function initWorkspace(options: {
       await rm(workspace.packageDir, { recursive: true, force: true });
       await rm(workspace.stateFile, { force: true });
     }
-
     if (options.resetResults) {
       const resultsBackup = join(backupDir, "results");
       if (await exists(workspace.resultsDir)) {
@@ -94,13 +94,21 @@ export async function initWorkspace(options: {
     }
   }
 
+  await mkdir(join(resolvePlanweaveHome(), "config"), { recursive: true });
   await mkdir(join(workspace.packageDir, "nodes"), { recursive: true });
+  await mkdir(dirname(workspace.projectPromptFile), { recursive: true });
   await mkdir(workspace.resultsDir, { recursive: true });
+
+  if (!(await exists(join(resolvePlanweaveHome(), "config", "global-prompt.md")))) {
+    await writeFile(join(resolvePlanweaveHome(), "config", "global-prompt.md"), "# Global Prompt\n", "utf8");
+  }
+  if (!(await exists(workspace.projectPromptFile))) {
+    await writeFile(workspace.projectPromptFile, "# Project Prompt\n", "utf8");
+  }
 
   if (!alreadyExists || options.resetPackage) {
     await writeJsonFile(workspace.projectFile, project);
     await writeJsonFile(workspace.manifestFile, initialManifest(projectName));
-    await writeFile(join(workspace.packageDir, "global-prompt.md"), "# Global Prompt\n", "utf8");
     await writeJsonFile(workspace.stateFile, createEmptyState());
   }
 

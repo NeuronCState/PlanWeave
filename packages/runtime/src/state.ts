@@ -3,12 +3,24 @@ import { constants } from "node:fs";
 import { dirname } from "node:path";
 import { compileTaskGraph } from "./graph/compileTaskGraph.js";
 import { readJsonFile, writeJsonFile } from "./json.js";
-import type { ManifestTaskNode, PlanPackageManifest, RuntimeState, TaskState } from "./types.js";
+import type {
+  BlockState,
+  BlockStatus,
+  CompiledExecutionGraph,
+  FeedbackEnvelopeState,
+  PlanPackageManifest,
+  RuntimeState,
+  TaskState
+} from "./types.js";
 
 export function createEmptyState(): RuntimeState {
   return {
-    currentTaskId: null,
-    tasks: {}
+    currentRefs: [],
+    currentFeedbackId: null,
+    currentReviewBlockRef: null,
+    tasks: {},
+    blocks: {},
+    feedback: {}
   };
 }
 
@@ -26,78 +38,116 @@ export async function writeState(stateFile: string, state: RuntimeState): Promis
   await writeJsonFile(stateFile, state);
 }
 
-export function taskNodes(manifest: PlanPackageManifest): ManifestTaskNode[] {
-  return compileTaskGraph(manifest).tasksInManifestOrder;
+function defaultBlockStatus(ref: string, graph: CompiledExecutionGraph, state: RuntimeState): BlockStatus {
+  const dependencies = graph.blockDependenciesByRef.get(ref) ?? [];
+  return dependencies.every((dependency) => state.blocks[dependency]?.status === "completed") ? "ready" : "planned";
 }
 
-export function dependencyIds(manifest: PlanPackageManifest, taskId: string, graph = compileTaskGraph(manifest)): string[] {
-  return graph.dependenciesByTask.get(taskId) ?? [];
+function taskDependenciesSatisfied(taskId: string, graph: CompiledExecutionGraph, state: RuntimeState): boolean {
+  return (graph.taskDependenciesByTask.get(taskId) ?? []).every((dependency) => state.tasks[dependency]?.status === "implemented");
 }
 
-export function dependenciesSatisfied(
-  manifest: PlanPackageManifest,
-  state: RuntimeState,
-  taskId: string,
-  graph = compileTaskGraph(manifest)
-): boolean {
-  return dependencyIds(manifest, taskId, graph).every((id) => {
-    const status = state.tasks[id]?.status;
-    return status === "implemented" || status === "verified";
+function hasOpenFeedbackForTask(taskId: string, graph: CompiledExecutionGraph, state: RuntimeState): boolean {
+  return Object.values(state.feedback).some((feedback) => {
+    if (feedback.status !== "open" && feedback.status !== "in_progress") {
+      return false;
+    }
+    const sourceTask = graph.blockTaskByRef.get(feedback.sourceReviewBlockRef);
+    return sourceTask === taskId;
   });
 }
 
-export function createDefaultTaskState(
-  manifest: PlanPackageManifest,
-  state: RuntimeState,
-  taskId: string,
-  graph = compileTaskGraph(manifest)
-): TaskState {
-  const blockedBy = dependencyIds(manifest, taskId, graph).filter((id) => {
-    const status = state.tasks[id]?.status;
-    return status !== "implemented" && status !== "verified";
-  });
-  return {
-    status: blockedBy.length === 0 ? "ready" : "planned",
-    claimedBy: null,
-    lastRunId: null,
-    blockedBy
-  };
+function aggregateTaskStatus(taskId: string, graph: CompiledExecutionGraph, state: RuntimeState): TaskState {
+  const refs = graph.blocksByTask.get(taskId) ?? [];
+  const blocks = refs.map((ref) => state.blocks[ref]).filter(Boolean);
+  const openFeedbackCount = Object.values(state.feedback).filter((feedback) => {
+    const sourceTask = graph.blockTaskByRef.get(feedback.sourceReviewBlockRef);
+    return sourceTask === taskId && (feedback.status === "open" || feedback.status === "in_progress");
+  }).length;
+
+  if (!taskDependenciesSatisfied(taskId, graph, state)) {
+    return { status: "planned", openFeedbackCount };
+  }
+  if (blocks.some((block) => block.status === "in_progress") || openFeedbackCount > 0) {
+    return { status: "in_progress", openFeedbackCount };
+  }
+  const requiredNonReviewComplete = refs
+    .filter((ref) => {
+      const block = graph.blocksByRef.get(ref);
+      return block?.type === "implementation" || block?.type === "check";
+    })
+    .every((ref) => state.blocks[ref]?.status === "completed");
+  const requiredReviewsPassed = refs
+    .filter((ref) => graph.blocksByRef.get(ref)?.type === "review")
+    .every((ref) => {
+      const block = graph.blocksByRef.get(ref);
+      return block?.type !== "review" || !block.review.required || state.blocks[ref]?.completionReason === "passed";
+    });
+  if (requiredNonReviewComplete && requiredReviewsPassed) {
+    return { status: "implemented", openFeedbackCount };
+  }
+  return { status: refs.some((ref) => state.blocks[ref]?.status === "in_progress") ? "in_progress" : "ready", openFeedbackCount };
 }
 
 export function ensureStateForManifest(manifest: PlanPackageManifest, state: RuntimeState): RuntimeState {
   const graph = compileTaskGraph(manifest);
-  const taskIds = new Set(graph.tasksInManifestOrder.map((task) => task.id));
+  const validTaskIds = new Set(graph.taskNodesInManifestOrder);
+  const validBlockRefs = new Set(graph.blockRefsInManifestOrder);
   const next: RuntimeState = {
-    currentTaskId: state.currentTaskId && taskIds.has(state.currentTaskId) ? state.currentTaskId : null,
-    tasks: {}
+    currentRefs: state.currentRefs.filter((ref) => validBlockRefs.has(ref)),
+    currentFeedbackId: state.currentFeedbackId && state.feedback[state.currentFeedbackId] ? state.currentFeedbackId : null,
+    currentReviewBlockRef:
+      state.currentReviewBlockRef && validBlockRefs.has(state.currentReviewBlockRef) ? state.currentReviewBlockRef : null,
+    tasks: {},
+    blocks: {},
+    feedback: {}
   };
 
-  for (const task of graph.tasksInManifestOrder) {
-    next.tasks[task.id] = state.tasks[task.id] ?? createDefaultTaskState(manifest, next, task.id, graph);
-    if (
-      (next.tasks[task.id].status === "planned" || next.tasks[task.id].status === "ready") &&
-      dependenciesSatisfied(manifest, next, task.id, graph)
-    ) {
-      next.tasks[task.id] = {
-        ...next.tasks[task.id],
-        status: "ready",
-        blockedBy: []
-      };
-    } else if (next.tasks[task.id].status === "planned" || next.tasks[task.id].status === "ready") {
-      next.tasks[task.id] = {
-        ...next.tasks[task.id],
-        status: "planned",
-        blockedBy: dependencyIds(manifest, task.id, graph).filter((id) => {
-          const status = next.tasks[id]?.status;
-          return status !== "implemented" && status !== "verified";
-        })
+  for (const [feedbackId, feedback] of Object.entries(state.feedback ?? {})) {
+    if (validBlockRefs.has(feedback.sourceReviewBlockRef)) {
+      next.feedback[feedbackId] = feedback as FeedbackEnvelopeState;
+    }
+  }
+
+  for (const ref of graph.blockRefsInManifestOrder) {
+    const existing = state.blocks?.[ref] as BlockState | undefined;
+    next.blocks[ref] = existing ?? { status: defaultBlockStatus(ref, graph, next), lastRunId: null };
+    if (next.blocks[ref].status === "planned" || next.blocks[ref].status === "ready") {
+      next.blocks[ref] = {
+        ...next.blocks[ref],
+        status: defaultBlockStatus(ref, graph, next)
       };
     }
   }
 
-  if (next.currentTaskId && next.tasks[next.currentTaskId]?.status !== "in_progress") {
-    next.currentTaskId = null;
+  for (const taskId of graph.taskNodesInManifestOrder) {
+    next.tasks[taskId] = aggregateTaskStatus(taskId, graph, next);
+  }
+
+  for (const taskId of graph.taskNodesInManifestOrder) {
+    if (!taskDependenciesSatisfied(taskId, graph, next)) {
+      continue;
+    }
+    for (const ref of graph.blocksByTask.get(taskId) ?? []) {
+      const block = graph.blocksByRef.get(ref);
+      const blockState = next.blocks[ref];
+      if (!block || blockState.status !== "planned") {
+        continue;
+      }
+      if ((graph.blockDependenciesByRef.get(ref) ?? []).every((dependency) => next.blocks[dependency]?.status === "completed")) {
+        if (block.type === "review" && hasOpenFeedbackForTask(taskId, graph, next)) {
+          continue;
+        }
+        next.blocks[ref] = { ...blockState, status: "ready" };
+      }
+    }
+    next.tasks[taskId] = aggregateTaskStatus(taskId, graph, next);
   }
 
   return next;
+}
+
+export function taskNodes(manifest: PlanPackageManifest) {
+  const graph = compileTaskGraph(manifest);
+  return graph.taskNodesInManifestOrder.map((taskId) => graph.tasksById.get(taskId)).filter((task) => task !== undefined);
 }

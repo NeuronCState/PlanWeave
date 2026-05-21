@@ -1,24 +1,26 @@
-import { tasksHaveDependencyRelationship } from "./dependencies.js";
 import { compileTaskGraph } from "../graph/compileTaskGraph.js";
-import type { CompiledTaskGraph, ManifestTaskNode, PlanPackageManifest } from "../types.js";
+import type { CompiledExecutionGraph, PlanPackageManifest } from "../types.js";
 
 export function canShareParallelBatch(
   manifest: PlanPackageManifest,
-  selected: ManifestTaskNode[],
-  candidate: ManifestTaskNode,
-  graph: CompiledTaskGraph = compileTaskGraph(manifest)
+  selected: string[],
+  candidateRef: string,
+  graph: CompiledExecutionGraph = compileTaskGraph(manifest)
 ): boolean {
-  if (!candidate.parallel.safe) {
+  if (!graph.parallelSafeByBlockRef.get(candidateRef)) {
     return false;
   }
-  for (const task of selected) {
-    if (tasksHaveDependencyRelationship(manifest, task.id, candidate.id, graph)) {
+  const candidateTask = graph.blockTaskByRef.get(candidateRef);
+  const candidateLocks = new Set(graph.locksByBlockRef.get(candidateRef) ?? []);
+  return selected.every((selectedRef) => {
+    const selectedTask = graph.blockTaskByRef.get(selectedRef);
+    if (
+      candidateTask &&
+      selectedTask &&
+      (graph.taskReachable(candidateTask, selectedTask) || graph.taskReachable(selectedTask, candidateTask))
+    ) {
       return false;
     }
-    const locks = new Set(task.parallel.locks);
-    if (candidate.parallel.locks.some((lock) => locks.has(lock))) {
-      return false;
-    }
-  }
-  return true;
+    return !(graph.locksByBlockRef.get(selectedRef) ?? []).some((lock) => candidateLocks.has(lock));
+  });
 }

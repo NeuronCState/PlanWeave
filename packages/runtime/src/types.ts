@@ -1,4 +1,4 @@
-export const supportedManifestVersion = "plan-package/v0" as const;
+export const supportedManifestVersion = "plan-package/v1" as const;
 
 export const nodeTypes = [
   "goal",
@@ -19,30 +19,56 @@ export const edgeTypes = [
   "supersedes"
 ] as const;
 
-export const taskStatuses = [
-  "planned",
-  "ready",
-  "in_progress",
-  "implemented",
-  "needs_changes",
-  "verified",
-  "blocked",
-  "diverged"
-] as const;
-
-export const runSubmitStatuses = ["implemented", "blocked", "diverged"] as const;
-export const reviewStatuses = ["passed", "needs_changes"] as const;
+export const blockTypes = ["implementation", "check", "review"] as const;
+export const taskStatuses = ["planned", "ready", "in_progress", "implemented"] as const;
+export const blockStatuses = ["planned", "ready", "in_progress", "completed", "needs_changes", "blocked", "diverged"] as const;
+export const feedbackStatuses = ["open", "in_progress", "resolved", "dismissed"] as const;
+export const reviewVerdicts = ["passed", "needs_changes"] as const;
 
 export type NodeType = (typeof nodeTypes)[number];
 export type EdgeType = (typeof edgeTypes)[number];
+export type BlockType = (typeof blockTypes)[number];
 export type TaskStatus = (typeof taskStatuses)[number];
-export type RunSubmitStatus = (typeof runSubmitStatuses)[number];
-export type ReviewStatus = (typeof reviewStatuses)[number];
+export type BlockStatus = (typeof blockStatuses)[number];
+export type FeedbackStatus = (typeof feedbackStatuses)[number];
+export type ReviewVerdict = (typeof reviewVerdicts)[number];
 
-export type ParallelPolicy = {
+export type ReviewHookDefinition = {
+  id: string;
+  type: "executable";
+  command: string;
+  args: string[];
+  executionPolicy: "trusted-local";
+};
+
+export type BlockParallelPolicy = {
   safe: boolean;
   locks: string[];
 };
+
+export type ManifestImplementationBlock = {
+  id: string;
+  type: "implementation" | "check";
+  title: string;
+  prompt: string;
+  depends_on: string[];
+  parallel: BlockParallelPolicy;
+};
+
+export type ManifestReviewBlock = {
+  id: string;
+  type: "review";
+  title: string;
+  prompt: string;
+  depends_on: string[];
+  review: {
+    required: boolean;
+    maxFeedbackCycles: number;
+    hook: ReviewHookDefinition | null;
+  };
+};
+
+export type ManifestBlock = ManifestImplementationBlock | ManifestReviewBlock;
 
 export type ManifestTaskNode = {
   id: string;
@@ -50,7 +76,7 @@ export type ManifestTaskNode = {
   title: string;
   prompt: string;
   acceptance: string[];
-  parallel: ParallelPolicy;
+  blocks: ManifestBlock[];
 };
 
 export type ManifestContextNode = {
@@ -80,7 +106,10 @@ export type PlanPackageManifest = {
       maxConcurrent: number;
     };
   };
-  global_prompt: string;
+  review: {
+    maxFeedbackCycles: number;
+    completionPolicy: "strict";
+  };
   nodes: ManifestNode[];
   edges: ManifestEdge[];
 };
@@ -101,26 +130,39 @@ export type ProjectWorkspace = {
   manifestFile: string;
   stateFile: string;
   resultsDir: string;
+  projectPromptFile: string;
 };
 
 export type TaskState = {
   status: TaskStatus;
-  claimedBy: string | null;
-  lastRunId: string | null;
-  blockedBy: string[];
-  blockage?: {
-    reason: string;
-    recordedAt: string;
-  };
-  divergence?: {
-    reason: string;
-    recordedAt: string;
-  };
+  openFeedbackCount: number;
+};
+
+export type BlockState = {
+  status: BlockStatus;
+  lastRunId?: string | null;
+  latestReviewAttemptId?: string | null;
+  activeFeedbackId?: string | null;
+  blockedReason?: string | null;
+  divergenceReason?: string | null;
+  completionReason?: "passed" | "max_cycles_reached" | null;
+  passedWorkRevision?: string | null;
+};
+
+export type FeedbackEnvelopeState = {
+  status: FeedbackStatus;
+  sourceReviewBlockRef: string;
+  latestSubmissionId: string | null;
+  content: string;
 };
 
 export type RuntimeState = {
-  currentTaskId: string | null;
+  currentRefs: string[];
+  currentFeedbackId: string | null;
+  currentReviewBlockRef: string | null;
   tasks: Record<string, TaskState>;
+  blocks: Record<string, BlockState>;
+  feedback: Record<string, FeedbackEnvelopeState>;
 };
 
 export type ValidationIssue = {
@@ -140,47 +182,97 @@ export type GraphContext = {
   supersededBy: ManifestNode[];
 };
 
-export type ClaimBuckets = {
-  needsChanges: ManifestTaskNode[];
-  ready: ManifestTaskNode[];
-};
-
-export type CompiledTaskGraph = {
+export type CompiledExecutionGraph = {
   nodesById: Map<string, ManifestNode>;
-  tasksInManifestOrder: ManifestTaskNode[];
-  manifestOrderByTask: Map<string, number>;
-  edgesByType: Map<EdgeType, ManifestEdge[]>;
-  outgoingEdgesByNode: Map<string, ManifestEdge[]>;
-  incomingEdgesByNode: Map<string, ManifestEdge[]>;
-  dependenciesByTask: Map<string, string[]>;
-  dependentsByTask: Map<string, string[]>;
+  taskNodesInManifestOrder: string[];
+  tasksById: Map<string, ManifestTaskNode>;
+  taskDependenciesByTask: Map<string, string[]>;
+  taskDependentsByTask: Map<string, string[]>;
   contextEdgesByTask: Map<string, ManifestEdge[]>;
-  locksByTask: Map<string, Set<string>>;
-  dependencyAdjacency: Map<string, string[]>;
-  reverseDependencyAdjacency: Map<string, string[]>;
+  blockRefsInManifestOrder: string[];
+  blocksByRef: Map<string, ManifestBlock>;
+  blockTaskByRef: Map<string, string>;
+  blocksByTask: Map<string, string[]>;
+  blockDependenciesByRef: Map<string, string[]>;
+  blockDependentsByRef: Map<string, string[]>;
+  reviewBlocksByTask: Map<string, string[]>;
+  locksByBlockRef: Map<string, string[]>;
+  parallelSafeByBlockRef: Map<string, boolean>;
   diagnostics: {
     errors: ValidationIssue[];
     warnings: ValidationIssue[];
   };
-  reachable(from: string, to: string): boolean;
-  invalidateReachability(): void;
-  blockedReasonByTask(state: RuntimeState): Map<string, string[]>;
-  claimBuckets(state: RuntimeState): ClaimBuckets;
-  explainBlocked(taskId: string, state: RuntimeState): string[];
+  taskReachable(from: string, to: string): boolean;
+  blockReachable(fromRef: string, toRef: string): boolean;
   relatedContext(taskId: string): GraphContext;
+};
+
+export type CompiledTaskGraph = CompiledExecutionGraph;
+
+export type ExecutionGraphSession = {
+  projectRoot: string;
+  projectId: string;
+  packageRoot: string;
+  graph: CompiledExecutionGraph;
+  fileSnapshot: PackageFileSnapshot;
+  readQueue: GraphReadQueue;
+  dirtyPromptRefs: Set<string>;
+  diagnostics: ValidationIssue[];
+};
+
+export type PackageFileChange = {
+  path: string;
+  type: "added" | "changed" | "removed";
+};
+
+export type GraphEditOperation =
+  | {
+      type: "add_node" | "update_node";
+      node: ManifestNode;
+    }
+  | {
+      type: "remove_node";
+      nodeId: string;
+    }
+  | {
+      type: "add_edge" | "remove_edge";
+      edge: ManifestEdge;
+    }
+  | {
+      type: "update_prompt";
+      ref: string;
+    };
+
+export type GraphReadQueue = {
+  fileChanges: PackageFileChange[];
+  graphOps: GraphEditOperation[];
+  enqueuedAt: string;
+};
+
+export type FileFingerprint = {
+  path: string;
+  hash: string;
+  mtimeMs: number;
+};
+
+export type PackageFileSnapshot = {
+  manifest: PlanPackageManifest;
+  graph: CompiledExecutionGraph;
+  manifestFile: FileFingerprint;
+  promptFiles: Record<string, FileFingerprint>;
+};
+
+export type DrainGraphReadQueueResult = {
+  session: ExecutionGraphSession;
+  refreshed: boolean;
+  dirtyPromptRefs: string[];
+  diagnostics: ValidationIssue[];
 };
 
 export type ValidationReport = {
   ok: boolean;
   errors: ValidationIssue[];
   warnings: ValidationIssue[];
-};
-
-export type GraphEditResult = {
-  ok: boolean;
-  affectedTasks: string[];
-  diagnostics: ValidationIssue[];
-  graph?: CompiledTaskGraph;
 };
 
 export type InitWorkspaceResult = {
@@ -205,7 +297,7 @@ export type ProjectPathsResult = {
 };
 
 export type PromptSurface = {
-  taskId: string;
+  ref: string;
   path: string;
   markdown: string;
 };
@@ -214,158 +306,162 @@ export type RefreshPromptsResult = {
   prompts: PromptSurface[];
 };
 
-export type ClaimResult = {
-  taskId: string | null;
-  status: "claimed" | "current" | "none";
-  task?: TaskState;
-};
-
-export type ParallelClaimResult = {
-  taskIds: string[];
-  status: "claimed" | "disabled" | "current" | "none";
-};
-
-export type VerificationSource = "review" | "manual";
-
-export type TaskLifecycleEvent =
+export type ClaimResult =
   | {
-      type: "claimed";
+      kind: "block";
+      ref: string;
       taskId: string;
-      at: string;
-      source: "agent";
+      blockId: string;
+      blockType: BlockType;
+      reason?: "claimed" | "current" | "feedback_resolved";
     }
   | {
-      type: "run_submitted";
-      taskId: string;
-      runId: string;
-      status: RunSubmitStatus;
-      at: string;
+      kind: "feedback";
+      content: string;
     }
   | {
-      type: "review_submitted";
-      taskId: string;
-      reviewId: string;
-      status: ReviewStatus;
-      taskStatus: "verified" | "needs_changes";
-      reviewer: "human";
-      at: string;
+      kind: "batch";
+      refs: string[];
     }
   | {
-      type: "verified";
-      taskId: string;
-      source: VerificationSource;
-      at: string;
+      kind: "none";
+      reason?: string;
     }
   | {
-      type: "diverged";
-      taskId: string;
+      kind: "blocked";
+      ref?: string;
       reason: string;
-      at: string;
-    }
-  | {
-      type: "blocked";
-      taskId: string;
-      reason: string;
-      at: string;
-    }
-  | {
-      type: "unblocked";
-      taskId: string;
-      at: string;
-    }
-  | {
-      type: "divergence_resolved";
-      taskId: string;
-      reason: string;
-      at: string;
     };
 
-export type ResultIndex = {
+export type ParallelClaimResult = ClaimResult;
+
+export type ExecutorAdapterResult =
+  | {
+      kind: "block";
+      reportPath: string;
+    }
+  | {
+      kind: "review";
+      resultPath: string;
+    }
+  | {
+      kind: "feedback";
+      reportPath: string;
+    };
+
+export type ExecutorAdapter = {
+  runBlock(input: { claim: Extract<ClaimResult, { kind: "block" }>; prompt: string }): Promise<ExecutorAdapterResult>;
+  runFeedback(input: { claim: Extract<ClaimResult, { kind: "feedback" }> }): Promise<ExecutorAdapterResult>;
+};
+
+export type AutoRunStepResult =
+  | {
+      kind: "submitted";
+      claim: ClaimResult;
+      adapterResult: ExecutorAdapterResult;
+      submitResult: SubmitResult | SubmitReviewResult | SubmitFeedbackResult;
+    }
+  | {
+      kind: "idle" | "blocked" | "batch";
+      claim: ClaimResult;
+    };
+
+export type ReviewResult = {
+  reviewBlockRef: string;
   taskId: string;
-  status: TaskStatus;
-  latestRunId: string | null;
-  runCount: number;
-  review?: {
-    status: ReviewStatus;
-    reviewedAt: string;
-    reviewer: "human";
-    reviewId?: string;
-    path?: string;
+  verdict: ReviewVerdict;
+  content: string;
+};
+
+export type ReviewHookInput = {
+  reviewResult: ReviewResult;
+  task: {
+    taskId: string;
+    title: string;
   };
-  reviewHistory?: Array<{
-    reviewId: string;
-    status: ReviewStatus;
-    reviewedAt: string;
-    reviewer: "human";
-    path: string;
-    runId: string;
-  }>;
-  divergence?: {
-    reason: string;
-    recordedAt: string;
-  };
-  verification?: {
-    source: VerificationSource;
-    verifiedAt: string;
-  };
-  blockage?: {
-    reason: string;
-    recordedAt: string;
-  };
-  events?: TaskLifecycleEvent[];
+  reviewBlockRef: string;
+  feedbackCycleCount: number;
+};
+
+export type ReviewHookOutput = {
+  action: "use_feedback";
+  feedbackPrompt: string;
 };
 
 export type SubmitResult = {
-  taskId: string;
+  ref: string;
   runId: string;
-  status: RunSubmitStatus;
-  index: ResultIndex;
+  status: "completed";
 };
 
 export type SubmitReviewResult = {
-  taskId: string;
-  status: ReviewStatus;
-  taskStatus: "verified" | "needs_changes";
-  index: ResultIndex;
+  ref: string;
+  reviewAttemptId: string;
+  verdict: ReviewVerdict;
+  feedbackId?: string;
+  status: BlockStatus;
 };
 
-export type MarkVerifiedResult = {
-  taskId: string;
-  status: "verified";
+export type SubmitFeedbackResult = {
+  status: "accepted";
+  nextCommand: "planweave claim-next";
+  message: string;
+  feedbackId: string;
+  submissionId: string;
 };
 
-export type MarkDivergedResult = {
-  taskId: string;
-  status: "diverged";
-  reason: string;
+export type BlockRecoveryResult = {
+  ref: string;
+  status: BlockStatus;
+  reason?: string;
 };
 
-export type MarkBlockedResult = {
+export type TaskStatusSummary = {
   taskId: string;
-  status: "blocked";
-  reason: string;
+  status: TaskStatus;
+  openFeedbackCount: number;
 };
 
-export type UnblockResult = {
+export type BlockStatusSummary = {
+  ref: string;
   taskId: string;
-  status: "planned" | "ready" | "needs_changes";
+  blockId: string;
+  type: BlockType;
+  status: BlockStatus;
+  reason?: string | null;
+  completionReason?: "passed" | "max_cycles_reached" | null;
+  lastRunId?: string | null;
+  latestReviewAttemptId?: string | null;
+  activeFeedbackId?: string | null;
 };
 
-export type ResolveDivergenceResult = {
-  taskId: string;
-  status: "planned" | "ready" | "needs_changes";
-  reason: string;
-};
-
-export type TaskReasonSummary = {
-  taskId: string;
-  reason: string | null;
+export type PlanStatus = {
+  projectId: string;
+  projectRoot: string;
+  taskTotal: number;
+  blockTotal: number;
+  tasks: TaskStatusSummary[];
+  blocks: BlockStatusSummary[];
+  currentRefs: string[];
+  currentFeedbackId: string | null;
+  currentReviewBlockRef: string | null;
+  openFeedback: Array<{ feedbackId: string; sourceReviewBlockRef: string; status: FeedbackStatus }>;
+  nextClaimable: string[];
+  warnings: ValidationIssue[];
+  counts: {
+    tasks: Record<TaskStatus, number>;
+    blocks: Record<BlockStatus, number>;
+    feedback: Record<FeedbackStatus, number>;
+  };
+  orphanState: OrphanStateSummary[];
+  orphanResults: OrphanResultSummary[];
 };
 
 export type OrphanStateSummary = {
-  taskId: string;
-  status: TaskStatus;
-  lastRunId: string | null;
+  taskId?: string;
+  ref?: string;
+  status: string;
+  lastRunId?: string | null;
 };
 
 export type OrphanResultSummary = {
@@ -373,20 +469,36 @@ export type OrphanResultSummary = {
   path: string;
 };
 
-export type PlanStatus = {
-  projectId: string;
-  projectRoot: string;
-  taskTotal: number;
-  counts: Record<TaskStatus, number>;
-  currentTaskId: string | null;
-  inProgress: string[];
-  nextClaimable: string[];
-  blockedTasks: TaskReasonSummary[];
-  needsChangesTasks: string[];
-  divergedTasks: TaskReasonSummary[];
-  orphanState: OrphanStateSummary[];
-  orphanResults: OrphanResultSummary[];
-  noClaimReason: "has_claimable" | "all_done" | "dependency_blocked" | "blocked" | "diverged" | "no_tasks";
-  needsChanges: number;
-  diverged: number;
+export type GraphEditResult = {
+  ok: boolean;
+  affectedTasks: string[];
+  diagnostics: ValidationIssue[];
+  graph?: CompiledExecutionGraph;
 };
+
+export type TaskResultIndex = {
+  latestRunByBlock?: Record<string, string>;
+  latestReviewAttemptByBlock?: Record<string, string>;
+  latestReviewVerdictByBlock?: Record<string, ReviewVerdict>;
+  latestReviewedWorkRevisionByBlock?: Record<string, string>;
+  latestFeedbackByReviewBlock?: Record<string, string>;
+  latestFeedbackSubmissionByFeedback?: Record<string, string>;
+  feedbackStatusById?: Record<string, FeedbackStatus>;
+  reviewCompletionReasonByBlock?: Record<string, "passed" | "max_cycles_reached">;
+  counts?: {
+    runs?: number;
+    reviewAttempts?: number;
+    feedbackEnvelopes?: number;
+    feedbackSubmissions?: number;
+  };
+  warnings?: ValidationIssue[];
+};
+
+export const runSubmitStatuses = ["completed"] as const;
+export const reviewStatuses = reviewVerdicts;
+export type RunSubmitStatus = "completed";
+export type ReviewStatus = ReviewVerdict;
+export type MarkBlockedResult = BlockRecoveryResult;
+export type MarkDivergedResult = BlockRecoveryResult;
+export type ResolveDivergenceResult = BlockRecoveryResult;
+export type UnblockResult = BlockRecoveryResult;

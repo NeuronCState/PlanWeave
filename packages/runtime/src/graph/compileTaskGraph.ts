@@ -2,19 +2,16 @@ import { access, readdir, readFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join, relative } from "node:path";
 import { PackagePathError, resolvePackagePath } from "../package/resolvePackagePath.js";
-import { findPromptSectionBoundaryIssues, hasUserSection } from "../prompt/sections.js";
 import { edgeTypes } from "../types.js";
 import type {
-  ClaimBuckets,
-  CompiledTaskGraph,
+  CompiledExecutionGraph,
   EdgeType,
   GraphContext,
+  ManifestBlock,
   ManifestEdge,
   ManifestNode,
   ManifestTaskNode,
   PlanPackageManifest,
-  RuntimeState,
-  TaskStatus,
   ValidationIssue
 } from "../types.js";
 
@@ -49,6 +46,18 @@ async function listMarkdownFiles(root: string): Promise<string[]> {
   }
 }
 
+function blockRef(taskId: string, blockId: string): string {
+  return `${taskId}#${blockId}`;
+}
+
+export function parseBlockRef(ref: string): { taskId: string; blockId: string } {
+  const parts = ref.split("#");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new Error(`Invalid block ref '${ref}'. Expected '<task-id>#<block-id>'.`);
+  }
+  return { taskId: parts[0], blockId: parts[1] };
+}
+
 function emptyGraphContext(): GraphContext {
   return {
     goals: [],
@@ -72,69 +81,27 @@ function edgeKey(edge: ManifestEdge): string {
   return `${edge.from}\u0000${edge.type}\u0000${edge.to}`;
 }
 
-function isDependencySatisfied(status: TaskStatus | undefined): boolean {
-  return status === "implemented" || status === "verified";
-}
-
-export function validateEdgeEndpointTypes(edge: ManifestEdge, from: ManifestNode, to: ManifestNode): ValidationIssue[] {
-  if (edge.type === "depends_on") {
-    return from.type === "task" && to.type === "task"
-      ? []
-      : [issue("depends_on_non_task", "depends_on edges must connect task nodes.", "edges")];
-  }
-
-  if (edge.type === "implements") {
-    return from.type === "task" && (to.type === "goal" || to.type === "requirement")
-      ? []
-      : [issue("edge_endpoint_type_invalid", "implements edges must connect task -> goal/requirement.", "edges")];
-  }
-
-  if (edge.type === "constrained_by") {
-    return from.type === "task" && to.type === "constraint"
-      ? []
-      : [issue("edge_endpoint_type_invalid", "constrained_by edges must connect task -> constraint.", "edges")];
-  }
-
-  if (edge.type === "touches") {
-    return from.type === "task" && to.type === "component"
-      ? []
-      : [issue("edge_endpoint_type_invalid", "touches edges must connect task -> component.", "edges")];
-  }
-
-  if (edge.type === "conflicts_with") {
-    return to.type === "risk" || to.type === "constraint" || to.type === "task"
-      ? []
-      : [issue("edge_endpoint_type_invalid", "conflicts_with edges must point to risk/constraint/task.", "edges")];
-  }
-
-  return [];
-}
-
-function findDependsOnCycle(dependencyAdjacency: Map<string, string[]>): string[] | null {
+function findCycle(adjacency: Map<string, string[]>): string[] | null {
   const visiting = new Set<string>();
   const visited = new Set<string>();
 
-  for (const id of dependencyAdjacency.keys()) {
+  for (const id of adjacency.keys()) {
     if (visited.has(id)) {
       continue;
     }
-
     const stack: Array<{ id: string; nextIndex: number }> = [{ id, nextIndex: 0 }];
     visiting.add(id);
-
     while (stack.length > 0) {
       const frame = stack[stack.length - 1];
-      const next = dependencyAdjacency.get(frame.id)?.[frame.nextIndex];
-
+      const next = adjacency.get(frame.id)?.[frame.nextIndex];
       if (!next) {
         visiting.delete(frame.id);
         visited.add(frame.id);
         stack.pop();
         continue;
       }
-
       frame.nextIndex += 1;
-      if (!dependencyAdjacency.has(next)) {
+      if (!adjacency.has(next)) {
         continue;
       }
       if (visiting.has(next)) {
@@ -150,10 +117,61 @@ function findDependsOnCycle(dependencyAdjacency: Map<string, string[]>): string[
   return null;
 }
 
-export function compileTaskGraph(manifest: PlanPackageManifest): CompiledTaskGraph {
+function reachable(adjacency: Map<string, string[]>, from: string, to: string): boolean {
+  if (!adjacency.has(from) || !adjacency.has(to)) {
+    return false;
+  }
+  const visited = new Set<string>();
+  const stack = [...(adjacency.get(from) ?? [])];
+  while (stack.length > 0) {
+    const id = stack.pop();
+    if (!id || visited.has(id)) {
+      continue;
+    }
+    if (id === to) {
+      return true;
+    }
+    visited.add(id);
+    stack.push(...(adjacency.get(id) ?? []));
+  }
+  return false;
+}
+
+function validateEdgeEndpointTypes(edge: ManifestEdge, from: ManifestNode, to: ManifestNode): ValidationIssue[] {
+  if (edge.type === "depends_on") {
+    return from.type === "task" && to.type === "task"
+      ? []
+      : [issue("depends_on_non_task", "depends_on edges must connect task nodes.", "edges")];
+  }
+  if (edge.type === "implements") {
+    return from.type === "task" && (to.type === "goal" || to.type === "requirement")
+      ? []
+      : [issue("edge_endpoint_type_invalid", "implements edges must connect task -> goal/requirement.", "edges")];
+  }
+  if (edge.type === "constrained_by") {
+    return from.type === "task" && to.type === "constraint"
+      ? []
+      : [issue("edge_endpoint_type_invalid", "constrained_by edges must connect task -> constraint.", "edges")];
+  }
+  if (edge.type === "touches") {
+    return from.type === "task" && to.type === "component"
+      ? []
+      : [issue("edge_endpoint_type_invalid", "touches edges must connect task -> component.", "edges")];
+  }
+  if (edge.type === "conflicts_with") {
+    return to.type === "risk" || to.type === "constraint" || to.type === "task"
+      ? []
+      : [issue("edge_endpoint_type_invalid", "conflicts_with edges must point to risk/constraint/task.", "edges")];
+  }
+  return [];
+}
+
+export function compileTaskGraph(manifest: PlanPackageManifest): CompiledExecutionGraph {
   const errors: ValidationIssue[] = [];
   const warnings: ValidationIssue[] = [];
   const nodesById = new Map<string, ManifestNode>();
+  const tasksById = new Map<string, ManifestTaskNode>();
+  const taskNodesInManifestOrder: string[] = [];
   const duplicateNodeIds = new Set<string>();
 
   for (const node of manifest.nodes) {
@@ -161,60 +179,104 @@ export function compileTaskGraph(manifest: PlanPackageManifest): CompiledTaskGra
       duplicateNodeIds.add(node.id);
     }
     nodesById.set(node.id, node);
+    if (node.type === "task") {
+      tasksById.set(node.id, node);
+      taskNodesInManifestOrder.push(node.id);
+    }
   }
-
   for (const id of duplicateNodeIds) {
     errors.push(issue("node_id_duplicate", `Node id '${id}' is duplicated.`, "nodes"));
   }
 
-  const tasksInManifestOrder = manifest.nodes.filter((node): node is ManifestTaskNode => node.type === "task");
-  const taskIds = new Set(tasksInManifestOrder.map((task) => task.id));
-  const manifestOrderByTask = new Map<string, number>();
-  const dependenciesByTask = new Map<string, string[]>();
-  const dependentsByTask = new Map<string, string[]>();
+  const taskDependenciesByTask = new Map<string, string[]>();
+  const taskDependentsByTask = new Map<string, string[]>();
   const contextEdgesByTask = new Map<string, ManifestEdge[]>();
-  const locksByTask = new Map<string, Set<string>>();
-  const dependencyAdjacency = new Map<string, string[]>();
-  const reverseDependencyAdjacency = new Map<string, string[]>();
+  const taskAdjacency = new Map<string, string[]>();
+  const blockRefsInManifestOrder: string[] = [];
+  const blocksByRef = new Map<string, ManifestBlock>();
+  const blockTaskByRef = new Map<string, string>();
+  const blocksByTask = new Map<string, string[]>();
+  const blockDependenciesByRef = new Map<string, string[]>();
+  const blockDependentsByRef = new Map<string, string[]>();
+  const reviewBlocksByTask = new Map<string, string[]>();
+  const locksByBlockRef = new Map<string, string[]>();
+  const parallelSafeByBlockRef = new Map<string, boolean>();
 
-  for (const [index, task] of tasksInManifestOrder.entries()) {
-    manifestOrderByTask.set(task.id, index);
-    dependenciesByTask.set(task.id, []);
-    dependentsByTask.set(task.id, []);
-    contextEdgesByTask.set(task.id, []);
-    locksByTask.set(task.id, new Set(task.parallel.locks));
-    dependencyAdjacency.set(task.id, []);
-    reverseDependencyAdjacency.set(task.id, []);
+  for (const taskId of taskNodesInManifestOrder) {
+    taskDependenciesByTask.set(taskId, []);
+    taskDependentsByTask.set(taskId, []);
+    contextEdgesByTask.set(taskId, []);
+    taskAdjacency.set(taskId, []);
+    blocksByTask.set(taskId, []);
+    reviewBlocksByTask.set(taskId, []);
+
+    const task = tasksById.get(taskId);
+    const blockIds = new Set<string>();
+    for (const block of task?.blocks ?? []) {
+      const ref = blockRef(taskId, block.id);
+      if (blockIds.has(block.id)) {
+        errors.push(issue("block_id_duplicate", `Block id '${block.id}' is duplicated in task '${taskId}'.`, `nodes.${taskId}.blocks`));
+      }
+      blockIds.add(block.id);
+      blockRefsInManifestOrder.push(ref);
+      blocksByRef.set(ref, block);
+      blockTaskByRef.set(ref, taskId);
+      blocksByTask.get(taskId)?.push(ref);
+      blockDependenciesByRef.set(ref, []);
+      blockDependentsByRef.set(ref, []);
+      if (block.type === "review") {
+        reviewBlocksByTask.get(taskId)?.push(ref);
+      }
+      if (block.type === "implementation" || block.type === "check") {
+        locksByBlockRef.set(ref, block.parallel.locks);
+        parallelSafeByBlockRef.set(ref, block.parallel.safe);
+      } else {
+        locksByBlockRef.set(ref, []);
+        parallelSafeByBlockRef.set(ref, false);
+      }
+    }
+  }
+
+  for (const taskId of taskNodesInManifestOrder) {
+    const knownBlockIds = new Set((blocksByTask.get(taskId) ?? []).map((ref) => parseBlockRef(ref).blockId));
+    for (const block of tasksById.get(taskId)?.blocks ?? []) {
+      const ref = blockRef(taskId, block.id);
+      for (const dependencyBlockId of block.depends_on) {
+        if (!knownBlockIds.has(dependencyBlockId)) {
+          errors.push(
+            issue(
+              "block_dependency_missing",
+              `Block '${ref}' depends on missing block '${dependencyBlockId}' in the same task node.`,
+              ref
+            )
+          );
+          continue;
+        }
+        const dependencyRef = blockRef(taskId, dependencyBlockId);
+        blockDependenciesByRef.get(ref)?.push(dependencyRef);
+        blockDependentsByRef.get(dependencyRef)?.push(ref);
+      }
+    }
   }
 
   const edgesByType = new Map<EdgeType, ManifestEdge[]>();
   for (const type of edgeTypes) {
     edgesByType.set(type, []);
   }
-  const seenEdges = new Set<string>();
-  const duplicateEdges = new Set<string>();
-  for (const edge of manifest.edges) {
-    const key = edgeKey(edge);
-    if (seenEdges.has(key)) {
-      duplicateEdges.add(key);
-    }
-    seenEdges.add(key);
-  }
-  for (const key of duplicateEdges) {
-    const [from, type, to] = key.split("\u0000");
-    errors.push(issue("edge_duplicate", `Edge '${from} --${type}--> ${to}' is duplicated.`, "edges"));
-  }
-
   const outgoingEdgesByNode = new Map<string, ManifestEdge[]>();
   const incomingEdgesByNode = new Map<string, ManifestEdge[]>();
   for (const node of manifest.nodes) {
     outgoingEdgesByNode.set(node.id, []);
     incomingEdgesByNode.set(node.id, []);
   }
-
+  const seenEdges = new Set<string>();
   for (const edge of manifest.edges) {
+    const key = edgeKey(edge);
+    if (seenEdges.has(key)) {
+      errors.push(issue("edge_duplicate", `Edge '${edge.from} --${edge.type}--> ${edge.to}' is duplicated.`, "edges"));
+    }
+    seenEdges.add(key);
     edgesByType.get(edge.type)?.push(edge);
-
     const from = nodesById.get(edge.from);
     const to = nodesById.get(edge.to);
     if (!from) {
@@ -226,123 +288,44 @@ export function compileTaskGraph(manifest: PlanPackageManifest): CompiledTaskGra
     if (!from || !to) {
       continue;
     }
-
     outgoingEdgesByNode.get(edge.from)?.push(edge);
     incomingEdgesByNode.get(edge.to)?.push(edge);
-
     const endpointIssues = validateEdgeEndpointTypes(edge, from, to);
     if (endpointIssues.length > 0) {
       errors.push(...endpointIssues);
       continue;
     }
-
     if (edge.type === "depends_on") {
-      dependenciesByTask.get(edge.from)?.push(edge.to);
-      dependentsByTask.get(edge.to)?.push(edge.from);
-      dependencyAdjacency.get(edge.from)?.push(edge.to);
-      reverseDependencyAdjacency.get(edge.to)?.push(edge.from);
+      taskDependenciesByTask.get(edge.from)?.push(edge.to);
+      taskDependentsByTask.get(edge.to)?.push(edge.from);
+      taskAdjacency.get(edge.from)?.push(edge.to);
     } else {
-      if (taskIds.has(edge.from)) {
+      if (tasksById.has(edge.from)) {
         contextEdgesByTask.get(edge.from)?.push(edge);
       }
-      if (taskIds.has(edge.to)) {
+      if (tasksById.has(edge.to)) {
         contextEdgesByTask.get(edge.to)?.push(edge);
       }
     }
   }
 
-  const cycle = findDependsOnCycle(dependencyAdjacency);
-  if (cycle) {
-    errors.push(issue("depends_on_cycle", `depends_on cycle detected: ${cycle.join(" -> ")}.`, "edges"));
+  const taskCycle = findCycle(taskAdjacency);
+  if (taskCycle) {
+    errors.push(issue("depends_on_cycle", `Task dependency cycle detected: ${taskCycle.join(" -> ")}.`, "edges"));
+  }
+  const blockCycle = findCycle(blockDependenciesByRef);
+  if (blockCycle) {
+    errors.push(issue("block_depends_on_cycle", `Block dependency cycle detected: ${blockCycle.join(" -> ")}.`, "blocks"));
   }
 
-  for (const edge of edgesByType.get("conflicts_with") ?? []) {
-    warnings.push(issue("conflict_edge_warning", `Conflict edge present: ${edge.from} conflicts with ${edge.to}.`, "edges"));
-  }
-
-  for (const task of tasksInManifestOrder) {
-    const hasGoalOrRequirement = (contextEdgesByTask.get(task.id) ?? []).some((edge) => {
-      const otherId = edge.from === task.id ? edge.to : edge.from;
-      const other = nodesById.get(otherId);
-      return other?.type === "goal" || other?.type === "requirement";
-    });
-    if (!hasGoalOrRequirement) {
-      warnings.push(issue("task_without_goal_or_requirement", `Task '${task.id}' has no goal or requirement relationship.`, task.id));
+  for (const taskId of taskNodesInManifestOrder) {
+    const blocks = blocksByTask.get(taskId) ?? [];
+    if (!blocks.some((ref) => blocksByRef.get(ref)?.type === "implementation")) {
+      errors.push(issue("task_without_implementation_block", `Task '${taskId}' must contain an implementation block.`, taskId));
     }
-  }
-
-  for (const node of manifest.nodes) {
-    if (node.type === "task") {
-      continue;
+    if (!blocks.some((ref) => blocksByRef.get(ref)?.type === "review")) {
+      errors.push(issue("task_without_review_block", `Task '${taskId}' must contain a review block.`, taskId));
     }
-    const hasIncoming = (incomingEdgesByNode.get(node.id) ?? []).length > 0;
-    const hasOutgoing = (outgoingEdgesByNode.get(node.id) ?? []).length > 0;
-    if (!hasIncoming && !hasOutgoing) {
-      warnings.push(issue("orphan_context_node", `Context node '${node.id}' has no graph relationships.`, node.id));
-    }
-  }
-
-  const reachableMemo = new Map<string, Set<string>>();
-
-  function reachable(from: string, to: string): boolean {
-    if (!dependencyAdjacency.has(from) || !dependencyAdjacency.has(to)) {
-      return false;
-    }
-    const memo = reachableMemo.get(from);
-    if (memo) {
-      return memo.has(to);
-    }
-
-    const reachableSet = new Set<string>();
-    const visited = new Set<string>();
-    const stack = [...(dependencyAdjacency.get(from) ?? [])];
-    while (stack.length > 0) {
-      const id = stack.pop();
-      if (!id || visited.has(id)) {
-        continue;
-      }
-      visited.add(id);
-      reachableSet.add(id);
-      for (const next of dependencyAdjacency.get(id) ?? []) {
-        stack.push(next);
-      }
-    }
-    reachableMemo.set(from, reachableSet);
-    return reachableSet.has(to);
-  }
-
-  function explainBlocked(taskId: string, state: RuntimeState): string[] {
-    return (dependenciesByTask.get(taskId) ?? [])
-      .filter((id) => !isDependencySatisfied(state.tasks[id]?.status))
-      .map((id) => `${id}: ${state.tasks[id]?.status ?? "unknown"}`);
-  }
-
-  function blockedReasonByTask(state: RuntimeState): Map<string, string[]> {
-    const reasons = new Map<string, string[]>();
-    for (const task of tasksInManifestOrder) {
-      reasons.set(task.id, explainBlocked(task.id, state));
-    }
-    return reasons;
-  }
-
-  function taskDependenciesSatisfied(taskId: string, state: RuntimeState): boolean {
-    return (dependenciesByTask.get(taskId) ?? []).every((id) => isDependencySatisfied(state.tasks[id]?.status));
-  }
-
-  function claimBuckets(state: RuntimeState): ClaimBuckets {
-    const buckets: ClaimBuckets = { needsChanges: [], ready: [] };
-    for (const task of tasksInManifestOrder) {
-      const status = state.tasks[task.id]?.status;
-      if (!taskDependenciesSatisfied(task.id, state)) {
-        continue;
-      }
-      if (status === "needs_changes") {
-        buckets.needsChanges.push(task);
-      } else if (status === "ready" || status === "planned") {
-        buckets.ready.push(task);
-      }
-    }
-    return buckets;
   }
 
   function relatedContext(taskId: string): GraphContext {
@@ -355,25 +338,13 @@ export function compileTaskGraph(manifest: PlanPackageManifest): CompiledTaskGra
       }
       if (edge.type === "conflicts_with") {
         addUniqueNode(context.conflicts, other);
-        continue;
-      }
-      if (edge.type === "supersedes") {
-        if (edge.from === taskId) {
-          addUniqueNode(context.supersedes, other);
-        } else {
-          addUniqueNode(context.supersededBy, other);
-        }
-        continue;
-      }
-      if (edge.type === "constrained_by" || other.type === "constraint") {
+      } else if (edge.type === "supersedes") {
+        addUniqueNode(edge.from === taskId ? context.supersedes : context.supersededBy, other);
+      } else if (edge.type === "constrained_by" || other.type === "constraint") {
         addUniqueNode(context.constraints, other);
-        continue;
-      }
-      if (edge.type === "touches" || other.type === "component") {
+      } else if (edge.type === "touches" || other.type === "component") {
         addUniqueNode(context.components, other);
-        continue;
-      }
-      if (other.type === "goal") {
+      } else if (other.type === "goal") {
         addUniqueNode(context.goals, other);
       } else if (other.type === "requirement") {
         addUniqueNode(context.requirements, other);
@@ -386,63 +357,69 @@ export function compileTaskGraph(manifest: PlanPackageManifest): CompiledTaskGra
 
   return {
     nodesById,
-    tasksInManifestOrder,
-    manifestOrderByTask,
-    edgesByType,
-    outgoingEdgesByNode,
-    incomingEdgesByNode,
-    dependenciesByTask,
-    dependentsByTask,
+    taskNodesInManifestOrder,
+    tasksById,
+    taskDependenciesByTask,
+    taskDependentsByTask,
     contextEdgesByTask,
-    locksByTask,
-    dependencyAdjacency,
-    reverseDependencyAdjacency,
+    blockRefsInManifestOrder,
+    blocksByRef,
+    blockTaskByRef,
+    blocksByTask,
+    blockDependenciesByRef,
+    blockDependentsByRef,
+    reviewBlocksByTask,
+    locksByBlockRef,
+    parallelSafeByBlockRef,
     diagnostics: { errors, warnings },
-    reachable,
-    invalidateReachability: () => reachableMemo.clear(),
-    blockedReasonByTask,
-    claimBuckets,
-    explainBlocked,
+    taskReachable: (from, to) => reachable(taskAdjacency, from, to),
+    blockReachable: (fromRef, toRef) => reachable(blockDependenciesByRef, fromRef, toRef),
     relatedContext
   };
 }
 
-export async function compilePackageGraph(manifest: PlanPackageManifest, packageDir: string): Promise<CompiledTaskGraph> {
+async function validatePromptReference(packageDir: string, prompt: string, errors: ValidationIssue[]): Promise<void> {
+  try {
+    const promptPath = await resolvePackagePath(packageDir, prompt);
+    if (!(await exists(promptPath))) {
+      errors.push(issue("prompt_missing", `Prompt file '${prompt}' does not exist.`, prompt));
+    }
+  } catch (error) {
+    if (error instanceof PackagePathError) {
+      errors.push(issue(error.code, error.message, prompt));
+    } else {
+      throw error;
+    }
+  }
+}
+
+export async function compilePackageGraph(manifest: PlanPackageManifest, packageDir: string): Promise<CompiledExecutionGraph> {
   const graph = compileTaskGraph(manifest);
   const referencedPrompts = new Set<string>();
 
-  for (const task of graph.tasksInManifestOrder) {
-    referencedPrompts.add(task.prompt);
-    let promptPath: string;
-    try {
-      promptPath = await resolvePackagePath(packageDir, task.prompt);
-    } catch (error) {
-      if (error instanceof PackagePathError) {
-        graph.diagnostics.errors.push(issue(error.code, error.message, task.prompt));
-        continue;
-      }
-      throw error;
-    }
-    if (!(await exists(promptPath))) {
-      graph.diagnostics.errors.push(issue("prompt_missing", `Prompt Surface file for '${task.id}' does not exist.`, task.prompt));
+  for (const taskId of graph.taskNodesInManifestOrder) {
+    const task = graph.tasksById.get(taskId);
+    if (!task) {
       continue;
     }
-    const prompt = await readFile(promptPath, "utf8");
-    const boundaryIssues = findPromptSectionBoundaryIssues(prompt, task.prompt);
-    graph.diagnostics.errors.push(...boundaryIssues);
-    if (!hasUserSection(prompt, "task-body")) {
-      graph.diagnostics.errors.push(
-        issue("task_body_missing", `Prompt Surface for '${task.id}' is missing user section 'task-body'.`, task.prompt)
-      );
+    referencedPrompts.add(task.prompt);
+    await validatePromptReference(packageDir, task.prompt, graph.diagnostics.errors);
+    for (const block of task.blocks) {
+      referencedPrompts.add(block.prompt);
+      await validatePromptReference(packageDir, block.prompt, graph.diagnostics.errors);
     }
   }
 
   for (const file of await listMarkdownFiles(join(packageDir, "nodes"))) {
     const promptPath = relative(packageDir, file);
     if (!referencedPrompts.has(promptPath)) {
-      graph.diagnostics.warnings.push(
-        issue("stale_prompt_reference", `Prompt Surface '${promptPath}' is not referenced by any task.`, promptPath)
-      );
+      graph.diagnostics.warnings.push(issue("stale_prompt_reference", `Prompt '${promptPath}' is not referenced.`, promptPath));
+      continue;
+    }
+    try {
+      await readFile(file, "utf8");
+    } catch {
+      graph.diagnostics.errors.push(issue("prompt_read_failed", `Prompt '${promptPath}' could not be read.`, promptPath));
     }
   }
 

@@ -1,6 +1,7 @@
 import { access, readdir } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join } from "node:path";
+import { compileTaskGraph } from "../graph/compileTaskGraph.js";
 import type {
   OrphanResultSummary,
   OrphanStateSummary,
@@ -10,14 +11,26 @@ import type {
 } from "../types.js";
 
 export function manifestTaskIds(manifest: PlanPackageManifest): Set<string> {
-  return new Set(manifest.nodes.filter((node) => node.type === "task").map((node) => node.id));
+  const graph = compileTaskGraph(manifest);
+  return new Set(graph.taskNodesInManifestOrder);
+}
+
+export function manifestBlockRefs(manifest: PlanPackageManifest): Set<string> {
+  const graph = compileTaskGraph(manifest);
+  return new Set(graph.blockRefsInManifestOrder);
 }
 
 export function findOrphanState(manifest: PlanPackageManifest, state: RuntimeState): OrphanStateSummary[] {
   const taskIds = manifestTaskIds(manifest);
-  return Object.entries(state.tasks)
-    .filter(([taskId]) => !taskIds.has(taskId))
-    .map(([taskId, task]) => ({ taskId, status: task.status, lastRunId: task.lastRunId }));
+  const blockRefs = manifestBlockRefs(manifest);
+  return [
+    ...Object.entries(state.tasks ?? {})
+      .filter(([taskId]) => !taskIds.has(taskId))
+      .map(([taskId, task]) => ({ taskId, status: task.status })),
+    ...Object.entries(state.blocks ?? {})
+      .filter(([ref]) => !blockRefs.has(ref))
+      .map(([ref, block]) => ({ ref, status: block.status, lastRunId: block.lastRunId ?? null }))
+  ];
 }
 
 export async function findOrphanResults(
@@ -30,7 +43,6 @@ export async function findOrphanResults(
   } catch {
     return [];
   }
-
   const entries = await readdir(workspace.resultsDir, { withFileTypes: true });
   return entries
     .filter((entry) => entry.isDirectory() && !taskIds.has(entry.name))

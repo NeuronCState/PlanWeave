@@ -1,12 +1,52 @@
 import { z } from "zod";
-import { edgeTypes, nodeTypes, supportedManifestVersion } from "../types.js";
+import { blockTypes, edgeTypes, nodeTypes, supportedManifestVersion } from "../types.js";
 
-const parallelPolicySchema = z
+const blockParallelPolicySchema = z
   .object({
     safe: z.boolean().default(false),
-    locks: z.array(z.string()).default([])
+    locks: z.array(z.string().min(1)).default([])
   })
   .strict();
+
+const reviewHookSchema = z
+  .object({
+    id: z.string().min(1),
+    type: z.literal("executable"),
+    command: z.string().min(1),
+    args: z.array(z.string()).default([]),
+    executionPolicy: z.literal("trusted-local")
+  })
+  .strict();
+
+const implementationBlockSchema = z
+  .object({
+    id: z.string().min(1),
+    type: z.enum(["implementation", "check"]),
+    title: z.string().min(1),
+    prompt: z.string().min(1),
+    depends_on: z.array(z.string().min(1)).default([]),
+    parallel: blockParallelPolicySchema.default({ safe: false, locks: [] })
+  })
+  .strict();
+
+const reviewBlockSchema = z
+  .object({
+    id: z.string().min(1),
+    type: z.literal("review"),
+    title: z.string().min(1),
+    prompt: z.string().min(1),
+    depends_on: z.array(z.string().min(1)).default([]),
+    review: z
+      .object({
+        required: z.boolean().default(true),
+        maxFeedbackCycles: z.number().int().nonnegative().default(1),
+        hook: reviewHookSchema.nullable().default(null)
+      })
+      .strict()
+  })
+  .strict();
+
+export const manifestBlockSchema = z.discriminatedUnion("type", [implementationBlockSchema, reviewBlockSchema]);
 
 const taskNodeSchema = z
   .object({
@@ -15,7 +55,7 @@ const taskNodeSchema = z
     title: z.string().min(1),
     prompt: z.string().min(1),
     acceptance: z.array(z.string().min(1)).min(1),
-    parallel: parallelPolicySchema.default({ safe: false, locks: [] })
+    blocks: z.array(manifestBlockSchema).min(1)
   })
   .strict();
 
@@ -49,7 +89,12 @@ export const manifestSchema = z
           .strict()
       })
       .strict(),
-    global_prompt: z.string().min(1),
+    review: z
+      .object({
+        maxFeedbackCycles: z.number().int().nonnegative().default(1),
+        completionPolicy: z.literal("strict")
+      })
+      .strict(),
     nodes: z.array(manifestNodeSchema),
     edges: z.array(
       z
@@ -61,6 +106,33 @@ export const manifestSchema = z
         .strict()
     )
   })
-  .strict();
+  .passthrough()
+  .superRefine((manifest, context) => {
+    const allowedTopLevelKeys = new Set(["version", "project", "execution", "review", "nodes", "edges"]);
+    for (const key of Object.keys(manifest)) {
+      if (allowedTopLevelKeys.has(key)) {
+        continue;
+      }
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: key === "global_prompt" ? "manifest.global_prompt is not supported in plan-package/v1." : `Unrecognized key: "${key}"`,
+        path: [key]
+      });
+    }
+    for (const [nodeIndex, node] of manifest.nodes.entries()) {
+      if (node.type !== "task") {
+        continue;
+      }
+      for (const [blockIndex, block] of node.blocks.entries()) {
+        if (!(blockTypes as readonly string[]).includes(block.type)) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "feedback blocks are not supported; feedback is runtime state.",
+            path: ["nodes", nodeIndex, "blocks", blockIndex, "type"]
+          });
+        }
+      }
+    }
+  });
 
 export type ParsedManifest = z.infer<typeof manifestSchema>;

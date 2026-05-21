@@ -1,0 +1,59 @@
+import type { DesktopSearchResult } from "@planweave/runtime";
+import { Badge } from "@/components/ui/badge";
+
+export type SearchNavigationTarget =
+  | { kind: "task"; ref: string }
+  | { kind: "block"; ref: string }
+  | { kind: "context"; ref: string }
+  | { kind: "record"; recordId: string }
+  | { kind: "none" };
+
+export function searchNavigationTarget(result: DesktopSearchResult): SearchNavigationTarget {
+  const targetRef = result.targetRef ?? result.ref;
+  if (result.kind === "run_record") {
+    return result.recordId ? { kind: "record", recordId: result.recordId } : { kind: "none" };
+  }
+  if (targetRef.includes("#")) {
+    return { kind: "block", ref: targetRef };
+  }
+  if (result.kind === "context") {
+    return { kind: "context", ref: targetRef };
+  }
+  if (result.kind === "task" || result.kind === "prompt") {
+    return { kind: "task", ref: targetRef };
+  }
+  return { kind: "none" };
+}
+
+export function SearchResultList({
+  onOpenResult,
+  results,
+  targetMissingLabel
+}: {
+  results: DesktopSearchResult[];
+  targetMissingLabel: string;
+  onOpenResult: (result: DesktopSearchResult) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 pr-2">
+      {results.map((result) => {
+        const target = searchNavigationTarget(result);
+        return (
+          <button
+            className="flex flex-col gap-1 rounded-lg border p-3 text-left hover:bg-muted/50"
+            key={`${result.kind}-${result.ref}`}
+            type="button"
+            onClick={() => onOpenResult(result)}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="truncate text-sm font-medium">{result.title}</span>
+              <Badge variant={target.kind === "none" ? "destructive" : "outline"}>{result.kind}</Badge>
+            </div>
+            <div className="line-clamp-2 text-xs text-muted-foreground">{result.excerpt}</div>
+            {target.kind === "none" ? <div className="text-xs text-destructive">{targetMissingLabel}</div> : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}

@@ -4,12 +4,9 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import {
-  PaletteSettingsPanel,
-  SearchResultList,
-  TodoGroupCard,
-  searchNavigationTarget
-} from "../renderer/App";
+import { PaletteSettingsPanel } from "../renderer/components/PaletteSettingsPanel";
+import { SearchResultList, searchNavigationTarget } from "../renderer/components/SearchResultList";
+import { TodoGroupCard } from "../renderer/components/TodoGroupCard";
 import type { DesktopSearchResult, DesktopTodoItem } from "@planweave/runtime";
 
 describe("desktop renderer component interactions", () => {

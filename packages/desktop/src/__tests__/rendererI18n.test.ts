@@ -28,19 +28,25 @@ describe("desktop renderer i18n", () => {
   });
 
   it("uses translation keys for task card and review default copy", async () => {
-    const appSource = await readFile(resolve(sourceDir, "renderer", "App.tsx"), "utf8");
+    const [settingsSource, reviewHookSource, reviewViewSource, statsSource] = await Promise.all([
+      readFile(resolve(sourceDir, "renderer", "views", "SettingsView.tsx"), "utf8"),
+      readFile(resolve(sourceDir, "renderer", "hooks", "useReviewPipeline.ts"), "utf8"),
+      readFile(resolve(sourceDir, "renderer", "views", "ReviewPipelineView.tsx"), "utf8"),
+      readFile(resolve(sourceDir, "renderer", "views", "StatisticsView.tsx"), "utf8")
+    ]);
+    const rendererSource = `${settingsSource}\n${reviewHookSource}\n${reviewViewSource}\n${statsSource}`;
 
-    expect(appSource).not.toContain(">Task Prompt<");
-    expect(appSource).not.toContain(">Block Stack<");
-    expect(appSource).not.toContain(">Exception Overlay<");
-    expect(appSource).not.toContain('"New review step"');
-    expect(appSource).not.toContain('"Check work"');
-    expect(appSource).not.toContain('"Review work"');
-    expect(appSource).not.toContain('"Implement work"');
-    expect(appSource).not.toContain(">Implementation + Check<");
-    expect(appSource).toContain('t("blockSetImplementationCheckReview")');
-    expect(appSource).toContain('t("packageDefaultCycles")');
-    expect(appSource).toContain('t("averageImplementationTime")');
+    expect(rendererSource).not.toContain(">Task Prompt<");
+    expect(rendererSource).not.toContain(">Block Stack<");
+    expect(rendererSource).not.toContain(">Exception Overlay<");
+    expect(rendererSource).not.toContain('"New review step"');
+    expect(rendererSource).not.toContain('"Check work"');
+    expect(rendererSource).not.toContain('"Review work"');
+    expect(rendererSource).not.toContain('"Implement work"');
+    expect(rendererSource).not.toContain(">Implementation + Check<");
+    expect(rendererSource).toContain('t("blockSetImplementationCheckReview")');
+    expect(rendererSource).toContain('t("packageDefaultCycles")');
+    expect(rendererSource).toContain('t("averageImplementationTime")');
   });
 
   it("translates the default task card labels", () => {

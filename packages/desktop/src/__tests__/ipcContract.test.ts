@@ -15,12 +15,13 @@ function channelsFor(source: string, pattern: RegExp): string[] {
 
 describe("desktop IPC contract", () => {
   it("keeps preload invoke channels backed by main handlers", async () => {
-    const [mainSource, preloadSource] = await Promise.all([
-      readDesktopSource("main/main.ts"),
+    const [runtimeBridgeSource, packageWatchSource, preloadSource] = await Promise.all([
+      readDesktopSource("main/runtimeBridgeHandlers.ts"),
+      readDesktopSource("main/packageWatch.ts"),
       readDesktopSource("preload/preload.ts")
     ]);
 
-    const handledChannels = new Set(channelsFor(mainSource, /ipcMain\.handle\("([^"]+)"/g));
+    const handledChannels = new Set(channelsFor(`${runtimeBridgeSource}\n${packageWatchSource}`, /ipcMain\.handle\("([^"]+)"/g));
     const invokedChannels = channelsFor(preloadSource, /ipcRenderer\.invoke\("([^"]+)"/g);
 
     expect(invokedChannels).not.toHaveLength(0);
@@ -28,33 +29,33 @@ describe("desktop IPC contract", () => {
   });
 
   it("keeps package file change events registered on both sides", async () => {
-    const [mainSource, preloadSource] = await Promise.all([
-      readDesktopSource("main/main.ts"),
+    const [packageWatchSource, preloadSource] = await Promise.all([
+      readDesktopSource("main/packageWatch.ts"),
       readDesktopSource("preload/preload.ts")
     ]);
 
-    expect(mainSource).toContain('const packageFileChangedChannel = "planweave:packageFileChanged"');
+    expect(packageWatchSource).toContain('const packageFileChangedChannel = "planweave:packageFileChanged"');
     expect(preloadSource).toContain('const packageFileChangedChannel = "planweave:packageFileChanged"');
-    expect(mainSource).toContain("webContents.send(packageFileChangedChannel");
+    expect(packageWatchSource).toContain("webContents.send(packageFileChangedChannel");
     expect(preloadSource).toContain("ipcRenderer.on(packageFileChangedChannel");
   });
 
   it("watches package files from the runtime workspace instead of the project root", async () => {
-    const mainSource = await readDesktopSource("main/main.ts");
+    const packageWatchSource = await readDesktopSource("main/packageWatch.ts");
 
-    expect(mainSource).toContain("const workspace = await resolveProjectWorkspace(projectRoot)");
-    expect(mainSource).toContain("watchRoot(workspace.workspaceRoot, workspace.packageDir");
-    expect(mainSource).toContain("dirname(workspace.projectPromptFile)");
-    expect(mainSource).not.toContain('watchRoot(projectRoot, join(projectRoot, "package")');
+    expect(packageWatchSource).toContain("const workspace = await resolveProjectWorkspace(projectRoot)");
+    expect(packageWatchSource).toContain("watchRoot(workspace.workspaceRoot, workspace.packageDir");
+    expect(packageWatchSource).toContain("dirname(workspace.projectPromptFile)");
+    expect(packageWatchSource).not.toContain('watchRoot(projectRoot, join(projectRoot, "package")');
   });
 
   it("strips compiled graph internals from graph edit IPC results", async () => {
-    const mainSource = await readDesktopSource("main/main.ts");
+    const runtimeBridgeSource = await readDesktopSource("main/runtimeBridgeHandlers.ts");
 
-    expect(mainSource).toContain("function cloneableGraphEditResult(result: GraphEditResult): DesktopGraphEditResult");
-    expect(mainSource).toContain("const { graph: _graph, ...cloneable } = result");
-    expect(mainSource).toContain('ipcMain.handle("planweave:addTaskNode"');
-    expect(mainSource).toContain("invokeGraphEdit(addTaskNode(projectRoot, input))");
-    expect(mainSource).toContain("invokeGraphEdit(updateTaskPrompt(projectRoot, taskId, markdown))");
+    expect(runtimeBridgeSource).toContain("function cloneableGraphEditResult(result: GraphEditResult): DesktopGraphEditResult");
+    expect(runtimeBridgeSource).toContain("const { graph: _graph, ...cloneable } = result");
+    expect(runtimeBridgeSource).toContain('ipcMain.handle("planweave:addTaskNode"');
+    expect(runtimeBridgeSource).toContain("invokeGraphEdit(addTaskNode(projectRoot, input))");
+    expect(runtimeBridgeSource).toContain("invokeGraphEdit(updateTaskPrompt(projectRoot, taskId, markdown))");
   });
 });

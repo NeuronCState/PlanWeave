@@ -1,49 +1,30 @@
-import { mkdir, realpath } from "node:fs/promises";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { markDiverged } from "../tasks/markDiverged.js";
-import { getStatus } from "../status/getStatus.js";
-import { writeJsonFile } from "../json.js";
-import { createPackageWorkspace } from "./promptTestHelpers.js";
+import { claimNext, getExecutionStatus, submitBlockResult } from "../taskManager/index.js";
+import { basicManifest, createTestWorkspace, writeReport } from "./promptTestHelpers.js";
 
-describe("getStatus", () => {
-  it("reports project id, root, task total, counts, and current task", async () => {
-    const { root } = await createPackageWorkspace();
-    await markDiverged({ projectRoot: root, taskId: "T-001", reason: "Plan changed." });
+describe("getExecutionStatus", () => {
+  it("summarizes task, block, feedback, and current claim state", async () => {
+    const { root } = await createTestWorkspace();
+    await claimNext({ projectRoot: root });
+    await submitBlockResult({ projectRoot: root, ref: "T-001#B-001", reportPath: await writeReport(root, "b.md") });
 
-    const status = await getStatus({ projectRoot: root });
+    const status = await getExecutionStatus({ projectRoot: root });
 
-    expect(status.projectRoot).toBe(await realpath(root));
     expect(status.taskTotal).toBe(1);
-    expect(status.counts.diverged).toBe(1);
-    expect(status.diverged).toBe(1);
-    expect(status.divergedTasks).toEqual([{ taskId: "T-001", reason: "Plan changed." }]);
-    delete process.env.PLANWEAVE_HOME;
+    expect(status.blockTotal).toBe(3);
+    expect(status.counts.blocks.completed).toBe(1);
+    expect(status.counts.blocks.ready).toBe(1);
+    expect(status.counts.feedback.open).toBe(0);
+    expect(status.blocks.find((block) => block.ref === "T-001#B-001")?.lastRunId).toBe("RUN-001");
   });
 
-  it("reports orphan state and orphan results", async () => {
-    const { root, init } = await createPackageWorkspace();
-    await writeJsonFile(init.workspace.stateFile, {
-      currentTaskId: "T-ORPHAN",
-      tasks: {
-        "T-ORPHAN": { status: "in_progress", claimedBy: "agent", lastRunId: null, blockedBy: [] }
-      }
-    });
-    await mkdir(join(init.workspace.resultsDir, "T-ORPHAN"), { recursive: true });
-    await writeJsonFile(join(init.workspace.resultsDir, "T-ORPHAN", "index.json"), {
-      taskId: "T-ORPHAN",
-      status: "implemented",
-      latestRunId: "RUN-001",
-      runCount: 1
-    });
+  it("only lists blocks claimable after task upstream dependencies are satisfied", async () => {
+    const { root } = await createTestWorkspace(basicManifest({ includeSecondTask: true, taskDependsOn: ["T-002"] }));
 
-    const status = await getStatus({ projectRoot: root });
+    const status = await getExecutionStatus({ projectRoot: root });
+    const claim = await claimNext({ projectRoot: root });
 
-    expect(status.currentTaskId).toBeNull();
-    expect(status.orphanState).toEqual([{ taskId: "T-ORPHAN", status: "in_progress", lastRunId: null }]);
-    expect(status.orphanResults).toEqual([
-      { taskId: "T-ORPHAN", path: join(init.workspace.resultsDir, "T-ORPHAN") }
-    ]);
-    delete process.env.PLANWEAVE_HOME;
+    expect(status.nextClaimable).toEqual(["T-002#B-001"]);
+    expect(claim).toMatchObject({ kind: "block", ref: "T-002#B-001" });
   });
 });

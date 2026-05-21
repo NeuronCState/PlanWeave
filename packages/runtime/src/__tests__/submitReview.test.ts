@@ -1,113 +1,90 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { access } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { readState } from "../state.js";
-import { readResultIndex } from "../results/indexFile.js";
-import { submitRunResult } from "../results/submitResult.js";
-import { submitReview } from "../results/submitReview.js";
-import { claimNextTask } from "../tasks/claimNext.js";
-import { markVerified } from "../tasks/markVerified.js";
-import { createPackageWorkspace } from "./promptTestHelpers.js";
+import { claimNext, getExecutionStatus, submitBlockResult, submitFeedback, submitReviewResult } from "../taskManager/index.js";
+import { readJsonFile } from "../json.js";
+import type { TaskResultIndex } from "../types.js";
+import { basicManifest, createTestWorkspace, writeReport, writeReviewResult } from "./promptTestHelpers.js";
 
-describe("submitReview and markVerified", () => {
-  it("updates review without creating a run and moves task to needs_changes", async () => {
-    const { root, init } = await createPackageWorkspace();
-    const implementation = join(init.workspace.workspaceRoot, "implementation.md");
-    const review = join(init.workspace.workspaceRoot, "review.md");
-    await writeFile(implementation, "Implemented.\n", "utf8");
-    await writeFile(review, "Please revise.\n", "utf8");
-    await claimNextTask({ projectRoot: root });
-    await submitRunResult({ projectRoot: root, taskId: "T-001", reportPath: implementation });
+async function completeImplementation(root: string): Promise<void> {
+  await claimNext({ projectRoot: root });
+  await submitBlockResult({ projectRoot: root, ref: "T-001#B-001", reportPath: await writeReport(root, "b.md") });
+  await claimNext({ projectRoot: root });
+  await submitBlockResult({ projectRoot: root, ref: "T-001#C-001", reportPath: await writeReport(root, "c.md") });
+  await claimNext({ projectRoot: root });
+}
 
-    const result = await submitReview({ projectRoot: root, taskId: "T-001", reportPath: review, status: "needs_changes" });
-    const state = await readState(init.workspace.stateFile);
+describe("submitReviewResult", () => {
+  it("passes a review block and aggregates the task as implemented", async () => {
+    const { root, init } = await createTestWorkspace();
+    await completeImplementation(root);
 
-    expect(result.taskStatus).toBe("needs_changes");
-    expect(result.index.runCount).toBe(1);
-    expect(state.tasks["T-001"]?.status).toBe("needs_changes");
-    delete process.env.PLANWEAVE_HOME;
+    const result = await submitReviewResult({
+      projectRoot: root,
+      ref: "T-001#R-001",
+      resultPath: await writeReviewResult(root, "passed", "Looks good.")
+    });
+    const status = await getExecutionStatus({ projectRoot: root });
+    const taskIndex = await readJsonFile<TaskResultIndex>(join(init.workspace.resultsDir, "T-001", "index.json"));
+
+    expect(result).toMatchObject({ ref: "T-001#R-001", verdict: "passed", status: "completed" });
+    expect(status.tasks[0]).toMatchObject({ taskId: "T-001", status: "implemented" });
+    expect(taskIndex.latestRunByBlock).toMatchObject({ "T-001#B-001": "RUN-001", "T-001#C-001": "RUN-001" });
+    expect(taskIndex.latestReviewAttemptByBlock).toMatchObject({ "T-001#R-001": "REV-001" });
+    expect(taskIndex.latestReviewVerdictByBlock).toMatchObject({ "T-001#R-001": "passed" });
+    expect(taskIndex.reviewCompletionReasonByBlock).toMatchObject({ "T-001#R-001": "passed" });
+    expect(taskIndex.counts).toMatchObject({ runs: 2, reviewAttempts: 1 });
+    await expect(access(join(init.workspace.resultsDir, "T-001", "reviews", "R-001", "attempts", "REV-001", "review-result.json"))).resolves.toBeUndefined();
   });
 
-  it("rejects passed review when the task has no latest implementation run", async () => {
-    const { root, init } = await createPackageWorkspace();
-    const review = join(init.workspace.workspaceRoot, "review.md");
-    await writeFile(review, "Passed.\n", "utf8");
+  it("routes needs_changes to feedback and then back to the same review block", async () => {
+    const { root, init } = await createTestWorkspace();
+    await completeImplementation(root);
 
-    await expect(submitReview({ projectRoot: root, taskId: "T-001", reportPath: review, status: "passed" })).rejects.toThrow(
-      "requires an implemented run"
-    );
+    const first = await submitReviewResult({
+      projectRoot: root,
+      ref: "T-001#R-001",
+      resultPath: await writeReviewResult(root, "needs_changes", "Fix the edge case.")
+    });
+    await claimNext({ projectRoot: root });
+    await submitFeedback({ projectRoot: root, reportPath: await writeReport(root, "feedback.md", "Fixed edge case.\n") });
+    await claimNext({ projectRoot: root });
+    const second = await submitReviewResult({
+      projectRoot: root,
+      ref: "T-001#R-001",
+      resultPath: await writeReviewResult(root, "passed", "Passed after fix.")
+    });
+    const taskIndex = await readJsonFile<TaskResultIndex>(join(init.workspace.resultsDir, "T-001", "index.json"));
 
-    const state = await readState(init.workspace.stateFile);
-    const index = await readResultIndex(join(init.workspace.resultsDir, "T-001", "index.json"));
-    expect(state.tasks["T-001"]?.status).toBe("ready");
-    expect(index).toBeNull();
-    delete process.env.PLANWEAVE_HOME;
+    expect(first).toMatchObject({ verdict: "needs_changes", feedbackId: "FE-001", status: "in_progress" });
+    expect(second).toMatchObject({ reviewAttemptId: "REV-002", verdict: "passed", status: "completed" });
+    expect(taskIndex.latestReviewAttemptByBlock).toMatchObject({ "T-001#R-001": "REV-002" });
+    expect(taskIndex.latestFeedbackByReviewBlock).toMatchObject({ "T-001#R-001": "FE-001" });
+    expect(taskIndex.latestFeedbackSubmissionByFeedback).toMatchObject({ "FE-001": "FS-001" });
+    expect(taskIndex.feedbackStatusById).toMatchObject({ "FE-001": "resolved" });
+    expect(taskIndex.counts).toMatchObject({ runs: 2, reviewAttempts: 2, feedbackEnvelopes: 1, feedbackSubmissions: 1 });
   });
 
-  it("rejects unsupported review statuses before mutating state or review", async () => {
-    const { root, init } = await createPackageWorkspace();
-    const implementation = join(init.workspace.workspaceRoot, "implementation.md");
-    const review = join(init.workspace.workspaceRoot, "review.md");
-    await writeFile(implementation, "Implemented.\n", "utf8");
-    await writeFile(review, "Bogus review.\n", "utf8");
-    await claimNextTask({ projectRoot: root });
-    await submitRunResult({ projectRoot: root, taskId: "T-001", reportPath: implementation });
+  it("enforces max feedback cycles in the Task Manager", async () => {
+    const { root, init } = await createTestWorkspace(basicManifest({ reviewMaxFeedbackCycles: 0 }));
+    await completeImplementation(root);
 
-    await expect(
-      submitReview({
-        projectRoot: root,
-        taskId: "T-001",
-        reportPath: review,
-        // @ts-expect-error exercises runtime validation for untyped callers.
-        status: "bogus"
-      })
-    ).rejects.toThrow("Unsupported submit-review status 'bogus'.");
+    const result = await submitReviewResult({
+      projectRoot: root,
+      ref: "T-001#R-001",
+      resultPath: await writeReviewResult(root, "needs_changes", "No cycles allowed.")
+    });
+    const status = await getExecutionStatus({ projectRoot: root });
+    const taskIndex = await readJsonFile<TaskResultIndex>(join(init.workspace.resultsDir, "T-001", "index.json"));
 
-    const state = await readState(init.workspace.stateFile);
-    const index = await readResultIndex(join(init.workspace.resultsDir, "T-001", "index.json"));
-    expect(state.tasks["T-001"]?.status).toBe("implemented");
-    expect(index?.status).toBe("implemented");
-    expect(index?.review).toBeUndefined();
-    delete process.env.PLANWEAVE_HOME;
-  });
-
-  it("can explicitly mark a task verified", async () => {
-    const { root, init } = await createPackageWorkspace();
-
-    await markVerified({ projectRoot: root, taskId: "T-001" });
-    const state = await readState(init.workspace.stateFile);
-    const index = await readResultIndex(join(init.workspace.resultsDir, "T-001", "index.json"));
-
-    expect(state.tasks["T-001"]?.status).toBe("verified");
-    expect(index?.verification?.source).toBe("manual");
-    delete process.env.PLANWEAVE_HOME;
-  });
-
-  it("preserves review attempt history instead of only keeping the latest review body", async () => {
-    const { root, init } = await createPackageWorkspace();
-    const implementation1 = join(init.workspace.workspaceRoot, "implementation-1.md");
-    const implementation2 = join(init.workspace.workspaceRoot, "implementation-2.md");
-    const review1 = join(init.workspace.workspaceRoot, "review-1.md");
-    const review2 = join(init.workspace.workspaceRoot, "review-2.md");
-    await writeFile(implementation1, "First implementation.\n", "utf8");
-    await writeFile(implementation2, "Second implementation.\n", "utf8");
-    await writeFile(review1, "Please revise.\n", "utf8");
-    await writeFile(review2, "Passed.\n", "utf8");
-
-    await claimNextTask({ projectRoot: root });
-    await submitRunResult({ projectRoot: root, taskId: "T-001", reportPath: implementation1 });
-    await submitReview({ projectRoot: root, taskId: "T-001", reportPath: review1, status: "needs_changes" });
-    await claimNextTask({ projectRoot: root });
-    await submitRunResult({ projectRoot: root, taskId: "T-001", reportPath: implementation2 });
-    const result = await submitReview({ projectRoot: root, taskId: "T-001", reportPath: review2, status: "passed" });
-
-    expect(result.index.reviewHistory?.map((review) => review.reviewId)).toEqual(["REVIEW-001", "REVIEW-002"]);
-    await expect(readFile(join(init.workspace.resultsDir, "T-001", "reviews", "REVIEW-001.md"), "utf8")).resolves.toBe(
-      "Please revise.\n"
-    );
-    await expect(readFile(join(init.workspace.resultsDir, "T-001", "reviews", "REVIEW-002.md"), "utf8")).resolves.toBe(
-      "Passed.\n"
-    );
-    delete process.env.PLANWEAVE_HOME;
+    expect(result).toMatchObject({ verdict: "needs_changes", status: "completed" });
+    expect(status.tasks[0].status).toBe("ready");
+    expect(status.blocks.find((block) => block.ref === "T-001#R-001")).toMatchObject({
+      activeFeedbackId: null,
+      completionReason: "max_cycles_reached"
+    });
+    expect(status.warnings.map((warning) => warning.code)).toContain("review_max_cycles_reached");
+    expect(taskIndex.reviewCompletionReasonByBlock).toMatchObject({ "T-001#R-001": "max_cycles_reached" });
+    expect(taskIndex.warnings?.map((warning) => warning.code)).toContain("review_max_cycles_reached");
   });
 });

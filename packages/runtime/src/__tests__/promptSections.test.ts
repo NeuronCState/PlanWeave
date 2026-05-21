@@ -1,16 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { formatSection, getPromptSection, parsePromptSections } from "../prompt/sections.js";
+import { renderManagedSections } from "../prompt/renderManagedSections.js";
 
-describe("prompt sections", () => {
-  it("parses managed and user sections through public markers", () => {
-    const markdown = [
-      formatSection("managed", "header", "> Status: ready"),
-      formatSection("user", "task-body", "Do the work.")
-    ].join("\n\n");
-
-    const sections = parsePromptSections(markdown);
-
-    expect(sections).toHaveLength(2);
-    expect(getPromptSection(markdown, "user", "task-body")).toBe("Do the work.");
+describe("managed prompt sections", () => {
+  it("are removed from the v1 source/render split", async () => {
+    await expect(renderManagedSections({})).rejects.toThrow("Managed prompt sections were removed");
   });
 });

@@ -1,224 +1,167 @@
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  createPackageFileSnapshot,
-  detectPackageFileChanges,
-  refreshChangedPackagePrompts
-} from "../package/fileChanges.js";
-import { readJsonFile, writeJsonFile } from "../json.js";
-import type { PlanPackageManifest } from "../types.js";
-import { baseManifest, createPackageWorkspace } from "./promptTestHelpers.js";
+import { createPackageFileSnapshot, detectPackageFileChanges, refreshChangedPackagePrompts } from "../package/fileChanges.js";
+import { affectedTasksForPackageFileChange } from "../graph/editGraph.js";
+import { createExecutionGraphSession, drainGraphReadQueue, enqueueGraphEditOperations } from "../graph/session.js";
+import { writeJsonFile } from "../json.js";
+import { basicManifest, createTestWorkspace } from "./promptTestHelpers.js";
 
-describe("package file change detection", () => {
-  it("detects global prompt changes and refreshes affected Prompt Surfaces", async () => {
-    const { root, init } = await createPackageWorkspace();
-    const snapshot = await createPackageFileSnapshot(root);
+describe("package file changes", () => {
+  it("detects block prompt changes and refreshes rendered prompt surfaces", async () => {
+    const { root, init } = await createTestWorkspace();
+    const before = await createPackageFileSnapshot(root);
+    await writeFile(join(init.workspace.packageDir, "nodes", "T-001", "blocks", "B-001.prompt.md"), "updated block prompt\n", "utf8");
 
-    await writeFile(join(init.workspace.packageDir, "global-prompt.md"), "Updated global rules.\n", "utf8");
-    const result = await refreshChangedPackagePrompts(root, snapshot);
-    const prompt = await readFile(join(init.workspace.packageDir, "nodes", "T-001.prompt.md"), "utf8");
+    const detected = await detectPackageFileChanges(root, before);
+    const refreshed = await refreshChangedPackagePrompts(root, before);
 
-    expect(result.impact).toMatchObject({ ok: true, affectedTasks: ["T-001"], fullRefresh: false });
-    expect(result.refreshed.map((surface) => surface.taskId)).toEqual(["T-001"]);
-    expect(prompt).toContain("Updated global rules.");
-    delete process.env.PLANWEAVE_HOME;
+    expect(detected.impact.ok).toBe(true);
+    expect(detected.impact.fullRefresh).toBe(true);
+    expect(detected.impact.affectedTasks).toEqual(["T-001"]);
+    expect(refreshed.refreshed.map((prompt) => prompt.ref)).toEqual(["T-001#B-001", "T-001#C-001", "T-001#R-001"]);
   });
 
-  it("detects direct task prompt edits without guessing manifest changes from markdown", async () => {
-    const { root, init } = await createPackageWorkspace();
-    const snapshot = await createPackageFileSnapshot(root);
-    const promptPath = join(init.workspace.packageDir, "nodes", "T-001.prompt.md");
+  it("drains Graph Read Queue prompt changes into dirty prompt refs without replacing plan truth", async () => {
+    const { root } = await createTestWorkspace();
+    const session = await createExecutionGraphSession(root);
 
-    await writeFile(
-      promptPath,
-      "<!-- planweave:user:start task-body -->\nUser edited body.\n<!-- planweave:user:end task-body -->\n",
-      "utf8"
-    );
-    const result = await detectPackageFileChanges(root, snapshot);
+    session.readQueue.fileChanges.push({
+      path: "nodes/T-001/blocks/B-001.prompt.md",
+      type: "changed"
+    });
+    await drainGraphReadQueue(session);
 
-    expect(result.impact).toMatchObject({ ok: true, affectedTasks: ["T-001"], fullRefresh: false });
-    delete process.env.PLANWEAVE_HOME;
+    expect(session.readQueue.fileChanges).toEqual([]);
+    expect([...session.dirtyPromptRefs]).toEqual(["T-001#B-001"]);
+    expect(session.graph.blocksByRef.has("T-001#B-001")).toBe(true);
   });
 
-  it("reports changed stale prompt files as diagnostics", async () => {
-    const { root, init } = await createPackageWorkspace();
-    const stalePath = join(init.workspace.packageDir, "nodes", "stale.prompt.md");
-    await writeFile(stalePath, "old\n", "utf8");
-    const snapshot = await createPackageFileSnapshot(root);
+  it("applies structured graph ops incrementally and blocks local dependency cycles", async () => {
+    const { root } = await createTestWorkspace(basicManifest({ includeSecondTask: true }));
+    const session = await createExecutionGraphSession(root);
+    const graph = session.graph;
 
-    await writeFile(stalePath, "new\n", "utf8");
-    const result = await detectPackageFileChanges(root, snapshot);
+    enqueueGraphEditOperations(session, [{ type: "add_edge", edge: { from: "T-002", to: "T-001", type: "depends_on" } }]);
+    const first = await drainGraphReadQueue(session);
 
-    expect(result.impact.diagnostics.map((diagnostic) => diagnostic.code)).toContain("stale_prompt_reference");
-    delete process.env.PLANWEAVE_HOME;
+    expect(first.diagnostics).toEqual([]);
+    expect(session.graph).toBe(graph);
+    expect(session.graph.taskDependenciesByTask.get("T-002")).toEqual(["T-001"]);
+    expect(session.graph.taskReachable("T-002", "T-001")).toBe(true);
+
+    enqueueGraphEditOperations(session, [{ type: "add_edge", edge: { from: "T-001", to: "T-002", type: "depends_on" } }]);
+    const second = await drainGraphReadQueue(session);
+
+    expect(second.diagnostics.map((diagnostic) => diagnostic.code)).toContain("depends_on_cycle");
+    expect(session.graph.taskDependenciesByTask.get("T-001")).toEqual([]);
   });
 
-  it("applies manifest file changes to a new snapshot graph without mutating the previous snapshot", async () => {
-    const { root, init } = await createPackageWorkspace();
-    const snapshot = await createPackageFileSnapshot(root);
-    const manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+  it("keeps indexes and manifest order stable when incrementally updating a task node", async () => {
+    const { root } = await createTestWorkspace(basicManifest({ includeSecondTask: true }));
+    const session = await createExecutionGraphSession(root);
+    const graph = session.graph;
+    const current = session.graph.tasksById.get("T-001");
+    if (!current) {
+      throw new Error("missing T-001");
+    }
+    const updated = {
+      ...current,
+      title: "Updated task title",
+      acceptance: [...current.acceptance, "Updated acceptance."]
+    };
 
-    await writeJsonFile(init.workspace.manifestFile, {
+    enqueueGraphEditOperations(session, [{ type: "update_node", node: updated }]);
+    const drained = await drainGraphReadQueue(session);
+
+    expect(drained.diagnostics).toEqual([]);
+    expect(session.graph).toBe(graph);
+    expect(session.graph.nodesById.get("T-001")).toMatchObject({ title: "Updated task title" });
+    expect(session.graph.tasksById.get("T-001")).toMatchObject({ title: "Updated task title" });
+    expect(session.graph.taskNodesInManifestOrder).toEqual(["T-001", "T-002"]);
+    expect(session.graph.blockRefsInManifestOrder.slice(0, 3)).toEqual(["T-001#B-001", "T-001#C-001", "T-001#R-001"]);
+    expect(session.graph.blocksByTask.get("T-001")).toEqual(["T-001#B-001", "T-001#C-001", "T-001#R-001"]);
+  });
+
+  it("removes dirty prompt refs for deleted task blocks", async () => {
+    const { root } = await createTestWorkspace(basicManifest({ includeSecondTask: true }));
+    const session = await createExecutionGraphSession(root);
+    session.dirtyPromptRefs.add("T-001#B-001");
+    session.dirtyPromptRefs.add("T-002#B-001");
+
+    enqueueGraphEditOperations(session, [{ type: "remove_node", nodeId: "T-001" }]);
+    const drained = await drainGraphReadQueue(session);
+
+    expect(drained.diagnostics).toEqual([]);
+    expect([...session.dirtyPromptRefs]).toEqual(["T-002#B-001"]);
+    expect(session.graph.blocksByRef.has("T-001#B-001")).toBe(false);
+  });
+
+  it("clears stale graph op diagnostics after a later successful drain", async () => {
+    const { root } = await createTestWorkspace(basicManifest({ includeSecondTask: true }));
+    const session = await createExecutionGraphSession(root);
+
+    enqueueGraphEditOperations(session, [{ type: "add_edge", edge: { from: "MISSING", to: "T-001", type: "depends_on" } }]);
+    const failed = await drainGraphReadQueue(session);
+
+    expect(failed.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["edge_from_missing"]);
+    expect(session.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["edge_from_missing"]);
+
+    enqueueGraphEditOperations(session, [{ type: "add_edge", edge: { from: "T-002", to: "T-001", type: "depends_on" } }]);
+    const succeeded = await drainGraphReadQueue(session);
+
+    expect(succeeded.diagnostics).toEqual([]);
+    expect(session.diagnostics).toEqual([]);
+    expect(session.graph.taskDependenciesByTask.get("T-002")).toEqual(["T-001"]);
+  });
+
+  it("rebuilds from package truth instead of keeping partial graph op batch changes after failure", async () => {
+    const { root } = await createTestWorkspace(basicManifest({ includeSecondTask: true }));
+    const session = await createExecutionGraphSession(root);
+
+    enqueueGraphEditOperations(session, [
+      { type: "add_edge", edge: { from: "T-002", to: "T-001", type: "depends_on" } },
+      { type: "add_edge", edge: { from: "MISSING", to: "T-001", type: "depends_on" } }
+    ]);
+    const drained = await drainGraphReadQueue(session);
+
+    expect(drained.diagnostics.map((diagnostic) => diagnostic.code)).toContain("edge_from_missing");
+    expect(session.fileSnapshot.manifest.edges).not.toContainEqual({ from: "T-002", to: "T-001", type: "depends_on" });
+    expect(session.graph.taskDependenciesByTask.get("T-002")).toEqual([]);
+  });
+
+  it("reports manifest change affected tasks without treating every task as dirty", async () => {
+    const before = basicManifest({ includeSecondTask: true });
+    const after = {
+      ...before,
+      edges: [...before.edges, { from: "T-002", to: "T-001", type: "depends_on" as const }]
+    };
+
+    const impact = affectedTasksForPackageFileChange({ kind: "manifest", before, after });
+
+    expect(impact.ok).toBe(true);
+    expect(impact.fullRefresh).toBe(false);
+    expect(impact.affectedTasks).toEqual(["T-002"]);
+  });
+
+  it("drains manifest file changes through incremental graph index updates before rebuild fallback", async () => {
+    const manifest = basicManifest({ includeSecondTask: true });
+    const { root, init } = await createTestWorkspace(manifest);
+    const session = await createExecutionGraphSession(root);
+    const graph = session.graph;
+    const nextManifest = {
       ...manifest,
-      nodes: [
-        ...manifest.nodes,
-        {
-          id: "T-002",
-          type: "task",
-          title: "Second task",
-          prompt: "nodes/T-002.prompt.md",
-          acceptance: ["done"],
-          parallel: { safe: true, locks: [] }
-        }
-      ],
-      edges: [...manifest.edges, { from: "T-002", to: "T-001", type: "depends_on" }]
-    });
-    await writeFile(
-      join(init.workspace.packageDir, "nodes", "T-002.prompt.md"),
-      "<!-- planweave:user:start task-body -->\nSecond body.\n<!-- planweave:user:end task-body -->\n",
-      "utf8"
-    );
+      edges: [...manifest.edges, { from: "T-002", to: "T-001", type: "depends_on" as const }]
+    };
 
-    const result = await detectPackageFileChanges(root, snapshot);
+    await writeJsonFile(init.workspace.manifestFile, nextManifest);
+    session.readQueue.fileChanges.push({ path: "manifest.json", type: "changed" });
+    const drained = await drainGraphReadQueue(session);
 
-    expect(result.impact).toMatchObject({ ok: true, affectedTasks: ["T-002", "T-001"], fullRefresh: false });
-    expect(result.impact.graph).not.toBe(snapshot.graph);
-    expect(result.snapshot?.graph).toBe(result.impact.graph);
-    expect(result.snapshot?.graph.dependenciesByTask.get("T-002")).toEqual(["T-001"]);
-    expect(snapshot.graph.nodesById.has("T-002")).toBe(false);
-    delete process.env.PLANWEAVE_HOME;
-  });
-
-  it("reports a missing prompt for a task added through manifest file changes", async () => {
-    const { root, init } = await createPackageWorkspace();
-    const snapshot = await createPackageFileSnapshot(root);
-    const manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
-
-    await writeJsonFile(init.workspace.manifestFile, {
-      ...manifest,
-      nodes: [
-        ...manifest.nodes,
-        {
-          id: "T-MISSING-PROMPT",
-          type: "task",
-          title: "Missing prompt",
-          prompt: "nodes/T-MISSING-PROMPT.prompt.md",
-          acceptance: ["done"],
-          parallel: { safe: true, locks: [] }
-        }
-      ],
-      edges: [...manifest.edges, { from: "T-MISSING-PROMPT", to: "T-001", type: "depends_on" }]
-    });
-
-    const result = await refreshChangedPackagePrompts(root, snapshot);
-
-    expect(result.impact.ok).toBe(false);
-    expect(result.impact.diagnostics.map((diagnostic) => diagnostic.code)).toContain("prompt_missing");
-    expect(result.impact.affectedTasks).toEqual(["T-MISSING-PROMPT", "T-001"]);
-    expect(result.refreshed).toEqual([]);
-    expect(result.snapshot).toBeNull();
-    expect(snapshot.graph.nodesById.has("T-MISSING-PROMPT")).toBe(false);
-    delete process.env.PLANWEAVE_HOME;
-  });
-
-  it("reports a missing global prompt instead of throwing during refresh", async () => {
-    const { root, init } = await createPackageWorkspace();
-    const snapshot = await createPackageFileSnapshot(root);
-
-    await rm(join(init.workspace.packageDir, "global-prompt.md"));
-
-    const result = await refreshChangedPackagePrompts(root, snapshot);
-
-    expect(result.impact.ok).toBe(false);
-    expect(result.impact.diagnostics.map((diagnostic) => diagnostic.code)).toContain("global_prompt_missing");
-    expect(result.refreshed).toEqual([]);
-    expect(result.snapshot).toBeNull();
-    delete process.env.PLANWEAVE_HOME;
-  });
-
-  it("reports a missing task-body section for a task added through manifest file changes", async () => {
-    const { root, init } = await createPackageWorkspace();
-    const snapshot = await createPackageFileSnapshot(root);
-    const manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
-
-    await writeJsonFile(init.workspace.manifestFile, {
-      ...manifest,
-      nodes: [
-        ...manifest.nodes,
-        {
-          id: "T-BAD-PROMPT",
-          type: "task",
-          title: "Bad prompt",
-          prompt: "nodes/T-BAD-PROMPT.prompt.md",
-          acceptance: ["done"],
-          parallel: { safe: true, locks: [] }
-        }
-      ],
-      edges: [...manifest.edges, { from: "T-BAD-PROMPT", to: "T-001", type: "depends_on" }]
-    });
-    await writeFile(join(init.workspace.packageDir, "nodes", "T-BAD-PROMPT.prompt.md"), "No managed task body.\n", "utf8");
-
-    const result = await detectPackageFileChanges(root, snapshot);
-
-    expect(result.impact.ok).toBe(false);
-    expect(result.impact.diagnostics.map((diagnostic) => diagnostic.code)).toContain("task_body_missing");
-    expect(result.impact.affectedTasks).toEqual(["T-BAD-PROMPT", "T-001"]);
-    expect(result.snapshot).toBeNull();
-    delete process.env.PLANWEAVE_HOME;
-  });
-
-  it("does not advance the snapshot when refresh fails before applying a global prompt change", async () => {
-    const manifest = baseManifest({
-      nodes: [
-        ...baseManifest().nodes,
-        {
-          id: "T-002",
-          type: "task",
-          title: "Second task",
-          prompt: "nodes/T-002.prompt.md",
-          acceptance: ["done"],
-          parallel: { safe: true, locks: [] }
-        }
-      ],
-      edges: [
-        ...baseManifest().edges,
-        { from: "T-002", to: "G-001", type: "implements" }
-      ]
-    });
-    const { root, init } = await createPackageWorkspace(manifest);
-    const t1Path = join(init.workspace.packageDir, "nodes", "T-001.prompt.md");
-    const t2Path = join(init.workspace.packageDir, "nodes", "T-002.prompt.md");
-    await writeFile(
-      t2Path,
-      "<!-- planweave:user:start task-body -->\nSecond body.\n<!-- planweave:user:end task-body -->\n",
-      "utf8"
-    );
-    const snapshot = await createPackageFileSnapshot(root);
-
-    await writeFile(join(init.workspace.packageDir, "global-prompt.md"), "Updated global rules.\n", "utf8");
-    await writeFile(t2Path, "Broken prompt.\n", "utf8");
-
-    const first = await refreshChangedPackagePrompts(root, snapshot);
-    const savedSnapshot = first.snapshot ?? snapshot;
-
-    await writeFile(
-      t2Path,
-      "<!-- planweave:user:start task-body -->\nRepaired body.\n<!-- planweave:user:end task-body -->\n",
-      "utf8"
-    );
-    const second = await refreshChangedPackagePrompts(root, savedSnapshot);
-    const t1Prompt = await readFile(t1Path, "utf8");
-    const t2Prompt = await readFile(t2Path, "utf8");
-
-    expect(first.impact.ok).toBe(false);
-    expect(first.impact.diagnostics.map((diagnostic) => diagnostic.code)).toContain("task_body_missing");
-    expect(first.refreshed).toEqual([]);
-    expect(first.snapshot).toBeNull();
-    expect(second.impact).toMatchObject({ ok: true, affectedTasks: ["T-001", "T-002"], fullRefresh: false });
-    expect(second.refreshed.map((surface) => surface.taskId)).toEqual(["T-001", "T-002"]);
-    expect(t1Prompt).toContain("Updated global rules.");
-    expect(t2Prompt).toContain("Updated global rules.");
-    delete process.env.PLANWEAVE_HOME;
+    expect(drained.diagnostics).toEqual([]);
+    expect(session.graph).toBe(graph);
+    expect(session.graph.taskDependenciesByTask.get("T-002")).toEqual(["T-001"]);
+    expect(session.graph.taskReachable("T-002", "T-001")).toBe(true);
+    expect(session.fileSnapshot.manifest.edges).toContainEqual({ from: "T-002", to: "T-001", type: "depends_on" });
   });
 });

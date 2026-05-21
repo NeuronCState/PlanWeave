@@ -1,38 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { readTaskStatusSnapshot } from "../tasks/status.js";
-import { createPackageWorkspace, baseManifest } from "./promptTestHelpers.js";
+import { ensureStateForManifest, createEmptyState } from "../state.js";
+import { basicManifest } from "./promptTestHelpers.js";
 
-describe("task status", () => {
-  it("derives ready and planned task state from manifest dependencies", async () => {
-    const { root } = await createPackageWorkspace(
-      baseManifest({
-        nodes: [
-          {
-            id: "T-001",
-            type: "task",
-            title: "First",
-            prompt: "nodes/T-001.prompt.md",
-            acceptance: ["done"],
-            parallel: { safe: true, locks: [] }
-          },
-          {
-            id: "T-002",
-            type: "task",
-            title: "Second",
-            prompt: "nodes/T-001.prompt.md",
-            acceptance: ["done"],
-            parallel: { safe: true, locks: [] }
-          }
-        ],
-        edges: [{ from: "T-002", to: "T-001", type: "depends_on" }]
-      })
-    );
+describe("task status aggregation", () => {
+  it("aggregates implemented only after required non-review blocks complete and required review passes", () => {
+    const manifest = basicManifest();
+    let state = ensureStateForManifest(manifest, createEmptyState());
+    expect(state.tasks["T-001"]?.status).toBe("ready");
 
-    const snapshot = await readTaskStatusSnapshot(root);
+    state.blocks["T-001#B-001"] = { ...state.blocks["T-001#B-001"], status: "completed" };
+    state.blocks["T-001#C-001"] = { ...state.blocks["T-001#C-001"], status: "completed" };
+    state.blocks["T-001#R-001"] = { ...state.blocks["T-001#R-001"], status: "completed", completionReason: "passed" };
+    state = ensureStateForManifest(manifest, state);
 
-    expect(snapshot.state.tasks["T-001"]?.status).toBe("ready");
-    expect(snapshot.state.tasks["T-002"]?.status).toBe("planned");
-    expect(snapshot.state.tasks["T-002"]?.blockedBy).toEqual(["T-001"]);
-    delete process.env.PLANWEAVE_HOME;
+    expect(state.tasks["T-001"]?.status).toBe("implemented");
   });
 });

@@ -1,29 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { readState } from "../state.js";
-import { markDiverged } from "../tasks/markDiverged.js";
-import { markVerified } from "../tasks/markVerified.js";
-import { createPackageWorkspace } from "./promptTestHelpers.js";
+import { markBlockDiverged } from "../taskManager/index.js";
+import { createTestWorkspace } from "./promptTestHelpers.js";
 
-describe("markDiverged", () => {
-  it("records divergence for a non-verified task", async () => {
-    const { root, init } = await createPackageWorkspace();
+describe("markBlockDiverged", () => {
+  it("requires a non-empty reason", async () => {
+    const { root } = await createTestWorkspace();
 
-    const result = await markDiverged({ projectRoot: root, taskId: "T-001", reason: "Plan changed." });
-    const state = await readState(init.workspace.stateFile);
-
-    expect(result.status).toBe("diverged");
-    expect(state.tasks["T-001"]?.status).toBe("diverged");
-    expect(state.tasks["T-001"]?.divergence?.reason).toBe("Plan changed.");
-    delete process.env.PLANWEAVE_HOME;
-  });
-
-  it("does not mark verified tasks as diverged", async () => {
-    const { root } = await createPackageWorkspace();
-    await markVerified({ projectRoot: root, taskId: "T-001" });
-
-    await expect(markDiverged({ projectRoot: root, taskId: "T-001", reason: "Plan changed." })).rejects.toThrow(
-      "verified"
+    await expect(markBlockDiverged({ projectRoot: root, ref: "T-001#B-001", reason: " " })).rejects.toThrow(
+      "mark-diverged requires a non-empty reason"
     );
-    delete process.env.PLANWEAVE_HOME;
   });
 });

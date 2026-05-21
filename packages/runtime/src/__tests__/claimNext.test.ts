@@ -1,51 +1,57 @@
 import { describe, expect, it } from "vitest";
-import { claimNextTask } from "../tasks/claimNext.js";
-import { readState, writeState } from "../state.js";
-import { writeJsonFile } from "../json.js";
-import type { PlanPackageManifest } from "../types.js";
-import { baseManifest, createPackageWorkspace } from "./promptTestHelpers.js";
+import { claimNext, getExecutionStatus, renderPrompt, submitBlockResult, submitReviewResult, submitFeedback } from "../taskManager/index.js";
+import { createTestWorkspace, writeReport, writeReviewResult } from "./promptTestHelpers.js";
 
-describe("claimNextTask", () => {
-  it("claims the first ready task and returns it while in progress", async () => {
-    const { root, init } = await createPackageWorkspace();
+describe("claimNext", () => {
+  it("returns JSON block claims in execution order", async () => {
+    const { root } = await createTestWorkspace();
 
-    const first = await claimNextTask({ projectRoot: root });
-    const second = await claimNextTask({ projectRoot: root });
+    const first = await claimNext({ projectRoot: root });
 
-    expect(first).toMatchObject({ taskId: "T-001", status: "claimed" });
-    expect(second).toMatchObject({ taskId: "T-001", status: "current" });
-    delete process.env.PLANWEAVE_HOME;
-    await readState(init.workspace.stateFile);
-  });
-
-  it("prioritizes needs_changes over ready tasks", async () => {
-    const { root, init } = await createPackageWorkspace();
-    const state = await readState(init.workspace.stateFile);
-    state.tasks["T-001"] = { status: "needs_changes", claimedBy: null, lastRunId: "RUN-001", blockedBy: [] };
-    await writeState(init.workspace.stateFile, state);
-
-    const result = await claimNextTask({ projectRoot: root });
-
-    expect(result).toMatchObject({ taskId: "T-001", status: "claimed" });
-    delete process.env.PLANWEAVE_HOME;
-  });
-
-  it("reconciles stale in-progress task state after the task is removed from the manifest", async () => {
-    const { root, init } = await createPackageWorkspace();
-    await claimNextTask({ projectRoot: root });
-
-    const manifest: PlanPackageManifest = baseManifest({
-      nodes: [{ id: "G-001", type: "goal", title: "Goal", summary: "Keep context visible." }],
-      edges: []
+    expect(first).toEqual({
+      kind: "block",
+      ref: "T-001#B-001",
+      taskId: "T-001",
+      blockId: "B-001",
+      blockType: "implementation",
+      reason: "claimed"
     });
-    await writeJsonFile(init.workspace.manifestFile, manifest);
+  });
 
-    const result = await claimNextTask({ projectRoot: root });
-    const state = await readState(init.workspace.stateFile);
+  it("continues the same review block after feedback is resolved", async () => {
+    const { root } = await createTestWorkspace();
+    await claimNext({ projectRoot: root });
+    await submitBlockResult({ projectRoot: root, ref: "T-001#B-001", reportPath: await writeReport(root, "b.md") });
+    await claimNext({ projectRoot: root });
+    await submitBlockResult({ projectRoot: root, ref: "T-001#C-001", reportPath: await writeReport(root, "c.md") });
+    await claimNext({ projectRoot: root });
+    await submitReviewResult({
+      projectRoot: root,
+      ref: "T-001#R-001",
+      resultPath: await writeReviewResult(root, "needs_changes", "Please update tests.")
+    });
 
-    expect(result).toEqual({ taskId: null, status: "none" });
-    expect(state.currentTaskId).toBeNull();
-    expect(state.tasks["T-001"]).toBeUndefined();
-    delete process.env.PLANWEAVE_HOME;
+    expect(await claimNext({ projectRoot: root })).toEqual({ kind: "feedback", content: "Please update tests." });
+    await submitFeedback({ projectRoot: root, reportPath: await writeReport(root, "feedback.md", "Tests updated.\n") });
+
+    const reviewClaim = await claimNext({ projectRoot: root });
+    const prompt = await renderPrompt({ projectRoot: root, ref: "T-001#R-001" });
+
+    expect(reviewClaim).toMatchObject({ kind: "block", ref: "T-001#R-001", reason: "feedback_resolved" });
+    expect(prompt).toContain("Focused Re-review Context");
+    expect(prompt).toContain("Please update tests.");
+    expect(prompt).toContain("Tests updated.");
+  });
+
+  it("reports blocked claims before returning none", async () => {
+    const { root } = await createTestWorkspace();
+    await claimNext({ projectRoot: root });
+    await submitBlockResult({ projectRoot: root, ref: "T-001#B-001", reportPath: await writeReport(root, "b.md") });
+    await claimNext({ projectRoot: root });
+    await submitBlockResult({ projectRoot: root, ref: "T-001#C-001", reportPath: await writeReport(root, "c.md") });
+    await claimNext({ projectRoot: root });
+
+    const status = await getExecutionStatus({ projectRoot: root });
+    expect(status.blocks.find((block) => block.ref === "T-001#R-001")?.status).toBe("in_progress");
   });
 });

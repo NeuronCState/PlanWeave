@@ -24,6 +24,7 @@ function initialManifest(projectName: string): PlanPackageManifest {
       maxFeedbackCycles: 1,
       completionPolicy: "strict"
     },
+    executors: {},
     nodes: [],
     edges: []
   };

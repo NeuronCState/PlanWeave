@@ -18,6 +18,24 @@ const reviewHookSchema = z
   })
   .strict();
 
+const executorProfileSchema = z.discriminatedUnion("adapter", [
+  z
+    .object({
+      adapter: z.literal("manual")
+    })
+    .strict(),
+  z
+    .object({
+      adapter: z.literal("codex-exec"),
+      command: z.string().min(1),
+      args: z.array(z.string()).default(["exec", "-"]),
+      sandbox: z.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
+      role: z.string().min(1).optional(),
+      timeoutMs: z.number().int().positive().optional()
+    })
+    .strict()
+]);
+
 const implementationBlockSchema = z
   .object({
     id: z.string().min(1),
@@ -25,6 +43,7 @@ const implementationBlockSchema = z
     title: z.string().min(1),
     prompt: z.string().min(1),
     depends_on: z.array(z.string().min(1)).default([]),
+    executor: z.string().min(1).optional(),
     parallel: blockParallelPolicySchema.default({ safe: false, locks: [] })
   })
   .strict();
@@ -36,6 +55,7 @@ const reviewBlockSchema = z
     title: z.string().min(1),
     prompt: z.string().min(1),
     depends_on: z.array(z.string().min(1)).default([]),
+    executor: z.string().min(1).optional(),
     review: z
       .object({
         required: z.boolean().default(true),
@@ -54,6 +74,7 @@ const taskNodeSchema = z
     type: z.literal("task"),
     title: z.string().min(1),
     prompt: z.string().min(1),
+    executor: z.string().min(1).optional(),
     acceptance: z.array(z.string().min(1)).min(1),
     blocks: z.array(manifestBlockSchema).min(1)
   })
@@ -81,6 +102,7 @@ export const manifestSchema = z
       .strict(),
     execution: z
       .object({
+        defaultExecutor: z.string().min(1).optional(),
         parallel: z
           .object({
             enabled: z.boolean(),
@@ -95,6 +117,7 @@ export const manifestSchema = z
         completionPolicy: z.literal("strict")
       })
       .strict(),
+    executors: z.record(z.string().min(1), executorProfileSchema).default({}),
     nodes: z.array(manifestNodeSchema),
     edges: z.array(
       z
@@ -108,7 +131,7 @@ export const manifestSchema = z
   })
   .passthrough()
   .superRefine((manifest, context) => {
-    const allowedTopLevelKeys = new Set(["version", "project", "execution", "review", "nodes", "edges"]);
+    const allowedTopLevelKeys = new Set(["version", "project", "execution", "review", "executors", "nodes", "edges"]);
     for (const key of Object.keys(manifest)) {
       if (allowedTopLevelKeys.has(key)) {
         continue;
@@ -129,6 +152,35 @@ export const manifestSchema = z
             code: z.ZodIssueCode.custom,
             message: "feedback blocks are not supported; feedback is runtime state.",
             path: ["nodes", nodeIndex, "blocks", blockIndex, "type"]
+          });
+        }
+      }
+    }
+    const knownExecutors = new Set(["default", "manual", "codex-auto", "codex-reviewer", ...Object.keys(manifest.executors ?? {})]);
+    if (manifest.execution.defaultExecutor && !knownExecutors.has(manifest.execution.defaultExecutor)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `defaultExecutor '${manifest.execution.defaultExecutor}' does not reference a known executor profile.`,
+        path: ["execution", "defaultExecutor"]
+      });
+    }
+    for (const [nodeIndex, node] of manifest.nodes.entries()) {
+      if (node.type !== "task") {
+        continue;
+      }
+      if (node.executor && !knownExecutors.has(node.executor)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `task executor '${node.executor}' does not reference a known executor profile.`,
+          path: ["nodes", nodeIndex, "executor"]
+        });
+      }
+      for (const [blockIndex, block] of node.blocks.entries()) {
+        if (block.executor && !knownExecutors.has(block.executor)) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `block executor '${block.executor}' does not reference a known executor profile.`,
+            path: ["nodes", nodeIndex, "blocks", blockIndex, "executor"]
           });
         }
       }

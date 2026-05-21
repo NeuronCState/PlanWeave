@@ -1,38 +1,79 @@
 {
-  "version": "plan-package/v0",
+  "version": "plan-package/v1",
   "project": {
     "title": "Basic PlanWeave Example",
-    "description": "A single-task package for MVP-0 smoke testing."
+    "description": "A single-task block package for STEP-1 smoke testing."
   },
   "execution": {
+    "defaultExecutor": "manual",
     "parallel": {
       "enabled": false,
       "maxConcurrent": 1
     }
   },
-  "global_prompt": "global-prompt.md",
+  "review": {
+    "maxFeedbackCycles": 1,
+    "completionPolicy": "strict"
+  },
+  "executors": {
+    "manual": {
+      "adapter": "manual"
+    },
+    "codex-auto": {
+      "adapter": "codex-exec",
+      "command": "codex",
+      "args": ["exec", "-"],
+      "timeoutMs": 1800000
+    },
+    "codex-reviewer": {
+      "adapter": "codex-exec",
+      "command": "codex",
+      "args": ["exec", "-"],
+      "role": "reviewer",
+      "timeoutMs": 1800000
+    }
+  },
   "nodes": [
     {
       "id": "G-001",
       "type": "goal",
       "title": "Exercise the PlanWeave loop",
-      "summary": "The agent should claim, execute, report, and review one task through CLI-backed runtime state."
+      "summary": "The agent should claim, execute, report, review, handle feedback, and re-review one task through CLI-backed runtime state."
     },
     {
       "id": "T-001",
       "type": "task",
       "title": "Implement a tiny example change",
-      "prompt": "nodes/T-001.prompt.md",
+      "prompt": "nodes/T-001/prompt.md",
       "acceptance": [
         "Implementation report records what changed.",
-        "Review can move the task to needs_changes and then verified."
+        "Review can request changes, feed them back, and then pass the same review block."
       ],
-      "parallel": {
-        "safe": true,
-        "locks": [
-          "example"
-        ]
-      }
+      "blocks": [
+        {
+          "id": "B-001",
+          "type": "implementation",
+          "title": "Create implementation report",
+          "prompt": "nodes/T-001/blocks/B-001.prompt.md",
+          "depends_on": [],
+          "parallel": {
+            "safe": true,
+            "locks": ["example"]
+          }
+        },
+        {
+          "id": "R-001",
+          "type": "review",
+          "title": "Review implementation report",
+          "prompt": "nodes/T-001/blocks/R-001.prompt.md",
+          "depends_on": ["B-001"],
+          "review": {
+            "required": true,
+            "maxFeedbackCycles": 1,
+            "hook": null
+          }
+        }
+      ]
     }
   ],
   "edges": [

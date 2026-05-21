@@ -499,6 +499,7 @@ export async function submitBlockResult(options: {
   projectRoot: string;
   ref: string;
   reportPath: string;
+  runId?: string;
   session?: ExecutionGraphSession;
 }): Promise<SubmitResult> {
   const context = await loadRuntime(options);
@@ -513,11 +514,17 @@ export async function submitBlockResult(options: {
     throw new Error(`Block '${options.ref}' must be in_progress before submit-result.`);
   }
   const runRoot = join(workspace.resultsDir, taskId, "blocks", blockId, "runs");
-  const runId = nextId("RUN", await listDirCount(runRoot));
+  const runId = options.runId ?? nextId("RUN", await listDirCount(runRoot));
   const runDir = join(runRoot, runId);
+  const reportDestination = join(runDir, "report.md");
+  const metadataPath = join(runDir, "metadata.json");
   await mkdir(runDir, { recursive: true });
-  await copyFile(options.reportPath, join(runDir, "report.md"));
-  await writeJsonFile(join(runDir, "metadata.json"), {
+  if (options.reportPath !== reportDestination) {
+    await copyFile(options.reportPath, reportDestination);
+  }
+  const previousMetadata = (await exists(metadataPath)) ? await readJsonFile<Record<string, unknown>>(metadataPath) : {};
+  await writeJsonFile(metadataPath, {
+    ...previousMetadata,
     ref: options.ref,
     taskId,
     blockId,

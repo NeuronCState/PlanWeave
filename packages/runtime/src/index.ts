@@ -38,6 +38,13 @@ export {
 export { consumeAutoRunClaim } from "./autoRun/contract.js";
 export type { AutoRunDecision, AutoRunExecutorAdapter } from "./autoRun/contract.js";
 export {
+  createCodexExecAdapter,
+  createExecutorAdapter,
+  createManualExecutorAdapter,
+  listExecutorProfiles,
+  testExecutorProfile
+} from "./autoRun/executors.js";
+export {
   claimNext,
   renderPrompt,
   submitBlockResult,
@@ -49,6 +56,6 @@ export {
   resolveBlockDivergence,
   getExecutionStatus
 } from "./taskManager/index.js";
-export { runAutoRunStep } from "./taskManager/autoRun.js";
+export { getAutoRunStatus, runAutoRunStep } from "./taskManager/autoRun.js";
 export { edgeTypes, runSubmitStatuses, reviewStatuses } from "./types.js";
 export type * from "./types.js";

@@ -41,6 +41,26 @@ export type ReviewHookDefinition = {
   executionPolicy: "trusted-local";
 };
 
+export type ManualExecutorProfile = {
+  adapter: "manual";
+};
+
+export type CodexExecExecutorProfile = {
+  adapter: "codex-exec";
+  command: string;
+  args: string[];
+  sandbox?: "read-only" | "workspace-write" | "danger-full-access";
+  role?: string;
+  timeoutMs?: number;
+};
+
+export type ExecutorProfile = ManualExecutorProfile | CodexExecExecutorProfile;
+
+export type ExecutorProfileSummary = ExecutorProfile & {
+  name: string;
+  source: "builtin" | "package";
+};
+
 export type BlockParallelPolicy = {
   safe: boolean;
   locks: string[];
@@ -52,6 +72,7 @@ export type ManifestImplementationBlock = {
   title: string;
   prompt: string;
   depends_on: string[];
+  executor?: string;
   parallel: BlockParallelPolicy;
 };
 
@@ -61,6 +82,7 @@ export type ManifestReviewBlock = {
   title: string;
   prompt: string;
   depends_on: string[];
+  executor?: string;
   review: {
     required: boolean;
     maxFeedbackCycles: number;
@@ -75,6 +97,7 @@ export type ManifestTaskNode = {
   type: "task";
   title: string;
   prompt: string;
+  executor?: string;
   acceptance: string[];
   blocks: ManifestBlock[];
 };
@@ -101,6 +124,7 @@ export type PlanPackageManifest = {
     description: string;
   };
   execution: {
+    defaultExecutor?: string;
     parallel: {
       enabled: boolean;
       maxConcurrent: number;
@@ -110,6 +134,7 @@ export type PlanPackageManifest = {
     maxFeedbackCycles: number;
     completionPolicy: "strict";
   };
+  executors?: Record<string, ExecutorProfile>;
   nodes: ManifestNode[];
   edges: ManifestEdge[];
 };
@@ -339,14 +364,50 @@ export type ExecutorAdapterResult =
   | {
       kind: "block";
       reportPath: string;
+      runId?: string;
+      executor?: string;
+      adapter?: ExecutorProfile["adapter"];
+      stdout?: string;
+      stderr?: string;
+      exitCode?: number;
+      startedAt?: string;
+      finishedAt?: string;
+      codexSessionId?: string | null;
     }
   | {
       kind: "review";
       resultPath: string;
+      runId?: string;
+      executor?: string;
+      adapter?: ExecutorProfile["adapter"];
+      stdout?: string;
+      stderr?: string;
+      exitCode?: number;
+      startedAt?: string;
+      finishedAt?: string;
+      codexSessionId?: string | null;
     }
   | {
       kind: "feedback";
       reportPath: string;
+      runId?: string;
+      executor?: string;
+      adapter?: ExecutorProfile["adapter"];
+      stdout?: string;
+      stderr?: string;
+      exitCode?: number;
+      startedAt?: string;
+      finishedAt?: string;
+      codexSessionId?: string | null;
+    }
+  | {
+      kind: "manual";
+      promptPath: string;
+      runDir: string;
+      runId: string;
+      executor: string;
+      adapter: "manual";
+      nextCommand: string;
     };
 
 export type ExecutorAdapter = {
@@ -358,13 +419,49 @@ export type AutoRunStepResult =
   | {
       kind: "submitted";
       claim: ClaimResult;
-      adapterResult: ExecutorAdapterResult;
+      adapterResult: Extract<ExecutorAdapterResult, { kind: "block" | "review" | "feedback" }>;
       submitResult: SubmitResult | SubmitReviewResult | SubmitFeedbackResult;
+    }
+  | {
+      kind: "manual";
+      claim: Extract<ClaimResult, { kind: "block" | "feedback" }>;
+      adapterResult: Extract<ExecutorAdapterResult, { kind: "manual" }>;
     }
   | {
       kind: "idle" | "blocked" | "batch";
       claim: ClaimResult;
+    }
+  | {
+      kind: "batch_submitted";
+      claim: Extract<ClaimResult, { kind: "batch" }>;
+      steps: Array<Extract<AutoRunStepResult, { kind: "submitted" | "manual" }>>;
     };
+
+export type AutoRunLatestRunSummary = {
+  ref: string;
+  taskId: string;
+  blockId: string;
+  runId: string;
+  executor: string | null;
+  adapter: ExecutorProfile["adapter"] | null;
+  status: BlockStatus;
+  stdoutSummary: string;
+  stderrSummary: string;
+  failureReason: string | null;
+  promptPath: string;
+  reportPath: string | null;
+  metadataPath: string;
+};
+
+export type AutoRunStatus = {
+  current: {
+    refs: string[];
+    feedbackId: string | null;
+    reviewBlockRef: string | null;
+  };
+  latestRuns: AutoRunLatestRunSummary[];
+  warnings: ValidationIssue[];
+};
 
 export type ReviewResult = {
   reviewBlockRef: string;

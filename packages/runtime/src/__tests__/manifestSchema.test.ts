@@ -7,6 +7,59 @@ describe("plan-package/v1 manifest schema", () => {
     expect(() => manifestSchema.parse(basicManifest())).not.toThrow();
   });
 
+  it("accepts executor profiles with task and block executor inheritance points", () => {
+    const manifest = basicManifest() as any;
+    manifest.execution.defaultExecutor = "codex-auto";
+    manifest.executors = {
+      "codex-auto": {
+        adapter: "codex-exec",
+        command: "codex",
+        args: ["exec", "-"],
+        sandbox: "workspace-write",
+        timeoutMs: 120000
+      },
+      "codex-reviewer": {
+        adapter: "codex-exec",
+        command: "codex",
+        args: ["exec", "-"],
+        role: "reviewer"
+      }
+    };
+    const task = manifest.nodes.find((node) => node.type === "task" && node.id === "T-001");
+    if (task?.type !== "task") {
+      throw new Error("missing task");
+    }
+    task.executor = "codex-auto";
+    const review = task.blocks.find((block) => block.id === "R-001");
+    if (review?.type !== "review") {
+      throw new Error("missing review block");
+    }
+    review.executor = "codex-reviewer";
+
+    const result = manifestSchema.safeParse(manifest);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.execution.defaultExecutor).toBe("codex-auto");
+    expect(result.data?.executors?.["codex-auto"]?.timeoutMs).toBe(120000);
+    expect(result.data?.executors?.["codex-reviewer"]?.role).toBe("reviewer");
+  });
+
+  it("rejects non-positive codex executor timeouts", () => {
+    const manifest = basicManifest() as any;
+    manifest.executors = {
+      "codex-auto": {
+        adapter: "codex-exec",
+        command: "codex",
+        args: ["exec", "-"],
+        timeoutMs: 0
+      }
+    };
+
+    const result = manifestSchema.safeParse(manifest);
+
+    expect(result.success).toBe(false);
+  });
+
   it("rejects legacy manifest.global_prompt", () => {
     const manifest = { ...basicManifest(), global_prompt: "global-prompt.md" };
 

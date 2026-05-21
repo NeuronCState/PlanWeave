@@ -17,7 +17,7 @@ import {
   validatePackage
 } from "../index.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
-import type { PlanPackageManifest } from "../types.js";
+import type { AutoRunStepResult, PlanPackageManifest } from "../types.js";
 
 async function createWorkspaceFromExample(): Promise<{ home: string; root: string; packageDir: string }> {
   const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
@@ -259,5 +259,60 @@ describe("STEP-1 block runtime", () => {
     });
     expect(step.kind).toBe("submitted");
     expect(step.claim).toMatchObject({ kind: "block", ref: "T-001#B-001" });
+  });
+
+  it("runs one auto-run step with a configured codex-exec profile and records executor artifacts", async () => {
+    const { home, root, packageDir } = await createWorkspaceFromExample();
+    const manifestPath = join(packageDir, "manifest.json");
+    const manifest = await readJsonFile<PlanPackageManifest>(manifestPath);
+    manifest.execution.defaultExecutor = "fake-codex";
+    manifest.executors = {
+      "fake-codex": {
+        adapter: "codex-exec",
+        command: process.execPath,
+        args: ["-e", "let input=''; process.stdin.on('data', c => input += c); process.stdin.on('end', () => process.stdout.write('Auto report for ' + input.split('\\n')[0] + '\\n'));"]
+      }
+    };
+    await writeJsonFile(manifestPath, manifest);
+
+    const step = await runAutoRunStep({ projectRoot: root });
+
+    expect(step.kind).toBe("submitted");
+    expect(step).toMatchObject({
+      claim: { kind: "block", ref: "T-001#B-001" },
+      adapterResult: { kind: "block", executor: "fake-codex", adapter: "codex-exec" },
+      submitResult: { runId: "RUN-001" }
+    });
+    const status = await getExecutionStatus({ projectRoot: root });
+    const runDir = join(home, "projects", status.projectId, "results", "T-001", "blocks", "B-001", "runs", "RUN-001");
+    expect(await readFile(join(runDir, "prompt.md"), "utf8")).toContain("# T-001#B-001");
+    expect(await readFile(join(runDir, "stdout.md"), "utf8")).toContain("Auto report for # T-001#B-001");
+    expect(await readFile(join(runDir, "stderr.log"), "utf8")).toBe("");
+    expect(await readFile(join(runDir, "metadata.json"), "utf8")).toContain('"executor": "fake-codex"');
+  });
+
+  it("stops a manual auto-run step after writing a prompt artifact without submitting the block", async () => {
+    const { home, root, packageDir } = await createWorkspaceFromExample();
+    const manifestPath = join(packageDir, "manifest.json");
+    const manifest = await readJsonFile<PlanPackageManifest>(manifestPath);
+    manifest.execution.defaultExecutor = "manual";
+    manifest.executors = {
+      manual: {
+        adapter: "manual"
+      }
+    };
+    await writeJsonFile(manifestPath, manifest);
+
+    const step = (await runAutoRunStep({ projectRoot: root })) as AutoRunStepResult;
+
+    expect(step.kind).toBe("manual");
+    expect(step).toMatchObject({
+      claim: { kind: "block", ref: "T-001#B-001" },
+      adapterResult: { kind: "manual", executor: "manual", adapter: "manual" }
+    });
+    const status = await getExecutionStatus({ projectRoot: root });
+    const promptPath = join(home, "projects", status.projectId, "results", "T-001", "blocks", "B-001", "runs", "RUN-001", "prompt.md");
+    expect(await readFile(promptPath, "utf8")).toContain("# T-001#B-001");
+    expect(status.blocks.find((block) => block.ref === "T-001#B-001")?.status).toBe("in_progress");
   });
 });

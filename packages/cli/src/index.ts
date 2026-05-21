@@ -8,14 +8,13 @@ import { registerPromptCommand } from "./commands/prompt.js";
 import { registerClaimNextCommand } from "./commands/claimNext.js";
 import { registerSubmitResultCommand } from "./commands/submitResult.js";
 import { registerSubmitReviewCommand } from "./commands/submitReview.js";
-import { registerMarkVerifiedCommand } from "./commands/markVerified.js";
+import { registerSubmitFeedbackCommand } from "./commands/submitFeedback.js";
 import { registerMarkDivergedCommand } from "./commands/markDiverged.js";
 import { registerMarkBlockedCommand } from "./commands/markBlocked.js";
 import { registerResolveDivergenceCommand } from "./commands/resolveDivergence.js";
 import { registerUnblockCommand } from "./commands/unblock.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerPathsCommand } from "./commands/paths.js";
-import { registerEditGraphCommands } from "./commands/editGraph.js";
 
 export function createProgram(): Command {
   const program = new Command();
@@ -32,14 +31,13 @@ export function createProgram(): Command {
   registerPromptCommand(program);
   registerSubmitResultCommand(program);
   registerSubmitReviewCommand(program);
-  registerMarkVerifiedCommand(program);
+  registerSubmitFeedbackCommand(program);
   registerMarkDivergedCommand(program);
   registerMarkBlockedCommand(program);
   registerResolveDivergenceCommand(program);
   registerUnblockCommand(program);
   registerStatusCommand(program);
   registerPathsCommand(program);
-  registerEditGraphCommands(program);
 
   return program;
 }

@@ -5,14 +5,14 @@ import { resolveCliProjectRoot } from "../projectRoot.js";
 export function registerRefreshPromptsCommand(program: Command): void {
   program
     .command("refresh-prompts")
-    .description("Refresh managed sections for all task Prompt Surfaces")
+    .description("Render all block Prompt Surfaces without writing source prompts")
     .action(async () => {
       const result = await refreshPrompts({ projectRoot: resolveCliProjectRoot() });
       for (const prompt of result.prompts) {
-        console.log(`Refreshed ${prompt.taskId}: ${prompt.path}`);
+        console.log(`Rendered ${prompt.ref}`);
       }
       if (result.prompts.length === 0) {
-        console.log("No task prompts to refresh.");
+        console.log("No block prompts to render.");
       }
     });
 }

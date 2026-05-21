@@ -1,15 +1,15 @@
 import type { Command } from "commander";
-import { markBlocked } from "@planweave/runtime";
+import { markBlockBlocked } from "@planweave/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerMarkBlockedCommand(program: Command): void {
   program
     .command("mark-blocked")
-    .argument("<task-id>")
-    .requiredOption("--reason <reason>", "why the task is blocked")
-    .description("Mark a non-verified task as blocked")
-    .action(async (taskId: string, options: { reason: string }) => {
-      const result = await markBlocked({ projectRoot: resolveCliProjectRoot(), taskId, reason: options.reason });
-      console.log(`Marked ${result.taskId} as ${result.status}: ${result.reason}`);
+    .argument("<block-ref>")
+    .requiredOption("--reason <reason>", "why the block is blocked")
+    .description("Mark a block as blocked")
+    .action(async (ref: string, options: { reason: string }) => {
+      const result = await markBlockBlocked({ projectRoot: resolveCliProjectRoot(), ref, reason: options.reason });
+      console.log(JSON.stringify(result, null, 2));
     });
 }

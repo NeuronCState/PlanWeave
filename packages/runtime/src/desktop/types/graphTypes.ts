@@ -111,6 +111,8 @@ export type DesktopLayout = {
 export type DesktopTodoGroupName = BlockStatus | "implemented";
 
 export type DesktopTodoItem = {
+  canvasId?: string;
+  canvasName?: string;
   ref: string;
   taskId: string;
   blockId: string;
@@ -146,6 +148,8 @@ export type DesktopSearchFilters = {
 
 export type DesktopSearchResult = {
   kind: DesktopSearchResultKind;
+  canvasId?: string;
+  canvasName?: string;
   ref: string;
   targetRef?: string;
   title: string;

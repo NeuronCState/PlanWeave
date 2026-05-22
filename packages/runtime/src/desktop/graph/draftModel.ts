@@ -1,5 +1,6 @@
 import { compileTaskGraph } from "../../graph/compileTaskGraph.js";
 import { loadPackage } from "../../package/loadPackage.js";
+import type { PackageWorkspaceRef } from "../../types.js";
 import type { DesktopTaskDraft } from "../types.js";
 import { getTask } from "./graphHelpers.js";
 
@@ -21,7 +22,7 @@ function acceptanceFromText(text: string): string[] {
 }
 
 export async function createTaskDraft(
-  projectRoot: string,
+  projectRoot: PackageWorkspaceRef,
   input: {
     mode: "task" | "blocks" | "document";
     text: string;

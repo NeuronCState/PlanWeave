@@ -5,7 +5,7 @@ import { compileTaskGraph } from "../../graph/compileTaskGraph.js";
 import { addEdge, addNode, removeEdge, removeNode, updateNode } from "../../graph/editGraph.js";
 import { loadPackage } from "../../package/loadPackage.js";
 import { resolvePackagePath } from "../../package/resolvePackagePath.js";
-import type { BlockType, GraphEditResult, ManifestBlock, ManifestTaskNode, NodeType, PlanPackageManifest } from "../../types.js";
+import type { BlockType, GraphEditResult, ManifestBlock, ManifestTaskNode, NodeType, PackageWorkspaceRef, PlanPackageManifest } from "../../types.js";
 import type { DesktopAddBlockInput, DesktopAddContextNodeInput, DesktopAddTaskInput, DesktopGraphEditValidationInput } from "../types.js";
 import { getBlock, getTask } from "./graphHelpers.js";
 
@@ -161,7 +161,7 @@ async function writePromptFile(packageDir: string, packagePath: string, markdown
   await writeFile(promptPath, markdown.endsWith("\n") ? markdown : `${markdown}\n`, "utf8");
 }
 
-export async function addTaskNode(projectRoot: string, input: DesktopAddTaskInput): Promise<GraphEditResult> {
+export async function addTaskNode(projectRoot: PackageWorkspaceRef, input: DesktopAddTaskInput): Promise<GraphEditResult> {
   const { workspace, manifest } = await loadPackage(projectRoot);
   const title = requireNonEmptyTitle(input.title);
   const taskId = nextTaskId(manifest, title);
@@ -199,7 +199,7 @@ export async function addTaskNode(projectRoot: string, input: DesktopAddTaskInpu
   return result;
 }
 
-export async function addBlock(projectRoot: string, input: DesktopAddBlockInput): Promise<GraphEditResult> {
+export async function addBlock(projectRoot: PackageWorkspaceRef, input: DesktopAddBlockInput): Promise<GraphEditResult> {
   const { workspace, manifest } = await loadPackage(projectRoot);
   const graph = compileTaskGraph(manifest);
   const task = getTask(graph, input.taskId);
@@ -222,7 +222,7 @@ export async function addBlock(projectRoot: string, input: DesktopAddBlockInput)
   return result;
 }
 
-export async function addContextNode(projectRoot: string, input: DesktopAddContextNodeInput): Promise<GraphEditResult> {
+export async function addContextNode(projectRoot: PackageWorkspaceRef, input: DesktopAddContextNodeInput): Promise<GraphEditResult> {
   const { manifest } = await loadPackage(projectRoot);
   const title = requireNonEmptyTitle(input.title);
   return addNode({
@@ -236,7 +236,7 @@ export async function addContextNode(projectRoot: string, input: DesktopAddConte
   });
 }
 
-export async function removeTaskNode(projectRoot: string, taskId: string): Promise<GraphEditResult> {
+export async function removeTaskNode(projectRoot: PackageWorkspaceRef, taskId: string): Promise<GraphEditResult> {
   const { workspace, manifest } = await loadPackage(projectRoot);
   const task = getTask(compileTaskGraph(manifest), taskId);
   const result = await removeNode({ projectRoot, nodeId: taskId, removePrompt: false });
@@ -247,7 +247,7 @@ export async function removeTaskNode(projectRoot: string, taskId: string): Promi
   return result;
 }
 
-export async function removeBlock(projectRoot: string, ref: string): Promise<GraphEditResult> {
+export async function removeBlock(projectRoot: PackageWorkspaceRef, ref: string): Promise<GraphEditResult> {
   const { workspace, manifest } = await loadPackage(projectRoot);
   const graph = compileTaskGraph(manifest);
   const { taskId, blockId } = parseBlockRef(ref);
@@ -270,7 +270,7 @@ export async function removeBlock(projectRoot: string, ref: string): Promise<Gra
   return result;
 }
 
-export async function validateGraphEdit(projectRoot: string, input: DesktopGraphEditValidationInput): Promise<GraphEditResult> {
+export async function validateGraphEdit(projectRoot: PackageWorkspaceRef, input: DesktopGraphEditValidationInput): Promise<GraphEditResult> {
   const { manifest } = await loadPackage(projectRoot);
   if (input.kind === "addDependencyEdge") {
     return graphEditResult({ ...manifest, edges: [...manifest.edges, { from: input.fromTaskId, to: input.toTaskId, type: "depends_on" }] }, [input.fromTaskId]);
@@ -317,14 +317,14 @@ export async function validateGraphEdit(projectRoot: string, input: DesktopGraph
   );
 }
 
-export async function updateTaskTitle(projectRoot: string, taskId: string, title: string): Promise<GraphEditResult> {
+export async function updateTaskTitle(projectRoot: PackageWorkspaceRef, taskId: string, title: string): Promise<GraphEditResult> {
   const { manifest } = await loadPackage(projectRoot);
   const graph = compileTaskGraph(manifest);
   const task = getTask(graph, taskId);
   return updateNode({ projectRoot, node: { ...task, title: requireNonEmptyTitle(title) } });
 }
 
-export async function updateTaskPrompt(projectRoot: string, taskId: string, markdown: string): Promise<GraphEditResult> {
+export async function updateTaskPrompt(projectRoot: PackageWorkspaceRef, taskId: string, markdown: string): Promise<GraphEditResult> {
   const { workspace, manifest } = await loadPackage(projectRoot);
   const task = getTask(compileTaskGraph(manifest), taskId);
   const promptPath = await resolvePackagePath(workspace.packageDir, task.prompt);
@@ -333,7 +333,7 @@ export async function updateTaskPrompt(projectRoot: string, taskId: string, mark
   return { ok: true, affectedTasks: [taskId], diagnostics: [], graph: compileTaskGraph(manifest) };
 }
 
-export async function updateBlockTitle(projectRoot: string, ref: string, title: string): Promise<GraphEditResult> {
+export async function updateBlockTitle(projectRoot: PackageWorkspaceRef, ref: string, title: string): Promise<GraphEditResult> {
   const { manifest } = await loadPackage(projectRoot);
   const graph = compileTaskGraph(manifest);
   const { taskId, blockId } = parseBlockRef(ref);
@@ -350,7 +350,7 @@ export async function updateBlockTitle(projectRoot: string, ref: string, title: 
   });
 }
 
-export async function updateBlockPrompt(projectRoot: string, ref: string, markdown: string): Promise<GraphEditResult> {
+export async function updateBlockPrompt(projectRoot: PackageWorkspaceRef, ref: string, markdown: string): Promise<GraphEditResult> {
   const { workspace, manifest } = await loadPackage(projectRoot);
   const graph = compileTaskGraph(manifest);
   const block = getBlock(graph, ref);
@@ -360,7 +360,7 @@ export async function updateBlockPrompt(projectRoot: string, ref: string, markdo
   return { ok: true, affectedTasks: [graph.blockTaskByRef.get(ref) ?? parseBlockRef(ref).taskId], diagnostics: [], graph };
 }
 
-export async function updateTaskExecutor(projectRoot: string, taskId: string, executorName: string | null): Promise<GraphEditResult> {
+export async function updateTaskExecutor(projectRoot: PackageWorkspaceRef, taskId: string, executorName: string | null): Promise<GraphEditResult> {
   const { manifest } = await loadPackage(projectRoot);
   const graph = compileTaskGraph(manifest);
   const task = getTask(graph, taskId);
@@ -371,7 +371,7 @@ export async function updateTaskExecutor(projectRoot: string, taskId: string, ex
   });
 }
 
-export async function updateBlockExecutor(projectRoot: string, ref: string, executorName: string | null): Promise<GraphEditResult> {
+export async function updateBlockExecutor(projectRoot: PackageWorkspaceRef, ref: string, executorName: string | null): Promise<GraphEditResult> {
   const { manifest } = await loadPackage(projectRoot);
   const graph = compileTaskGraph(manifest);
   const { taskId, blockId } = parseBlockRef(ref);
@@ -389,10 +389,10 @@ export async function updateBlockExecutor(projectRoot: string, ref: string, exec
   });
 }
 
-export function addDependencyEdge(projectRoot: string, fromTaskId: string, toTaskId: string): Promise<GraphEditResult> {
+export function addDependencyEdge(projectRoot: PackageWorkspaceRef, fromTaskId: string, toTaskId: string): Promise<GraphEditResult> {
   return addEdge({ projectRoot, edge: { from: fromTaskId, to: toTaskId, type: "depends_on" } });
 }
 
-export function removeDependencyEdge(projectRoot: string, fromTaskId: string, toTaskId: string): Promise<GraphEditResult> {
+export function removeDependencyEdge(projectRoot: PackageWorkspaceRef, fromTaskId: string, toTaskId: string): Promise<GraphEditResult> {
   return removeEdge({ projectRoot, edge: { from: fromTaskId, to: toTaskId, type: "depends_on" } });
 }

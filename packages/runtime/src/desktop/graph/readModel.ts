@@ -5,11 +5,11 @@ import { resolvePackagePath } from "../../package/resolvePackagePath.js";
 import { readState } from "../../state.js";
 import { getExecutionStatus } from "../../taskManager/index.js";
 import { listExecutorProfiles } from "../../autoRun/executors.js";
-import type { ManifestContextNode } from "../../types.js";
+import type { ManifestContextNode, PackageWorkspaceRef } from "../../types.js";
 import type { DesktopBlockDetail, DesktopBlockPreview, DesktopGraphViewModel, DesktopTaskDetail, DesktopTaskException, DesktopTaskExecutionOrder } from "../types.js";
 import { exceptionForBlock, executorLabel, getBlock, getTask, promptPreview, readOptionalFile, sortBlockRefsForTask } from "./graphHelpers.js";
 
-export async function getGraphViewModel(projectRoot: string): Promise<DesktopGraphViewModel> {
+export async function getGraphViewModel(projectRoot: PackageWorkspaceRef): Promise<DesktopGraphViewModel> {
   const { workspace, manifest } = await loadPackage(projectRoot);
   const graph = await compilePackageGraph(manifest, workspace.packageDir);
   const state = await readState(workspace.stateFile);
@@ -90,7 +90,7 @@ export async function getGraphViewModel(projectRoot: string): Promise<DesktopGra
   };
 }
 
-export async function getTaskDetail(projectRoot: string, taskId: string): Promise<DesktopTaskDetail> {
+export async function getTaskDetail(projectRoot: PackageWorkspaceRef, taskId: string): Promise<DesktopTaskDetail> {
   const { workspace, manifest } = await loadPackage(projectRoot);
   const graph = compileTaskGraph(manifest);
   const task = getTask(graph, taskId);
@@ -106,7 +106,7 @@ export async function getTaskDetail(projectRoot: string, taskId: string): Promis
   };
 }
 
-export async function getTaskExecutionOrder(projectRoot: string, taskId: string): Promise<DesktopTaskExecutionOrder> {
+export async function getTaskExecutionOrder(projectRoot: PackageWorkspaceRef, taskId: string): Promise<DesktopTaskExecutionOrder> {
   const { manifest } = await loadPackage(projectRoot);
   const graph = compileTaskGraph(manifest);
   getTask(graph, taskId);
@@ -116,7 +116,7 @@ export async function getTaskExecutionOrder(projectRoot: string, taskId: string)
   };
 }
 
-export async function getBlockDetail(projectRoot: string, ref: string): Promise<DesktopBlockDetail> {
+export async function getBlockDetail(projectRoot: PackageWorkspaceRef, ref: string): Promise<DesktopBlockDetail> {
   const { workspace, manifest } = await loadPackage(projectRoot);
   const graph = compileTaskGraph(manifest);
   const { taskId, blockId } = parseBlockRef(ref);

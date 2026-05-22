@@ -18,6 +18,7 @@ export function useDesktopProject({
 }: UseDesktopProjectArgs) {
   const [projects, setProjects] = useState<DesktopProjectSummary[]>([]);
   const [selectedProject, setSelectedProject] = useState<DesktopProjectSummary | null>(null);
+  const [selectedCanvasId, setSelectedCanvasId] = useState<string | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [graph, setGraph] = useState<DesktopGraphViewModel | null>(null);
   const [layout, setLayout] = useState<DesktopLayout | null>(null);
@@ -25,18 +26,22 @@ export function useDesktopProject({
   const [statistics, setStatistics] = useState<DesktopStatistics | null>(null);
 
   const loadProject = useCallback(
-    async (project: DesktopProjectSummary) => {
+    async (project: DesktopProjectSummary, requestedCanvasId?: string | null) => {
       if (!bridge) {
         return;
       }
+      const canvasId = project.taskCanvases.some((canvas) => canvas.canvasId === requestedCanvasId)
+        ? (requestedCanvasId ?? null)
+        : (project.taskCanvases[0]?.canvasId ?? null);
       setSelectedProject(project);
+      setSelectedCanvasId(canvasId);
       setExpandedProjectId(project.projectId);
       setSelectedTaskPanelId(null);
       setSelectedContextNodeId(null);
       setError(null);
       const [nextGraph, nextLayout, nextTodo, nextStats] = await Promise.all([
-        bridge.getGraphViewModel(project.rootPath),
-        bridge.getDesktopLayout(project.rootPath),
+        bridge.getGraphViewModel(project.rootPath, canvasId),
+        bridge.getDesktopLayout(project.rootPath, canvasId),
         bridge.getTodoGroups(project.rootPath),
         bridge.getStatistics(project.rootPath)
       ]);
@@ -44,8 +49,8 @@ export function useDesktopProject({
       setLayout(nextLayout);
       setTodoGroups(nextTodo);
       setStatistics(nextStats);
-      await bridge.refreshPackageFileChanges(project.rootPath);
-      await bridge.watchPackageFiles(project.rootPath);
+      await bridge.refreshPackageFileChanges(project.rootPath, canvasId);
+      await bridge.watchPackageFiles(project.rootPath, canvasId);
       updateSettings({ runtimePath: project.workspaceRoot });
     },
     [setError, setSelectedContextNodeId, setSelectedTaskPanelId, updateSettings]
@@ -67,21 +72,41 @@ export function useDesktopProject({
   }, [loadProject, setError]);
 
   useEffect(() => {
-    const projectRoot = selectedProject?.rootPath;
+  const projectRoot = selectedProject?.rootPath;
+  const canvasId = selectedCanvasId;
     return () => {
       if (bridge && projectRoot) {
-        void bridge.unwatchPackageFiles(projectRoot);
+        void bridge.unwatchPackageFiles(projectRoot, canvasId);
       }
     };
-  }, [selectedProject?.rootPath]);
+  }, [selectedCanvasId, selectedProject?.rootPath]);
 
   const refreshGraph = useCallback(async () => {
     if (!bridge || !selectedProject) {
       return;
     }
-    const nextGraph = await bridge.getGraphViewModel(selectedProject.rootPath);
+    const nextGraph = await bridge.getGraphViewModel(selectedProject.rootPath, selectedCanvasId);
     setGraph(nextGraph);
-  }, [selectedProject]);
+  }, [selectedCanvasId, selectedProject]);
+
+  const refreshProjectSummary = useCallback(
+    async (projectRoot: string, canvasId?: string | null) => {
+      if (!bridge) {
+        return null;
+      }
+      const nextProjects = await bridge.listProjects();
+      setProjects(nextProjects);
+      const project = nextProjects.find((item) => item.rootPath === projectRoot) ?? null;
+      if (project && selectedProject?.rootPath === projectRoot) {
+        setSelectedProject(project);
+        if (canvasId !== undefined) {
+          setSelectedCanvasId(canvasId);
+        }
+      }
+      return project;
+    },
+    [selectedProject?.rootPath]
+  );
 
   const handleOpenProject = useCallback(async () => {
     if (!bridge) {
@@ -117,6 +142,7 @@ export function useDesktopProject({
         return;
       }
       setSelectedProject(null);
+      setSelectedCanvasId(null);
       setExpandedProjectId(null);
       setSelectedTaskPanelId(null);
       setSelectedContextNodeId(null);
@@ -135,8 +161,10 @@ export function useDesktopProject({
     layout,
     loadProject,
     projects,
+    refreshProjectSummary,
     refreshGraph,
     removeProject,
+    selectedCanvasId,
     selectedProject,
     setLayout,
     statistics,

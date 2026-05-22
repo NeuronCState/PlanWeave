@@ -3,7 +3,8 @@ import type { DesktopPackageFileChangeEvent, DesktopProjectSummary } from "@plan
 import { bridge } from "../bridge";
 
 type UsePackageFileSyncArgs = {
-  loadProject: (project: DesktopProjectSummary) => Promise<void>;
+  loadProject: (project: DesktopProjectSummary, canvasId?: string | null) => Promise<void>;
+  selectedCanvasId: string | null;
   selectedProject: DesktopProjectSummary | null;
   setDirtyPromptRefs: (refs: string[]) => void;
   setError: (message: string | null) => void;
@@ -13,6 +14,7 @@ type UsePackageFileSyncArgs = {
 
 export function usePackageFileSync({
   loadProject,
+  selectedCanvasId,
   selectedProject,
   setDirtyPromptRefs,
   setError,
@@ -24,32 +26,32 @@ export function usePackageFileSync({
       return;
     }
     try {
-      const result = await bridge.refreshPackageFileChanges(selectedProject.rootPath);
+      const result = await bridge.refreshPackageFileChanges(selectedProject.rootPath, selectedCanvasId);
       setDirtyPromptRefs(result.dirtyPromptRefs);
       setFileSyncDiagnostics(result.diagnostics.map((diagnostic) => diagnostic.message));
       if (!result.ok) {
         setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
         return;
       }
-      await loadProject(selectedProject);
+      await loadProject(selectedProject, selectedCanvasId);
       setDirtyPromptRefs(result.dirtyPromptRefs);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [loadProject, selectedProject, setDirtyPromptRefs, setError, setFileSyncDiagnostics]);
+  }, [loadProject, selectedCanvasId, selectedProject, setDirtyPromptRefs, setError, setFileSyncDiagnostics]);
 
   useEffect(() => {
     if (!bridge || !selectedProject) {
       return undefined;
     }
     return bridge.onPackageFileChanged((event) => {
-      if (event.projectRoot !== selectedProject.rootPath) {
+      if (event.projectRoot !== selectedProject.rootPath || (event.canvasId ?? null) !== selectedCanvasId) {
         return;
       }
       setLastFileChange(event);
       void refreshPackageFiles();
     });
-  }, [refreshPackageFiles, selectedProject, setLastFileChange]);
+  }, [refreshPackageFiles, selectedCanvasId, selectedProject, setLastFileChange]);
 
   return { refreshPackageFiles };
 }

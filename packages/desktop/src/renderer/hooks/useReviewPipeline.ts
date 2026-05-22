@@ -5,13 +5,14 @@ import type { createTranslator } from "../i18n";
 
 type UseReviewPipelineArgs = {
   graph: DesktopGraphViewModel | null;
-  loadProject: (project: DesktopProjectSummary) => Promise<void>;
+  loadProject: (project: DesktopProjectSummary, canvasId?: string | null) => Promise<void>;
+  selectedCanvasId: string | null;
   selectedProject: DesktopProjectSummary | null;
   setError: (message: string | null) => void;
   t: ReturnType<typeof createTranslator>;
 };
 
-export function useReviewPipeline({ graph, loadProject, selectedProject, setError, t }: UseReviewPipelineArgs) {
+export function useReviewPipeline({ graph, loadProject, selectedCanvasId, selectedProject, setError, t }: UseReviewPipelineArgs) {
   const [reviewTaskId, setReviewTaskId] = useState<string | null>(null);
   const [reviewPipeline, setReviewPipeline] = useState<DesktopReviewPipeline | null>(null);
   const [reviewDraft, setReviewDraft] = useState<DesktopReviewPipelineStepInput[]>([]);
@@ -35,7 +36,7 @@ export function useReviewPipeline({ graph, loadProject, selectedProject, setErro
     }
     let cancelled = false;
     bridge
-      .getReviewPipeline(selectedProject.rootPath, reviewTaskId)
+      .getReviewPipeline(selectedProject.rootPath, selectedCanvasId, reviewTaskId)
       .then((pipeline) => {
         if (cancelled) {
           return;
@@ -52,7 +53,7 @@ export function useReviewPipeline({ graph, loadProject, selectedProject, setErro
     return () => {
       cancelled = true;
     };
-  }, [reviewTaskId, selectedProject, setError]);
+  }, [reviewTaskId, selectedCanvasId, selectedProject, setError]);
 
   const updateReviewStep = useCallback((index: number, patch: Partial<DesktopReviewPipelineStepInput>) => {
     setReviewDraft((current) => current.map((step, stepIndex) => (stepIndex === index ? { ...step, ...patch } : step)));
@@ -98,7 +99,7 @@ export function useReviewPipeline({ graph, loadProject, selectedProject, setErro
       return;
     }
     try {
-      const result = await bridge.updateReviewPipeline(selectedProject.rootPath, reviewTaskId, {
+      const result = await bridge.updateReviewPipeline(selectedProject.rootPath, selectedCanvasId, reviewTaskId, {
         packageDefaults: {
           maxFeedbackCycles: reviewDefaultCyclesDraft,
           completionPolicy: "strict"
@@ -109,14 +110,14 @@ export function useReviewPipeline({ graph, loadProject, selectedProject, setErro
         setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
         return;
       }
-      const pipeline = await bridge.getReviewPipeline(selectedProject.rootPath, reviewTaskId);
+      const pipeline = await bridge.getReviewPipeline(selectedProject.rootPath, selectedCanvasId, reviewTaskId);
       setReviewPipeline(pipeline);
       setReviewDraft(pipeline.steps);
-      await loadProject(selectedProject);
+      await loadProject(selectedProject, selectedCanvasId);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [loadProject, reviewDefaultCyclesDraft, reviewDraft, reviewTaskId, selectedProject, setError]);
+  }, [loadProject, reviewDefaultCyclesDraft, reviewDraft, reviewTaskId, selectedCanvasId, selectedProject, setError]);
 
   return {
     addReviewStep,

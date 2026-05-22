@@ -6,12 +6,13 @@ import type { TaskNodeData } from "../types";
 type UsePromptDraftsArgs = {
   graph: DesktopGraphViewModel | null;
   refreshGraph: () => Promise<void>;
+  selectedCanvasId: string | null;
   selectedProject: DesktopProjectSummary | null;
   setError: (message: string | null) => void;
 };
 
-export function usePromptDrafts({ graph, refreshGraph, selectedProject, setError }: UsePromptDraftsArgs) {
-  const draftProjectId = useRef<string | null>(null);
+export function usePromptDrafts({ graph, refreshGraph, selectedCanvasId, selectedProject, setError }: UsePromptDraftsArgs) {
+  const draftScopeId = useRef<string | null>(null);
   const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
   const [promptDrafts, setPromptDrafts] = useState<Record<string, string>>({});
   const [saveStates, setSaveStates] = useState<Record<string, TaskNodeData["saveState"]>>({});
@@ -21,28 +22,29 @@ export function usePromptDrafts({ graph, refreshGraph, selectedProject, setError
       setTitleDrafts({});
       setPromptDrafts({});
       setSaveStates({});
-      draftProjectId.current = null;
+      draftScopeId.current = null;
       return;
     }
 
-    const projectChanged = draftProjectId.current !== selectedProject.projectId;
-    draftProjectId.current = selectedProject.projectId;
+    const nextScopeId = `${selectedProject.projectId}:${selectedCanvasId ?? "default"}`;
+    const scopeChanged = draftScopeId.current !== nextScopeId;
+    draftScopeId.current = nextScopeId;
     const taskIds = new Set(graph.tasks.map((task) => task.taskId));
 
     setTitleDrafts((current) =>
-      projectChanged
+      scopeChanged
         ? Object.fromEntries(graph.tasks.map((task) => [task.taskId, task.title]))
         : Object.fromEntries(graph.tasks.map((task) => [task.taskId, current[task.taskId] ?? task.title]))
     );
     setPromptDrafts((current) =>
-      projectChanged
+      scopeChanged
         ? Object.fromEntries(graph.tasks.map((task) => [task.taskId, task.promptMarkdown]))
         : Object.fromEntries(graph.tasks.map((task) => [task.taskId, current[task.taskId] ?? task.promptMarkdown]))
     );
     setSaveStates((current) =>
-      projectChanged ? {} : Object.fromEntries(Object.entries(current).filter(([taskId]) => taskIds.has(taskId)))
+      scopeChanged ? {} : Object.fromEntries(Object.entries(current).filter(([taskId]) => taskIds.has(taskId)))
     );
-  }, [graph, selectedProject]);
+  }, [graph, selectedCanvasId, selectedProject]);
 
   const handleTitleChange = useCallback((taskId: string, value: string) => {
     setTitleDrafts((current) => ({ ...current, [taskId]: value }));
@@ -54,13 +56,13 @@ export function usePromptDrafts({ graph, refreshGraph, selectedProject, setError
         return;
       }
       try {
-        await bridge.updateTaskTitle(selectedProject.rootPath, taskId, titleDrafts[taskId] ?? "");
+        await bridge.updateTaskTitle(selectedProject.rootPath, selectedCanvasId, taskId, titleDrafts[taskId] ?? "");
         await refreshGraph();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [refreshGraph, selectedProject, setError, titleDrafts]
+    [refreshGraph, selectedCanvasId, selectedProject, setError, titleDrafts]
   );
 
   const handlePromptChange = useCallback((taskId: string, value: string) => {
@@ -75,7 +77,7 @@ export function usePromptDrafts({ graph, refreshGraph, selectedProject, setError
       }
       setSaveStates((current) => ({ ...current, [taskId]: "saving" }));
       try {
-        await bridge.updateTaskPrompt(selectedProject.rootPath, taskId, promptDrafts[taskId] ?? "");
+        await bridge.updateTaskPrompt(selectedProject.rootPath, selectedCanvasId, taskId, promptDrafts[taskId] ?? "");
         setSaveStates((current) => ({ ...current, [taskId]: "saved" }));
         await refreshGraph();
       } catch (caught) {
@@ -83,7 +85,7 @@ export function usePromptDrafts({ graph, refreshGraph, selectedProject, setError
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [promptDrafts, refreshGraph, selectedProject, setError]
+    [promptDrafts, refreshGraph, selectedCanvasId, selectedProject, setError]
   );
 
   useEffect(() => {

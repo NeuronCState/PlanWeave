@@ -7,6 +7,7 @@ import type { AutoRunScopeMode, FloatingControlDrag, FloatingControlPosition } f
 import { clamp } from "../viewHelpers";
 
 type UseAutoRunControlArgs = {
+  selectedCanvasId: string | null;
   selectedBlock: DesktopBlockDetail | null;
   selectedProject: DesktopProjectSummary | null;
   selectedTaskPanelId: string | null;
@@ -14,7 +15,7 @@ type UseAutoRunControlArgs = {
   t: ReturnType<typeof createTranslator>;
 };
 
-export function useAutoRunControl({ selectedBlock, selectedProject, selectedTaskPanelId, setError, t }: UseAutoRunControlArgs) {
+export function useAutoRunControl({ selectedCanvasId, selectedBlock, selectedProject, selectedTaskPanelId, setError, t }: UseAutoRunControlArgs) {
   const [autoRunState, setAutoRunState] = useState<DesktopAutoRunState | null>(null);
   const [autoRunScopeMode, setAutoRunScopeMode] = useState<AutoRunScopeMode>("project");
   const [miniRunPanelOpen, setMiniRunPanelOpen] = useState(false);
@@ -66,7 +67,7 @@ export function useAutoRunControl({ selectedBlock, selectedProject, selectedTask
           setError(t("selectBlockFirst"));
           return;
         }
-        setAutoRunState(await bridge.startAutoRun(selectedProject.rootPath, scope, 20));
+        setAutoRunState(await bridge.startAutoRun(selectedProject.rootPath, selectedCanvasId, scope, 20));
         return;
       }
       if (autoRunState.phase === "running") {
@@ -79,7 +80,7 @@ export function useAutoRunControl({ selectedBlock, selectedProject, selectedTask
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [autoRunState, selectedAutoRunScope, selectedProject, setError, t]);
+  }, [autoRunState, selectedAutoRunScope, selectedCanvasId, selectedProject, setError, t]);
 
   const stopAutoRunClick = useCallback(async () => {
     if (!bridge || !autoRunState) {

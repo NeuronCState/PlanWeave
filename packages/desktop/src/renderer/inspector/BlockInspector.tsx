@@ -1,24 +1,42 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useMemo, useState } from "react";
+import type { CSSProperties, Dispatch, PointerEvent, SetStateAction } from "react";
 import type { DesktopBlockDetail, DesktopBlockRunRecordSummary, DesktopFeedbackRecord, DesktopGraphViewModel, DesktopReviewAttemptSummary, DesktopRunRecord } from "@planweave/runtime";
-import { SquareIcon } from "lucide-react";
+import { GripIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import type { createTranslator } from "../i18n";
 import { statusVariant } from "../viewHelpers";
+import { BlockConnectionsCard } from "./BlockConnectionsCard";
+import { BlockInspectorZoomControls } from "./BlockInspectorZoomControls";
+import { BlockRunRecordCard } from "./BlockRunRecordCard";
 
 type BlockInspectorProps = {
   blockFeedbackRecords: DesktopFeedbackRecord[];
   blockReviewAttempts: DesktopReviewAttemptSummary[];
   blockRunRecords: DesktopBlockRunRecordSummary[];
+  className?: string;
+  dragHandlers?: {
+    onPointerCancel: (event: PointerEvent<HTMLDivElement>) => void;
+    onPointerDown: (event: PointerEvent<HTMLDivElement>) => void;
+    onPointerMove: (event: PointerEvent<HTMLDivElement>) => void;
+    onPointerUp: (event: PointerEvent<HTMLDivElement>) => void;
+  };
+  resizeHandlers?: {
+    onPointerCancel: (event: PointerEvent<HTMLDivElement>) => void;
+    onPointerDown: (event: PointerEvent<HTMLDivElement>) => void;
+    onPointerMove: (event: PointerEvent<HTMLDivElement>) => void;
+    onPointerUp: (event: PointerEvent<HTMLDivElement>) => void;
+  };
   error: string | null;
   graph: DesktopGraphViewModel | null;
   handleOpenRunRecord: (recordId: string | null | undefined) => Promise<void>;
+  onClose: () => void;
   saveSelectedBlockExecutor: (executorName: string | null) => Promise<void>;
   saveSelectedBlockPrompt: () => Promise<void>;
   saveSelectedBlockTitle: () => Promise<void>;
@@ -26,6 +44,7 @@ type BlockInspectorProps = {
   selectedRunRecord: DesktopRunRecord | null;
   setSelectedBlock: Dispatch<SetStateAction<DesktopBlockDetail | null>>;
   setSelectedRunRecord: Dispatch<SetStateAction<DesktopRunRecord | null>>;
+  style?: CSSProperties;
   t: ReturnType<typeof createTranslator>;
 };
 
@@ -33,62 +52,52 @@ export function BlockInspector({
   blockFeedbackRecords,
   blockReviewAttempts,
   blockRunRecords,
+  className,
+  dragHandlers,
   error,
   graph,
   handleOpenRunRecord,
+  onClose,
   saveSelectedBlockExecutor,
   saveSelectedBlockPrompt,
   saveSelectedBlockTitle,
   selectedBlock,
   selectedRunRecord,
+  resizeHandlers,
   setSelectedBlock,
   setSelectedRunRecord,
+  style,
   t
 }: BlockInspectorProps) {
   const latestBlockRun = blockRunRecords[0];
   const latestReviewAttempt = blockReviewAttempts[0];
   const latestFeedbackRecord = blockFeedbackRecords[0];
+  const [zoom, setZoom] = useState(1);
+  const taskBlocks = useMemo(() => {
+    if (!graph || !selectedBlock) {
+      return [];
+    }
+    return graph.tasks.find((task) => task.taskId === selectedBlock.taskId)?.blocks ?? [];
+  }, [graph, selectedBlock]);
+
+  if (!selectedBlock && !selectedRunRecord && !error) {
+    return null;
+  }
 
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col border-l bg-background">
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
-        <div className="text-sm font-semibold">{t("selectedBlock")}</div>
+    <Card className={cn("absolute flex min-h-[420px] min-w-[380px] flex-col overflow-hidden bg-background shadow-xl", className)} size="sm" style={style}>
+      <CardHeader className="cursor-move border-b" {...dragHandlers}>
+        <CardTitle>{selectedRunRecord ? t("runRecordDetail") : t("selectedBlock")}</CardTitle>
+        <CardAction className="flex items-center gap-1">
+          <BlockInspectorZoomControls onClose={onClose} setZoom={setZoom} t={t} zoom={zoom} />
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto">
         {selectedRunRecord ? (
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle className="text-sm">{t("runRecordDetail")}</CardTitle>
-              <CardDescription>{selectedRunRecord.recordId}</CardDescription>
-              <CardAction>
-                <Button size="icon-sm" variant="ghost" aria-label={t("closeRecord")} onClick={() => setSelectedRunRecord(null)}>
-                  <SquareIcon data-icon="inline-start" />
-                </Button>
-              </CardAction>
-            </CardHeader>
-            <CardContent className="flex max-h-80 flex-col gap-2 overflow-hidden">
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <Badge variant="outline">{selectedRunRecord.adapter ?? t("manualExecutor")}</Badge>
-                <Badge variant={selectedRunRecord.exitCode === 0 || selectedRunRecord.exitCode === null ? "secondary" : "destructive"}>
-                  {selectedRunRecord.exitCode ?? "-"}
-                </Badge>
-              </div>
-              {selectedRunRecord.stdoutSummary ? (
-                <div className="text-xs text-muted-foreground">
-                  {t("latestOutput")}: {selectedRunRecord.stdoutSummary}
-                </div>
-              ) : null}
-              {selectedRunRecord.stderrSummary ? (
-                <div className="text-xs text-destructive">
-                  {t("stderr")}: {selectedRunRecord.stderrSummary}
-                </div>
-              ) : null}
-              <ScrollArea className="h-40 rounded-md border p-2">
-                <pre className="whitespace-pre-wrap text-xs">{selectedRunRecord.reportMarkdown || selectedRunRecord.promptMarkdown}</pre>
-              </ScrollArea>
-            </CardContent>
-          </Card>
+          <BlockRunRecordCard selectedRunRecord={selectedRunRecord} setSelectedRunRecord={setSelectedRunRecord} t={t} />
         ) : null}
         {selectedBlock ? (
-          <div className="flex min-h-0 flex-1 flex-col gap-3">
+          <div className="flex min-h-0 flex-1 origin-top-left flex-col gap-3" style={{ transform: `scale(${zoom})`, transformOrigin: "top left", width: `${100 / zoom}%` }}>
             <div className="flex items-center justify-between gap-2">
               <Input
                 aria-label={t("title")}
@@ -159,21 +168,31 @@ export function BlockInspector({
                 {selectedBlock.exceptionReason ? <div className="rounded-md border border-destructive p-2 text-destructive">{selectedBlock.exceptionReason}</div> : null}
               </CardContent>
             </Card>
-            <Textarea className="min-h-56 flex-1 resize-none" value={selectedBlock.promptMarkdown} onChange={(event) => setSelectedBlock({ ...selectedBlock, promptMarkdown: event.target.value })} />
-            <Button onClick={() => void saveSelectedBlockPrompt()}>{t("savePrompt")}</Button>
+            <BlockConnectionsCard blocks={taskBlocks} dependencies={selectedBlock.dependencies} selectedBlockRef={selectedBlock.ref} />
+            <Textarea className="h-56 resize-none" value={selectedBlock.promptMarkdown} onChange={(event) => setSelectedBlock({ ...selectedBlock, promptMarkdown: event.target.value })} />
           </div>
         ) : (
           <div className="text-sm text-muted-foreground">{t("blocks")}</div>
         )}
-      </div>
+      </CardContent>
       {error ? (
         <>
           <Separator />
-          <div className="p-3">
+          <CardContent>
             <Badge variant="destructive">{error}</Badge>
-          </div>
+          </CardContent>
         </>
       ) : null}
-    </aside>
+      {selectedBlock ? (
+        <CardFooter>
+          <Button className="w-full" onClick={() => void saveSelectedBlockPrompt()}>
+            {t("savePrompt")}
+          </Button>
+        </CardFooter>
+      ) : null}
+      <div className="absolute bottom-1 right-1 flex h-5 w-5 cursor-nwse-resize items-center justify-center rounded-sm text-muted-foreground hover:bg-muted" aria-label="调整 Block 面板大小" role="separator" {...resizeHandlers}>
+        <GripIcon className="h-4 w-4" />
+      </div>
+    </Card>
   );
 }

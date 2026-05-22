@@ -23,6 +23,7 @@ type GraphViewProps = {
   autoRunControlStyle: CSSProperties;
   autoRunScopeMode: AutoRunScopeMode;
   autoRunState: DesktopAutoRunState | null;
+  dirtyPromptRefs: string[];
   edges: Edge[];
   graph: DesktopGraphViewModel | null;
   handleAutoRunClick: () => Promise<void>;
@@ -38,6 +39,7 @@ type GraphViewProps = {
   nodes: AppFlowNode[];
   onEdgesChange: OnEdgesChange<Edge>;
   onNodesChange: OnNodesChange<AppFlowNode>;
+  refreshPackageFiles: () => Promise<void>;
   selectedBlockPresent: boolean;
   selectedProject: DesktopProjectSummary | null;
   selectedTaskPanelId: string | null;
@@ -57,6 +59,7 @@ export function GraphView({
   autoRunControlStyle,
   autoRunScopeMode,
   autoRunState,
+  dirtyPromptRefs,
   edges,
   graph,
   handleAutoRunClick,
@@ -73,6 +76,7 @@ export function GraphView({
   onEdgesChange,
   onNodeDragStop,
   onNodesChange,
+  refreshPackageFiles,
   selectedBlockPresent,
   selectedProject,
   selectedTaskPanelId,
@@ -86,12 +90,14 @@ export function GraphView({
   visibleTaskIds,
   visibleTasks
 }: GraphViewProps) {
+  const dirtyPromptCount = Math.max(dirtyPromptRefs.length, graph?.dirtyPromptRefs.length ?? 0);
+
   return (
     <div className="relative h-full min-h-0" data-graph-surface onDragOver={handleGraphDragOver} onDrop={handleGraphDrop}>
       {!graph ? (
-        <div className="flex h-full items-start p-6">
-          <div className="flex max-w-md flex-col gap-3 rounded-lg border bg-background p-5">
-            <div className="flex items-center gap-2 text-sm font-semibold">
+        <div className="flex h-full items-center justify-center p-6">
+          <div className="flex max-w-md flex-col items-center gap-3 bg-background p-5 text-center">
+            <div className="flex items-center justify-center gap-2 text-sm font-semibold">
               <FolderOpenIcon data-icon="inline-start" />
               {t("noProject")}
             </div>
@@ -113,6 +119,7 @@ export function GraphView({
           onEdgesChange={onEdgesChange}
           onNodeDragStop={(event, node) => void onNodeDragStop(event, node)}
           onInit={setFlowInstance}
+          proOptions={{ hideAttribution: true }}
           fitView
         >
           <Background />
@@ -123,10 +130,12 @@ export function GraphView({
       <FloatingAutoRunControl
         autoRunScopeMode={autoRunScopeMode}
         autoRunState={autoRunState}
+        dirtyPromptCount={dirtyPromptCount}
         handleAutoRunClick={handleAutoRunClick}
         handleOpenRunRecord={handleOpenRunRecord}
         miniRunPanelOpen={miniRunPanelOpen}
         moveAutoRunControl={moveAutoRunControl}
+        refreshPackageFiles={refreshPackageFiles}
         selectedBlockPresent={selectedBlockPresent}
         selectedProject={selectedProject}
         selectedTaskPanelId={selectedTaskPanelId}

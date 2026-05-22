@@ -28,6 +28,9 @@ export function graphNodes(
   onPromptChange: TaskNodeData["onPromptChange"],
   onPromptSave: TaskNodeData["onPromptSave"],
   onBlockSelect: TaskNodeData["onBlockSelect"],
+  onOverflowBlockSelect: TaskNodeData["onOverflowBlockSelect"],
+  onTaskDelete: TaskNodeData["onTaskDelete"],
+  onBlockDelete: TaskNodeData["onBlockDelete"],
   onSelectedBlockChange: TaskNodeData["onSelectedBlockChange"],
   onBlockTitleSave: TaskNodeData["onBlockTitleSave"],
   onBlockExecutorChange: TaskNodeData["onBlockExecutorChange"],
@@ -41,7 +44,7 @@ export function graphNodes(
     return {
       id: task.taskId,
       type: "task",
-      position: saved ? { x: saved.x, y: saved.y } : { x: 80 + (index % 3) * 420, y: 80 + Math.floor(index / 3) * 320 },
+      position: saved ? { x: saved.x, y: saved.y } : { x: 80 + (index % 3) * 460, y: 80 + Math.floor(index / 3) * 480 },
       data: {
         task,
         titleDraft: titleDrafts[task.taskId] ?? task.title,
@@ -59,6 +62,9 @@ export function graphNodes(
         onPromptChange,
         onPromptSave,
         onBlockSelect,
+        onOverflowBlockSelect,
+        onTaskDelete,
+        onBlockDelete,
         onSelectedBlockChange,
         onBlockTitleSave,
         onBlockExecutorChange,
@@ -70,7 +76,7 @@ export function graphNodes(
   const contextNodes: ContextFlowNode[] = graph.contextNodes.map((node, index) => ({
     id: node.nodeId,
     type: "context",
-    position: layoutByNode.get(node.nodeId) ?? { x: 120 + (index % 2) * 360, y: 140 + Math.floor(index / 2) * 180 },
+    position: layoutByNode.get(node.nodeId) ?? { x: 560 + (index % 2) * 380, y: 120 + Math.floor(index / 2) * 220 },
     data: { node, selected: node.nodeId === selectedContextNodeId }
   }));
   return [...taskNodes, ...contextNodes];

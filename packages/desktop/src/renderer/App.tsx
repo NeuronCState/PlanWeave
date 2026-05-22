@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type * as React from "react";
 import { type Edge, type ReactFlowInstance, useEdgesState, useNodesState } from "@xyflow/react";
 import type { DesktopPackageFileChangeEvent } from "@planweave/runtime";
+import { PanelLeftOpenIcon, PanelRightCloseIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { bridge } from "./bridge";
 import { ComponentPalette } from "./palette/ComponentPalette";
+import { WindowTitleBar } from "./components/WindowTitleBar";
 import { BlockInspector } from "./inspector/BlockInspector";
 import { nodeTypes, graphEdges, graphNodes } from "./graph/flowModel";
 import { createTranslator } from "./i18n";
 import { ProjectSidebar } from "./sidebar/ProjectSidebar";
 import { buildNotificationItems } from "./notifications";
-import { desktopSettingsKey, loadDesktopSettings } from "./settings";
+import { loadDesktopSettings } from "./settings";
 import type { AppFlowNode, AppView, DesktopUiSettings } from "./types";
 import { WorkspaceTabs } from "./views/WorkspaceTabs";
 import { useReviewPipeline } from "./hooks/useReviewPipeline";
@@ -20,13 +22,23 @@ import { useSelectedBlock } from "./hooks/useSelectedBlock";
 import { useDesktopSearch } from "./hooks/useDesktopSearch";
 import { useTaskDraft } from "./hooks/useTaskDraft";
 import { useDesktopProject } from "./hooks/useDesktopProject";
+import { useDraggablePanel } from "./hooks/useDraggablePanel";
 import { usePromptDrafts } from "./hooks/usePromptDrafts";
+import { useAppViewHistory } from "./hooks/useAppViewHistory";
+import { useGraphDeleteActions } from "./hooks/useGraphDeleteActions";
+import { useDesktopSettingsEffects } from "./hooks/useDesktopSettingsEffects";
+import { useVisibleGraphTasks } from "./hooks/useVisibleGraphTasks";
+import { SettingsView } from "./views/SettingsView";
+import { HistoryNavigationButtons } from "./components/HistoryNavigationButtons";
 
 export function App() {
   const [settings, setSettings] = useState<DesktopUiSettings>(() => loadDesktopSettings());
   const language = settings.language;
   const t = useMemo(() => createTranslator(language), [language]);
-  const [activeView, setActiveView] = useState<AppView>("graph");
+  const [activeView, setActiveView] = useAppViewHistory("graph");
+  const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
+  const [blockInspectorOpen, setBlockInspectorOpen] = useState(false);
   const [selectedTaskPanelId, setSelectedTaskPanelId] = useState<string | null>(null);
   const [selectedContextNodeId, setSelectedContextNodeId] = useState<string | null>(null);
   const [, setProjectPath] = useState(settings.runtimePath);
@@ -37,6 +49,14 @@ export function App() {
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<AppFlowNode, Edge> | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<AppFlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const {
+    dragHandlers: blockInspectorDragHandlers,
+    panelStyle: blockInspectorStyle,
+    resizeHandlers: blockInspectorResizeHandlers
+  } = useDraggablePanel(
+    { left: 560, top: 116 },
+    { width: 520, height: 620, maxHeight: 820, maxWidth: 760, minHeight: 420, minTop: 56, minWidth: 380, viewportHeightOffset: 44 }
+  );
 
   const updateSettings = useCallback((patch: Partial<DesktopUiSettings>) => {
     setSettings((current) => ({
@@ -57,21 +77,7 @@ export function App() {
     }));
   }, []);
 
-  useEffect(() => {
-    window.localStorage.setItem(desktopSettingsKey, JSON.stringify(settings));
-  }, [settings]);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    root.classList.remove("dark");
-    const prefersDark =
-      settings.appearance === "system" &&
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches;
-    if (settings.appearance === "dark" || prefersDark) {
-      root.classList.add("dark");
-    }
-  }, [settings.appearance]);
+  useDesktopSettingsEffects(settings);
 
   const {
     expandedProjectId,
@@ -133,6 +139,7 @@ export function App() {
   useEffect(() => {
     setSelectedBlock(null);
     setSelectedRunRecord(null);
+    setBlockInspectorOpen(false);
     clearSelectedBlockRecords();
   }, [clearSelectedBlockRecords, selectedProject?.projectId, setSelectedBlock, setSelectedRunRecord]);
 
@@ -148,6 +155,7 @@ export function App() {
     async (project: Parameters<typeof loadProject>[0]) => {
       setSelectedBlock(null);
       setSelectedRunRecord(null);
+      setBlockInspectorOpen(false);
       clearSelectedBlockRecords();
       await loadProject(project);
       if (bridge) {
@@ -159,6 +167,35 @@ export function App() {
     },
     [clearSelectedBlockRecords, loadProject, setAutoRunState, setSelectedBlock, setSelectedRunRecord]
   );
+
+  const handleOpenBlockInspector = useCallback(
+    async (ref: string) => {
+      setBlockInspectorOpen(true);
+      await handleBlockSelect(ref);
+    },
+    [handleBlockSelect]
+  );
+
+  const closeBlockInspector = useCallback(() => {
+    setBlockInspectorOpen(false);
+    setSelectedRunRecord(null);
+  }, [setSelectedRunRecord]);
+
+  const { handleDeleteBlock, handleDeleteTaskNode } = useGraphDeleteActions({
+    clearSelectedBlockRecords,
+    deleteBlockConfirm: t("deleteBlockConfirm"),
+    deleteTaskConfirm: t("deleteTaskConfirm"),
+    loadProject: loadProjectWithSelectionReset,
+    refreshGraph,
+    selectedBlock,
+    selectedProject,
+    selectedTaskPanelId,
+    setBlockInspectorOpen,
+    setError,
+    setSelectedBlock,
+    setSelectedRunRecord,
+    setSelectedTaskPanelId
+  });
 
   const {
     confirmTaskDraft,
@@ -173,7 +210,7 @@ export function App() {
   } = useTaskDraft({ loadProject: loadProjectWithSelectionReset, selectedProject, setActiveView, setError });
 
   const { handleSearchResultOpen, searchQuery, searchResults, setSearchQuery } = useDesktopSearch({
-    handleBlockSelect,
+    handleBlockSelect: handleOpenBlockInspector,
     handleOpenRunRecord,
     selectedProject,
     setActiveView,
@@ -265,7 +302,11 @@ export function App() {
           latestRun: t("latestRun"),
           latestReviewAttempt: t("latestReviewAttempt"),
           feedbackMarker: t("feedbackMarker"),
-          manualExecutor: t("manualExecutor")
+          manualExecutor: t("manualExecutor"),
+          deleteTask: t("deleteTask"),
+          deleteBlock: t("deleteBlock"),
+          deleteTaskConfirm: t("deleteTaskConfirm"),
+          deleteBlockConfirm: t("deleteBlockConfirm")
         },
         selectedBlock,
         blockRunRecords,
@@ -276,7 +317,10 @@ export function App() {
         handleTaskExecutorChange,
         handlePromptChange,
         handlePromptSave,
-        handleBlockSelect,
+        handleOpenBlockInspector,
+        handleOpenBlockInspector,
+        handleDeleteTaskNode,
+        handleDeleteBlock,
         setSelectedBlock,
         saveSelectedBlockTitle,
         saveSelectedBlockExecutor,
@@ -291,7 +335,9 @@ export function App() {
     blockFeedbackRecords,
     blockReviewAttempts,
     blockRunRecords,
-    handleBlockSelect,
+    handleDeleteBlock,
+    handleDeleteTaskNode,
+    handleOpenBlockInspector,
     handleOpenRunRecord,
     handlePromptChange,
     handlePromptSave,
@@ -347,13 +393,7 @@ export function App() {
     setLastFileChange
   });
 
-  const visibleTasks = graph?.tasks.filter((task) => {
-    const query = searchQuery.trim().toLowerCase();
-    const matchesQuery = !query || task.title.toLowerCase().includes(query) || task.taskId.toLowerCase().includes(query);
-    const matchesPanel = !selectedTaskPanelId || task.taskId === selectedTaskPanelId;
-    return matchesQuery && matchesPanel;
-  });
-  const visibleTaskIds = new Set(visibleTasks?.map((task) => task.taskId) ?? []);
+  const { visibleTaskIds, visibleTasks } = useVisibleGraphTasks(graph, searchQuery, selectedTaskPanelId);
   const latestBlockRun = blockRunRecords[0];
   const latestReviewAttempt = blockReviewAttempts[0];
   const latestFeedbackRecord = blockFeedbackRecords[0];
@@ -367,115 +407,167 @@ export function App() {
     t
   });
 
-  return (
-    <main className="flex h-screen min-h-0 bg-background text-foreground">
-      <ProjectSidebar
-        activeView={activeView}
-        expandedProjectId={expandedProjectId}
-        graph={graph}
-        handleOpenProject={handleOpenProject}
-        handleTaskPanelSelect={handleTaskPanelSelect}
-        language={language}
-        loadProject={loadProjectWithSelectionReset}
-        notificationItems={notificationItems}
-        projectPath={projectPath}
-        projects={projects}
-        selectedProject={selectedProject}
-        selectedTaskPanelId={selectedTaskPanelId}
-        setActiveView={setActiveView}
-        setProjectPath={setProjectPath}
-        t={t}
-        updateSettings={updateSettings}
-      />
-      <WorkspaceTabs
-        activeView={activeView}
-        addReviewStep={addReviewStep}
-        autoRunControlStyle={autoRunControlStyle}
-        autoRunScopeMode={autoRunScopeMode}
-        autoRunState={autoRunState}
-        confirmTaskDraft={confirmTaskDraft}
-        dirtyPromptRefs={dirtyPromptRefs}
-        edges={edges}
-        generateTaskDraft={generateTaskDraft}
-        graph={graph}
-        handleAutoRunClick={handleAutoRunClick}
-        handleBlockSelect={handleBlockSelect}
-        handleConnect={handleConnect}
-        handleEdgesDelete={handleEdgesDelete}
-        handleGraphDragOver={handleGraphDragOver}
-        handleGraphDrop={handleGraphDrop}
-        handleOpenProject={handleOpenProject}
-        handleOpenRunRecord={handleOpenRunRecord}
-        handleSearchResultOpen={handleSearchResultOpen}
-        language={language}
-        miniRunPanelOpen={miniRunPanelOpen}
-        moveAutoRunControl={moveAutoRunControl}
-        moveReviewStep={moveReviewStep}
-        newTaskMode={newTaskMode}
-        newTaskTargetId={newTaskTargetId}
-        newTaskText={newTaskText}
-        nodeTypes={nodeTypes}
-        nodes={nodes}
-        notificationItems={notificationItems}
-        onEdgesChange={onEdgesChange}
-        onNodeDragStop={handleNodeDragStop}
-        onNodesChange={onNodesChange}
-        refreshPackageFiles={refreshPackageFiles}
-        removeReviewStep={removeReviewStep}
-        resetLayout={resetLayout}
-        reviewDefaultCyclesDraft={reviewDefaultCyclesDraft}
-        reviewDraft={reviewDraft}
-        reviewPipeline={reviewPipeline}
-        reviewTaskId={reviewTaskId}
-        saveReviewPipeline={saveReviewPipeline}
-        searchQuery={searchQuery}
-        searchResults={searchResults}
-        selectedBlockPresent={Boolean(selectedBlock)}
-        selectedProject={selectedProject}
-        selectedTaskPanelId={selectedTaskPanelId}
-        setActiveView={setActiveView}
-        setAutoRunScopeMode={setAutoRunScopeMode}
-        setFlowInstance={setFlowInstance}
-        setMiniRunPanelOpen={setMiniRunPanelOpen}
-        setNewTaskMode={setNewTaskMode}
-        setNewTaskTargetId={setNewTaskTargetId}
-        setNewTaskText={setNewTaskText}
-        setProjectPath={setProjectPath}
-        setReviewDefaultCyclesDraft={setReviewDefaultCyclesDraft}
-        setReviewTaskId={setReviewTaskId}
-        setSearchQuery={setSearchQuery}
-        settings={settings}
-        startAutoRunControlDrag={startAutoRunControlDrag}
-        statistics={statistics}
-        stopAutoRunClick={stopAutoRunClick}
-        stopAutoRunControlDrag={stopAutoRunControlDrag}
-        t={t}
-        taskDraft={taskDraft}
-        todoGroups={todoGroups}
-        updateReviewStep={updateReviewStep}
-        updateSettings={updateSettings}
-        visibleTaskIds={visibleTaskIds}
-        visibleTasks={visibleTasks}
-      />
-      <aside className="flex w-[300px] shrink-0 flex-col border-l bg-background">
-        <ComponentPalette addPaletteComponent={addPaletteComponent} handlePaletteDragStart={handlePaletteDragStart} settings={settings} t={t} />
-        <BlockInspector
-          blockFeedbackRecords={blockFeedbackRecords}
-          blockReviewAttempts={blockReviewAttempts}
-          blockRunRecords={blockRunRecords}
-          error={error}
+  if (activeView === "settings") {
+    return (
+      <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground">
+        <WindowTitleBar t={t} />
+        <SettingsView
+          addReviewStep={addReviewStep}
           graph={graph}
-          handleOpenRunRecord={handleOpenRunRecord}
-          saveSelectedBlockExecutor={saveSelectedBlockExecutor}
-          saveSelectedBlockPrompt={saveSelectedBlockPrompt}
-          saveSelectedBlockTitle={saveSelectedBlockTitle}
-          selectedBlock={selectedBlock}
-          selectedRunRecord={selectedRunRecord}
-          setSelectedBlock={setSelectedBlock}
-          setSelectedRunRecord={setSelectedRunRecord}
+          language={language}
+          moveReviewStep={moveReviewStep}
+          removeReviewStep={removeReviewStep}
+          reviewDefaultCyclesDraft={reviewDefaultCyclesDraft}
+          reviewDraft={reviewDraft}
+          reviewPipeline={reviewPipeline}
+          reviewTaskId={reviewTaskId}
+          saveReviewPipeline={saveReviewPipeline}
+          setActiveView={setActiveView}
+          setProjectPath={setProjectPath}
+          setReviewDefaultCyclesDraft={setReviewDefaultCyclesDraft}
+          setReviewTaskId={setReviewTaskId}
+          settings={settings}
+          t={t}
+          updateReviewStep={updateReviewStep}
+          updateSettings={updateSettings}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-screen min-h-0 overflow-hidden bg-background text-foreground">
+      <main className="relative flex h-full min-h-0 overflow-hidden">
+        <ProjectSidebar
+          activeView={activeView}
+          collapsed={leftSidebarCollapsed}
+          expandedProjectId={expandedProjectId}
+          graph={graph}
+          handleOpenProject={handleOpenProject}
+          handleTaskPanelSelect={handleTaskPanelSelect}
+          loadProject={loadProjectWithSelectionReset}
+          notificationItems={notificationItems}
+          onToggleSidebar={() => setLeftSidebarCollapsed((current) => !current)}
+          projects={projects}
+          resetLayout={resetLayout}
+          selectedProject={selectedProject}
+          selectedTaskPanelId={selectedTaskPanelId}
+          setActiveView={setActiveView}
           t={t}
         />
-      </aside>
-    </main>
+        <WorkspaceTabs
+          activeView={activeView}
+          addReviewStep={addReviewStep}
+          autoRunControlStyle={autoRunControlStyle}
+          autoRunScopeMode={autoRunScopeMode}
+          autoRunState={autoRunState}
+          confirmTaskDraft={confirmTaskDraft}
+          dirtyPromptRefs={dirtyPromptRefs}
+          edges={edges}
+          generateTaskDraft={generateTaskDraft}
+          graph={graph}
+          handleAutoRunClick={handleAutoRunClick}
+          handleBlockSelect={handleBlockSelect}
+          handleOpenBlockInspector={handleOpenBlockInspector}
+          handleConnect={handleConnect}
+          handleEdgesDelete={handleEdgesDelete}
+          handleGraphDragOver={handleGraphDragOver}
+          handleGraphDrop={handleGraphDrop}
+          handleOpenProject={handleOpenProject}
+          handleOpenRunRecord={handleOpenRunRecord}
+          handleSearchResultOpen={handleSearchResultOpen}
+          language={language}
+          miniRunPanelOpen={miniRunPanelOpen}
+          moveAutoRunControl={moveAutoRunControl}
+          moveReviewStep={moveReviewStep}
+          newTaskMode={newTaskMode}
+          newTaskTargetId={newTaskTargetId}
+          newTaskText={newTaskText}
+          nodeTypes={nodeTypes}
+          nodes={nodes}
+          notificationItems={notificationItems}
+          onEdgesChange={onEdgesChange}
+          onNodeDragStop={handleNodeDragStop}
+          onNodesChange={onNodesChange}
+          refreshPackageFiles={refreshPackageFiles}
+          removeReviewStep={removeReviewStep}
+          reviewDefaultCyclesDraft={reviewDefaultCyclesDraft}
+          reviewDraft={reviewDraft}
+          reviewPipeline={reviewPipeline}
+          reviewTaskId={reviewTaskId}
+          saveReviewPipeline={saveReviewPipeline}
+          searchQuery={searchQuery}
+          searchResults={searchResults}
+          selectedBlockPresent={Boolean(selectedBlock)}
+          selectedProject={selectedProject}
+          selectedTaskPanelId={selectedTaskPanelId}
+          setActiveView={setActiveView}
+          setAutoRunScopeMode={setAutoRunScopeMode}
+          setFlowInstance={setFlowInstance}
+          setMiniRunPanelOpen={setMiniRunPanelOpen}
+          setNewTaskMode={setNewTaskMode}
+          setNewTaskTargetId={setNewTaskTargetId}
+          setNewTaskText={setNewTaskText}
+          setProjectPath={setProjectPath}
+          setReviewDefaultCyclesDraft={setReviewDefaultCyclesDraft}
+          setReviewTaskId={setReviewTaskId}
+          setSearchQuery={setSearchQuery}
+          settings={settings}
+          startAutoRunControlDrag={startAutoRunControlDrag}
+          statistics={statistics}
+          stopAutoRunClick={stopAutoRunClick}
+          stopAutoRunControlDrag={stopAutoRunControlDrag}
+          t={t}
+          taskDraft={taskDraft}
+          todoGroups={todoGroups}
+          updateReviewStep={updateReviewStep}
+          updateSettings={updateSettings}
+          visibleTaskIds={visibleTaskIds}
+          visibleTasks={visibleTasks}
+        />
+        {rightSidebarCollapsed ? null : (
+          <aside className="flex w-[300px] shrink-0 flex-col overflow-hidden border-l bg-background">
+            <div className="app-drag-region flex h-11 shrink-0 items-center justify-end border-b px-2">
+              <Button className="app-no-drag" size="icon-sm" variant="ghost" aria-label={t("collapseSidebar")} onClick={() => setRightSidebarCollapsed(true)}>
+                <PanelRightCloseIcon data-icon="inline-start" />
+              </Button>
+            </div>
+            <ComponentPalette addPaletteComponent={addPaletteComponent} handlePaletteDragStart={handlePaletteDragStart} settings={settings} t={t} />
+          </aside>
+        )}
+        {blockInspectorOpen || selectedRunRecord ? (
+          <BlockInspector
+            blockFeedbackRecords={blockFeedbackRecords}
+            blockReviewAttempts={blockReviewAttempts}
+            blockRunRecords={blockRunRecords}
+            dragHandlers={blockInspectorDragHandlers}
+            error={null}
+            graph={graph}
+            handleOpenRunRecord={handleOpenRunRecord}
+            onClose={closeBlockInspector}
+            saveSelectedBlockExecutor={saveSelectedBlockExecutor}
+            saveSelectedBlockPrompt={saveSelectedBlockPrompt}
+            saveSelectedBlockTitle={saveSelectedBlockTitle}
+            selectedBlock={selectedBlock}
+            selectedRunRecord={selectedRunRecord}
+            resizeHandlers={blockInspectorResizeHandlers}
+            setSelectedBlock={setSelectedBlock}
+            setSelectedRunRecord={setSelectedRunRecord}
+            style={blockInspectorStyle}
+            t={t}
+          />
+        ) : null}
+      </main>
+      {leftSidebarCollapsed ? (
+        <div className="app-drag-region absolute left-0 top-0 z-20 flex h-11 w-[280px] items-center border-b bg-background px-3 pl-[124px]">
+          <div className="app-no-drag flex items-center gap-1">
+            <Button size="icon-sm" variant="ghost" aria-label={t("expandSidebar")} onClick={() => setLeftSidebarCollapsed(false)}>
+              <PanelLeftOpenIcon data-icon="inline-start" />
+            </Button>
+            <HistoryNavigationButtons t={t} />
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }

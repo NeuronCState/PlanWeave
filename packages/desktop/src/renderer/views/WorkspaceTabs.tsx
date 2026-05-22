@@ -19,10 +19,6 @@ import type {
   DesktopTaskDraftMode,
   DesktopTodoGroups
 } from "@planweave/runtime";
-import { RotateCcwIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { createTranslator, Language } from "../i18n";
 import type { AppNodeTypes } from "../graph/flowModel";
 import type { AppFlowNode, AppView, AutoRunScopeMode, DesktopUiSettings, NotificationItem } from "../types";
@@ -31,7 +27,6 @@ import { NewTaskView } from "./NewTaskView";
 import { NotificationsView } from "./NotificationsView";
 import { ReviewPipelineView } from "./ReviewPipelineView";
 import { SearchView } from "./SearchView";
-import { SettingsView } from "./SettingsView";
 import { StatisticsView } from "./StatisticsView";
 import { TodoView } from "./TodoView";
 
@@ -47,6 +42,7 @@ type WorkspaceTabsProps = {
   graph: DesktopGraphViewModel | null;
   handleAutoRunClick: () => Promise<void>;
   handleBlockSelect: (ref: string) => Promise<void>;
+  handleOpenBlockInspector: (ref: string) => Promise<void>;
   handleConnect: (connection: Connection) => Promise<void>;
   handleEdgesDelete: (deletedEdges: Edge[]) => Promise<void>;
   handleGraphDragOver: (event: DragEvent) => void;
@@ -69,7 +65,6 @@ type WorkspaceTabsProps = {
   onNodesChange: OnNodesChange<AppFlowNode>;
   refreshPackageFiles: () => Promise<void>;
   removeReviewStep: (index: number) => void;
-  resetLayout: () => Promise<void>;
   reviewDefaultCyclesDraft: number;
   reviewDraft: DesktopReviewPipelineStepInput[];
   reviewPipeline: DesktopReviewPipeline | null;
@@ -108,62 +103,36 @@ type WorkspaceTabsProps = {
 
 export function WorkspaceTabs(props: WorkspaceTabsProps) {
   const {
-    activeView,
-    dirtyPromptRefs,
-    graph,
-    refreshPackageFiles,
-    resetLayout,
-    setActiveView,
-    t
+    activeView
   } = props;
+  const content = (() => {
+    switch (activeView) {
+      case "new-task":
+        return <NewTaskView {...props} />;
+      case "review-pipeline":
+        return <ReviewPipelineView {...props} />;
+      case "todo":
+        return <TodoView {...props} handleBlockSelect={props.handleOpenBlockInspector} />;
+      case "statistics":
+        return <StatisticsView {...props} />;
+      case "search":
+        return <SearchView {...props} />;
+      case "notifications":
+        return <NotificationsView {...props} />;
+      case "graph":
+      default:
+        return <GraphView {...props} />;
+    }
+  })();
 
   return (
     <section className="flex min-w-0 flex-1 flex-col">
-      <Tabs className="min-h-0 flex-1" value={activeView} onValueChange={(value) => setActiveView(value as AppView)}>
-        <div className="flex items-center justify-between gap-3 border-b px-4 py-2">
-          <TabsList>
-            <TabsTrigger value="graph">{t("graph")}</TabsTrigger>
-            <TabsTrigger value="review-pipeline">{t("reviewPipeline")}</TabsTrigger>
-            <TabsTrigger value="todo">{t("todo")}</TabsTrigger>
-            <TabsTrigger value="statistics">{t("statistics")}</TabsTrigger>
-          </TabsList>
-          <div className="flex items-center gap-2">
-            {dirtyPromptRefs.length || graph?.dirtyPromptRefs.length ? <Badge variant="destructive">{t("dirtyPrompts")}</Badge> : null}
-            <Button variant="outline" onClick={() => void refreshPackageFiles()}>
-              <RotateCcwIcon data-icon="inline-start" />
-              {dirtyPromptRefs.length ? `${t("dirtyPrompts")} ${dirtyPromptRefs.length}` : t("refreshFiles")}
-            </Button>
-            <Button variant="outline" onClick={resetLayout}>
-              <RotateCcwIcon data-icon="inline-start" />
-              {t("resetLayout")}
-            </Button>
-          </div>
+      <div className="app-drag-region h-11 shrink-0 border-b bg-background" />
+      <div className={`min-h-0 flex-1 ${activeView === "graph" ? "" : "p-4"}`}>
+        <div className="h-full min-h-0">
+          {content}
         </div>
-        <TabsContent className="min-h-0 p-4" value="new-task">
-          <NewTaskView {...props} />
-        </TabsContent>
-        <TabsContent className="min-h-0" value="graph">
-          <GraphView {...props} />
-        </TabsContent>
-        <TabsContent className="min-h-0 p-4" value="review-pipeline">
-          <ReviewPipelineView {...props} />
-        </TabsContent>
-        <TabsContent className="min-h-0 p-4" value="todo">
-          <TodoView {...props} />
-        </TabsContent>
-        <TabsContent className="p-4" value="statistics">
-          <StatisticsView {...props} />
-        </TabsContent>
-        <TabsContent className="p-4" value="search">
-          <SearchView {...props} />
-        </TabsContent>
-        <TabsContent className="p-4" value="notifications">
-          <NotificationsView {...props} />
-        </TabsContent>
-        <TabsContent className="min-h-0 overflow-auto p-4" value="settings">
-          <SettingsView {...props} />
-        </TabsContent>
-      </Tabs>
+      </div>
     </section>
   );
 }

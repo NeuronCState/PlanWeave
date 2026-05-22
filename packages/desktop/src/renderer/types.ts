@@ -31,6 +31,10 @@ export type TaskNodeLabels = {
   latestReviewAttempt: string;
   feedbackMarker: string;
   manualExecutor: string;
+  deleteTask: string;
+  deleteBlock: string;
+  deleteTaskConfirm: string;
+  deleteBlockConfirm: string;
 };
 
 export type TaskNodeData = {
@@ -50,6 +54,9 @@ export type TaskNodeData = {
   onPromptChange: (taskId: string, value: string) => void;
   onPromptSave: (taskId: string) => void;
   onBlockSelect: (ref: string) => void;
+  onOverflowBlockSelect: (ref: string) => void;
+  onTaskDelete: (taskId: string) => void;
+  onBlockDelete: (ref: string) => void;
   onSelectedBlockChange: (block: DesktopBlockDetail) => void;
   onBlockTitleSave: () => void;
   onBlockExecutorChange: (executorName: string | null) => void;

@@ -1,15 +1,50 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PaletteSettingsPanel } from "../renderer/components/PaletteSettingsPanel";
+import { HistoryNavigationButtons } from "../renderer/components/HistoryNavigationButtons";
+import { appViewHistoryChangedEvent } from "../renderer/hooks/useAppViewHistory";
 import { SearchResultList, searchNavigationTarget } from "../renderer/components/SearchResultList";
 import { TodoGroupCard } from "../renderer/components/TodoGroupCard";
 import type { DesktopSearchResult, DesktopTodoItem } from "@planweave/runtime";
 
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
 describe("desktop renderer component interactions", () => {
+  it("disables history navigation buttons when no app history is available", () => {
+    window.history.replaceState(null, "", "/");
+
+    render(<HistoryNavigationButtons t={(key) => ({ redo: "Forward", undo: "Back" })[key] ?? key} />);
+
+    expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Forward" })).toBeDisabled();
+  });
+
+  it("enables app history buttons after view navigation state changes", async () => {
+    window.history.replaceState({ planweaveAppView: "graph", planweaveHistoryIndex: 0, planweaveHistoryMaxIndex: 0 }, "", "/");
+    const backSpy = vi.spyOn(window.history, "back").mockImplementation(() => undefined);
+    const forwardSpy = vi.spyOn(window.history, "forward").mockImplementation(() => undefined);
+
+    render(<HistoryNavigationButtons t={(key) => ({ redo: "Forward", undo: "Back" })[key] ?? key} />);
+
+    window.history.pushState({ planweaveAppView: "new-task", planweaveHistoryIndex: 1, planweaveHistoryMaxIndex: 1 }, "");
+    window.dispatchEvent(new Event(appViewHistoryChangedEvent));
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(backSpy).toHaveBeenCalledTimes(1);
+
+    window.history.replaceState({ planweaveAppView: "graph", planweaveHistoryIndex: 0, planweaveHistoryMaxIndex: 1 }, "", "/");
+    window.dispatchEvent(new Event(appViewHistoryChangedEvent));
+    await userEvent.click(screen.getByRole("button", { name: "Forward" }));
+    expect(forwardSpy).toHaveBeenCalledTimes(1);
+
+  });
+
   it("renders Todo blockers, parallel safety, and locks and jumps to the selected block", async () => {
     const item: DesktopTodoItem = {
       ref: "T-001#B-001",

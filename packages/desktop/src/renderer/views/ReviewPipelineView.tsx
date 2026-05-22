@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Textarea } from "@/components/ui/textarea";
 import type { createTranslator } from "../i18n";
 
-type ReviewPipelineViewProps = {
+export type ReviewPipelineViewProps = {
   addReviewStep: () => void;
   graph: DesktopGraphViewModel | null;
   moveReviewStep: (index: number, direction: -1 | 1) => void;

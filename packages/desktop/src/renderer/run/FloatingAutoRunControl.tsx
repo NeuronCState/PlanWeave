@@ -1,6 +1,6 @@
 import type { CSSProperties, Dispatch, PointerEvent, SetStateAction } from "react";
 import type { DesktopAutoRunState, DesktopProjectSummary } from "@planweave/runtime";
-import { FolderOpenIcon, MoveIcon, PauseIcon, PlayIcon, SquareIcon } from "lucide-react";
+import { FolderOpenIcon, MoveIcon, PauseIcon, PlayIcon, RefreshCwIcon, SquareIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,10 +22,12 @@ import { formatElapsed } from "../viewHelpers";
 type FloatingAutoRunControlProps = {
   autoRunScopeMode: AutoRunScopeMode;
   autoRunState: DesktopAutoRunState | null;
+  dirtyPromptCount: number;
   handleAutoRunClick: () => Promise<void>;
   handleOpenRunRecord: (recordId: string | null | undefined) => Promise<void>;
   miniRunPanelOpen: boolean;
   moveAutoRunControl: (event: PointerEvent<HTMLButtonElement>) => void;
+  refreshPackageFiles: () => Promise<void>;
   selectedBlockPresent: boolean;
   selectedProject: DesktopProjectSummary | null;
   selectedTaskPanelId: string | null;
@@ -41,10 +43,12 @@ type FloatingAutoRunControlProps = {
 export function FloatingAutoRunControl({
   autoRunScopeMode,
   autoRunState,
+  dirtyPromptCount,
   handleAutoRunClick,
   handleOpenRunRecord,
   miniRunPanelOpen,
   moveAutoRunControl,
+  refreshPackageFiles,
   selectedBlockPresent,
   selectedProject,
   selectedTaskPanelId,
@@ -68,6 +72,9 @@ export function FloatingAutoRunControl({
         onPointerCancel={stopAutoRunControlDrag}
       >
         <MoveIcon data-icon="inline-start" />
+      </Button>
+      <Button size="icon-sm" variant={dirtyPromptCount ? "outline" : "ghost"} aria-label={t("syncFiles")} onClick={() => void refreshPackageFiles()}>
+        <RefreshCwIcon data-icon="inline-start" />
       </Button>
       <ContextMenu>
         <ContextMenuTrigger asChild>

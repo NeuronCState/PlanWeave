@@ -215,11 +215,19 @@ async function runRendererManualSmoke(window: BrowserWindow): Promise<Record<str
       await clickByText("通知");
       await waitForText("通知");
       covered.push("open-notifications");
-      await clickByLabel("设置");
+      await clickByText("设置");
+      await waitForText("返回应用");
       await waitForText("Runtime 路径");
+      await clickByText("组件");
       await waitForText("组件设置");
       covered.push("open-settings-with-component-settings");
-      await clickByText("图谱");
+      await clickByText("审查");
+      await waitForText("保存 Review Pipeline");
+      await clickByText("添加 Review Step");
+      await waitForText("新 Review Step");
+      await clickByText("保存 Review Pipeline");
+      covered.push("edit-review-pipeline");
+      await clickByText("返回应用");
       await waitForText("UI Smoke Task");
       if (!(await waitForSelector("[data-graph-surface]", "graph surface", { required: false }))) {
         await clickByText("UI Smoke Task");
@@ -235,12 +243,6 @@ async function runRendererManualSmoke(window: BrowserWindow): Promise<Record<str
       await clickByText("Todo");
       await waitForText("ready");
       covered.push("open-todo");
-      await clickByText("Review Pipeline");
-      await waitForText("保存 Review Pipeline");
-      await clickByText("添加 Review Step");
-      await waitForText("新 Review Step");
-      await clickByText("保存 Review Pipeline");
-      covered.push("edit-review-pipeline");
       return {
         covered,
         uiSmokeTaskVisible: (document.body.textContent ?? "").includes("UI Smoke Task")

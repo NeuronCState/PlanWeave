@@ -17,7 +17,9 @@ export async function createWindow(options: { isDev: boolean; isSmoke: boolean }
     minWidth: 1100,
     minHeight: 720,
     show: !options.isSmoke,
-    title: "planweave",
+    title: "PlanWeave Desktop",
+    titleBarStyle: "hiddenInset",
+    trafficLightPosition: { x: 14, y: 14 },
     backgroundColor: "#f7f8fa",
     webPreferences: {
       preload: join(__dirname, "..", "preload", "preload.js"),

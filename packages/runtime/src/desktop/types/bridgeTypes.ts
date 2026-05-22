@@ -37,9 +37,28 @@ import type {
   DesktopAutoRunState
 } from "./runTypes.js";
 
+export type DesktopAgentKind = "codex" | "claude-code" | "opencode";
+
+export type DesktopAgentCliProfile = {
+  kind: DesktopAgentKind;
+  name: string;
+  command: string;
+  versionArgs: string[];
+  execArgs: string[];
+  fullAccessArgs: string[];
+};
+
+export type DesktopAgentDetection = DesktopAgentCliProfile & {
+  installed: boolean;
+  version: string | null;
+  unavailableReason: string | null;
+};
+
 export type DesktopBridgeApi = {
   listProjects(): Promise<DesktopProjectSummary[]>;
   chooseProjectFolder(): Promise<string | null>;
+  revealProjectInFinder(rootPath: string): Promise<void>;
+  detectAgentTools(): Promise<DesktopAgentDetection[]>;
   openProject(input: { projectId?: string; rootPath?: string }): Promise<DesktopProjectSummary>;
   initOrOpenProject(rootPath: string): Promise<DesktopProjectSummary>;
   getProjectOverview(projectRoot: string): Promise<DesktopProjectSummary>;

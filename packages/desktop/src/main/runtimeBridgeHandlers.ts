@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from "electron";
+import { BrowserWindow, dialog, ipcMain, shell, type OpenDialogOptions } from "electron";
 import {
   addBlock,
   addContextNode,
@@ -48,6 +48,7 @@ import {
   validateGraphEdit
 } from "@planweave/runtime";
 import type { DesktopAutoRunScope, DesktopGraphEditResult, DesktopLayout, GraphEditResult } from "@planweave/runtime";
+import { detectAgentTools } from "./agentTools.js";
 
 function cloneableGraphEditResult(result: GraphEditResult): DesktopGraphEditResult {
   const { graph: _graph, ...cloneable } = result;
@@ -69,6 +70,10 @@ export function registerRuntimeBridgeHandlers(): void {
     }
     return result.filePaths[0] ?? null;
   });
+  ipcMain.handle("planweave:revealProjectInFinder", async (_event, rootPath: string) => {
+    await shell.openPath(rootPath);
+  });
+  ipcMain.handle("planweave:detectAgentTools", () => detectAgentTools());
   ipcMain.handle("planweave:openProject", (_event, input: { projectId?: string; rootPath?: string }) => openProject(input));
   ipcMain.handle("planweave:initOrOpenProject", (_event, rootPath: string) => initOrOpenProject(rootPath));
   ipcMain.handle("planweave:getProjectOverview", (_event, projectRoot: string) => getProjectOverview(projectRoot));

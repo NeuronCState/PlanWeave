@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import type { BlockType, DesktopAgentDetection, DesktopGraphViewModel } from "@planweave/runtime";
 import { ArrowLeftIcon, BlocksIcon, BotIcon, GitPullRequestIcon, SettingsIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { bridge } from "../bridge";
 import { AgentSettingsPanel } from "../components/AgentSettingsPanel";
 import { SettingsSwitchRow } from "../components/SettingsSwitchRow";
 import type { createTranslator, Language } from "../i18n";
@@ -14,6 +13,7 @@ import type { AppView, DesktopUiSettings, PaletteComponentKey } from "../types";
 type SettingsSection = "general" | "components" | "review" | "agents";
 
 type SettingsViewProps = {
+  agents: DesktopAgentDetection[];
   graph: DesktopGraphViewModel | null;
   language: Language;
   setActiveView: Dispatch<SetStateAction<AppView>>;
@@ -42,22 +42,30 @@ function toggleBlockSet(settings: DesktopUiSettings, blockType: BlockType, check
   return ordered.length > 0 ? ordered : ["implementation"];
 }
 
-export function SettingsView({ graph, language, setActiveView, settings, t, updateSettings }: SettingsViewProps) {
+function updateReviewSettings(settings: DesktopUiSettings, checked: boolean): DesktopUiSettings["review"] {
+  if (!checked) {
+    return {
+      pipelineEnabled: false,
+      strictReview: false,
+      feedbackLoop: false,
+      autoAppendReviewBlock: false
+    };
+  }
+  return {
+    ...settings.review,
+    pipelineEnabled: true
+  };
+}
+
+export function SettingsView({ agents, graph, language, setActiveView, settings, t, updateSettings }: SettingsViewProps) {
   const [section, setSection] = useState<SettingsSection>("general");
-  const [agents, setAgents] = useState<DesktopAgentDetection[]>([]);
+  const reviewDisabled = !settings.review.pipelineEnabled;
   const navItems = [
     { key: "general", label: t("settingsGeneral"), icon: SettingsIcon },
     { key: "components", label: t("settingsComponents"), icon: BlocksIcon },
     { key: "review", label: t("settingsReview"), icon: GitPullRequestIcon },
     { key: "agents", label: t("settingsAgents"), icon: BotIcon }
   ] satisfies Array<{ key: SettingsSection; label: string; icon: typeof SettingsIcon }>;
-
-  useEffect(() => {
-    if (!bridge) {
-      return;
-    }
-    void bridge.detectAgentTools().then(setAgents);
-  }, []);
 
   return (
     <main className="flex h-full min-h-0 bg-background text-foreground">
@@ -199,22 +207,25 @@ export function SettingsView({ graph, language, setActiveView, settings, t, upda
                   checked={settings.review.pipelineEnabled}
                   title={t("reviewPipelineEnabled")}
                   description={t("reviewPipelineEnabledHint")}
-                  onCheckedChange={(checked) => updateSettings({ review: { ...settings.review, pipelineEnabled: checked } })}
+                  onCheckedChange={(checked) => updateSettings({ review: updateReviewSettings(settings, checked) })}
                 />
                 <SettingsSwitchRow
-                  checked={settings.review.strictReview}
+                  checked={!reviewDisabled && settings.review.strictReview}
+                  disabled={reviewDisabled}
                   title={t("strictReview")}
                   description={t("strictReviewHint")}
                   onCheckedChange={(checked) => updateSettings({ review: { ...settings.review, strictReview: checked } })}
                 />
                 <SettingsSwitchRow
-                  checked={settings.review.feedbackLoop}
+                  checked={!reviewDisabled && settings.review.feedbackLoop}
+                  disabled={reviewDisabled}
                   title={t("feedbackLoop")}
                   description={t("feedbackLoopHint")}
                   onCheckedChange={(checked) => updateSettings({ review: { ...settings.review, feedbackLoop: checked } })}
                 />
                 <SettingsSwitchRow
-                  checked={settings.review.autoAppendReviewBlock}
+                  checked={!reviewDisabled && settings.review.autoAppendReviewBlock}
+                  disabled={reviewDisabled}
                   title={t("autoAppendReviewBlock")}
                   description={t("autoAppendReviewBlockHint")}
                   onCheckedChange={(checked) => updateSettings({ review: { ...settings.review, autoAppendReviewBlock: checked } })}

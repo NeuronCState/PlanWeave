@@ -128,7 +128,7 @@ describe("desktop renderer component interactions", () => {
     expect(onCheckedChange).toHaveBeenCalledWith(true);
   });
 
-  it("disables agent switches when the CLI is not detected", () => {
+  it("disables agent switches when the CLI is not detected", async () => {
     render(
       <AgentSettingsPanel
         agents={[
@@ -199,6 +199,8 @@ describe("desktop renderer component interactions", () => {
     );
 
     expect(screen.getByRole("switch", { name: "Codex" })).toBeDisabled();
+    expect(screen.queryByText("Full access")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Codex options" }));
     expect(screen.getByRole("switch", { name: "Full access" })).toBeDisabled();
   });
 });

@@ -26,12 +26,10 @@ export type TaskNodeLabels = {
   taskPrompt: string;
   title: string;
   agent: string;
-  effectiveExecutor: string;
   blockExecutionSummary: string;
   latestRun: string;
   latestReviewAttempt: string;
   feedbackMarker: string;
-  manualExecutor: string;
   deleteTask: string;
   deleteBlock: string;
   deleteTaskConfirm: string;

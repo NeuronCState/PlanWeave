@@ -1,5 +1,9 @@
+import { useState } from "react";
 import type { DesktopAgentDetection, DesktopAgentKind } from "@planweave/runtime";
-import { SettingsSwitchRow } from "./SettingsSwitchRow";
+import { ChevronDownIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import type { DesktopUiSettings } from "../types";
 
 type AgentSettingsPanelProps = {
@@ -30,49 +34,76 @@ function updateAgentSettings(
 }
 
 export function AgentSettingsPanel({ agents, labels, settings, updateSettings }: AgentSettingsPanelProps) {
+  const [expandedAgent, setExpandedAgent] = useState<DesktopAgentKind | null>(null);
+
   return (
     <div className="overflow-hidden rounded-lg border bg-background">
       {agents.map((agent) => {
         const agentSettings = settings.agents[agent.kind] ?? { enabled: false, fullAccess: false };
         const command = `${agent.command} ${agent.execArgs.join(" ")}`;
         const fullAccessCommand = `${agent.command} ${agent.fullAccessArgs.join(" ")}`;
+        const expanded = expandedAgent === agent.kind;
         return (
-          <div key={agent.kind} className="border-b last:border-b-0">
-            <SettingsSwitchRow
-              checked={agent.installed && agentSettings.enabled}
-              disabled={!agent.installed}
-              title={agent.name}
-              description={
-                <span className="flex flex-col gap-1">
+          <div key={agent.kind} className={cn("border-b last:border-b-0", !agent.installed ? "opacity-50" : "")}>
+            <div className="flex min-h-24 items-start justify-between gap-4 px-5 py-5">
+              <div className="min-w-0">
+                <div className="font-semibold">{agent.name}</div>
+                <div className="mt-1 flex flex-col gap-1 text-sm text-muted-foreground">
                   <span>
                     {agent.installed ? labels.agentDetected : labels.agentMissing}
                     {agent.version ? `: ${agent.version}` : ""}
                   </span>
                   <span>{labels.agentEnableDescription.replace("{command}", command)}</span>
-                </span>
-              }
-              onCheckedChange={(checked) =>
-                updateSettings({
-                  agents: updateAgentSettings(settings, agent.kind, {
-                    enabled: checked,
-                    fullAccess: checked ? agentSettings.fullAccess : false
-                  })
-                })
-              }
-            />
-            <SettingsSwitchRow
-              checked={agent.installed && agentSettings.enabled && agentSettings.fullAccess}
-              disabled={!agent.installed || !agentSettings.enabled}
-              title={labels.agentFullAccess}
-              description={labels.agentFullAccessDescription.replace("{command}", fullAccessCommand)}
-              onCheckedChange={(checked) =>
-                updateSettings({
-                  agents: updateAgentSettings(settings, agent.kind, {
-                    fullAccess: checked
-                  })
-                })
-              }
-            />
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  aria-label={`${agent.name} options`}
+                  className="size-7"
+                  size="icon-sm"
+                  variant="ghost"
+                  onClick={() => setExpandedAgent(expanded ? null : agent.kind)}
+                >
+                  <ChevronDownIcon className={cn("size-4 transition-transform", expanded ? "rotate-180" : "")} />
+                </Button>
+                <Switch
+                  aria-label={agent.name}
+                  checked={agent.installed && agentSettings.enabled}
+                  disabled={!agent.installed}
+                  onCheckedChange={(checked) =>
+                    updateSettings({
+                      agents: updateAgentSettings(settings, agent.kind, {
+                        enabled: checked,
+                        fullAccess: checked ? agentSettings.fullAccess : false
+                      })
+                    })
+                  }
+                />
+              </div>
+            </div>
+            {expanded ? (
+              <div className="border-t bg-muted/20 px-8 py-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{labels.agentFullAccess}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{labels.agentFullAccessDescription.replace("{command}", fullAccessCommand)}</div>
+                  </div>
+                  <Switch
+                    aria-label={labels.agentFullAccess}
+                    checked={agent.installed && agentSettings.enabled && agentSettings.fullAccess}
+                    disabled={!agent.installed || !agentSettings.enabled}
+                    size="sm"
+                    onCheckedChange={(checked) =>
+                      updateSettings({
+                        agents: updateAgentSettings(settings, agent.kind, {
+                          fullAccess: checked
+                        })
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            ) : null}
           </div>
         );
       })}

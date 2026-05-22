@@ -47,6 +47,43 @@ export const defaultDesktopSettings: DesktopUiSettings = {
   }
 };
 
+export function mergeDesktopSettings(current: DesktopUiSettings, patch: Partial<DesktopUiSettings>): DesktopUiSettings {
+  return {
+    ...current,
+    ...patch,
+    notifications: {
+      ...current.notifications,
+      ...patch.notifications
+    },
+    review: {
+      ...current.review,
+      ...patch.review
+    },
+    palette: {
+      ...current.palette,
+      ...patch.palette,
+      visible: {
+        ...current.palette.visible,
+        ...patch.palette?.visible
+      }
+    },
+    agents: {
+      codex: {
+        ...current.agents.codex,
+        ...patch.agents?.codex
+      },
+      "claude-code": {
+        ...current.agents["claude-code"],
+        ...patch.agents?.["claude-code"]
+      },
+      opencode: {
+        ...current.agents.opencode,
+        ...patch.agents?.opencode
+      }
+    }
+  };
+}
+
 export function loadDesktopSettings(): DesktopUiSettings {
   if (typeof window === "undefined") {
     return defaultDesktopSettings;
@@ -57,40 +94,7 @@ export function loadDesktopSettings(): DesktopUiSettings {
       return defaultDesktopSettings;
     }
     const parsed = JSON.parse(raw) as Partial<DesktopUiSettings>;
-    return {
-      ...defaultDesktopSettings,
-      ...parsed,
-      notifications: {
-        ...defaultDesktopSettings.notifications,
-        ...parsed.notifications
-      },
-      review: {
-        ...defaultDesktopSettings.review,
-        ...parsed.review
-      },
-      palette: {
-        ...defaultDesktopSettings.palette,
-        ...parsed.palette,
-        visible: {
-          ...defaultDesktopSettings.palette.visible,
-          ...parsed.palette?.visible
-        }
-      },
-      agents: {
-        codex: {
-          ...defaultDesktopSettings.agents.codex,
-          ...parsed.agents?.codex
-        },
-        "claude-code": {
-          ...defaultDesktopSettings.agents["claude-code"],
-          ...parsed.agents?.["claude-code"]
-        },
-        opencode: {
-          ...defaultDesktopSettings.agents.opencode,
-          ...parsed.agents?.opencode
-        }
-      }
-    };
+    return mergeDesktopSettings(defaultDesktopSettings, parsed);
   } catch {
     return defaultDesktopSettings;
   }

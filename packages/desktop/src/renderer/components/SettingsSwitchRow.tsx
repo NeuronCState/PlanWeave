@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 
 type SettingsSwitchRowProps = {
   title: string;
@@ -12,7 +13,7 @@ type SettingsSwitchRowProps = {
 
 export function SettingsSwitchRow({ checked, description, disabled = false, onCheckedChange, title }: SettingsSwitchRowProps) {
   return (
-    <Field data-disabled={disabled} orientation="horizontal" className="items-center justify-between gap-4 border-b px-5 py-4 last:border-b-0">
+    <Field data-disabled={disabled} orientation="horizontal" className={cn("items-center justify-between gap-4 border-b px-5 py-4 last:border-b-0", disabled ? "opacity-45" : "")}>
       <FieldContent>
         <FieldLabel className="text-sm font-semibold">{title}</FieldLabel>
         <FieldDescription>{description}</FieldDescription>

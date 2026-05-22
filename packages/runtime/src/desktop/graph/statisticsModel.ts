@@ -2,6 +2,8 @@ import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { loadPackage } from "../../package/loadPackage.js";
 import { getExecutionStatus } from "../../taskManager/index.js";
+import type { PackageWorkspaceRef } from "../../types.js";
+import { listTaskCanvases, resolveTaskCanvasWorkspace } from "../canvasApi.js";
 import type { DesktopStatistics } from "../types.js";
 
 async function listResultFiles(root: string): Promise<string[]> {
@@ -35,7 +37,13 @@ async function readJsonObject(path: string): Promise<Record<string, unknown> | n
   }
 }
 
-export async function getStatistics(projectRoot: string): Promise<DesktopStatistics> {
+type StatisticsParts = {
+  stats: DesktopStatistics;
+  implementationDurations: number[];
+  reviewBlockCount: number;
+};
+
+async function getStatisticsForWorkspace(projectRoot: PackageWorkspaceRef): Promise<StatisticsParts> {
   const { workspace } = await loadPackage(projectRoot);
   const status = await getExecutionStatus({ projectRoot });
   const implementationDurations: number[] = [];
@@ -55,6 +63,9 @@ export async function getStatistics(projectRoot: string): Promise<DesktopStatist
   const reviewPassedCount = status.blocks.filter((block) => block.type === "review" && block.completionReason === "passed").length;
   const feedbackEnvelopeCount = Object.values(status.counts.feedback).reduce((sum, count) => sum + count, 0);
   return {
+    implementationDurations,
+    reviewBlockCount,
+    stats: {
     taskTotal: status.taskTotal,
     implementedTaskCount: status.counts.tasks.implemented,
     implementedRatio: status.taskTotal === 0 ? 0 : status.counts.tasks.implemented / status.taskTotal,
@@ -70,5 +81,58 @@ export async function getStatistics(projectRoot: string): Promise<DesktopStatist
     feedbackEnvelopeCount,
     reworkCount: feedbackEnvelopeCount,
     estimatedRemainingBlocks: status.blockTotal - status.counts.blocks.completed
+    }
+  };
+}
+
+export async function getStatistics(projectRoot: string): Promise<DesktopStatistics> {
+  const canvases = await listTaskCanvases(projectRoot);
+  const parts = await Promise.all(
+    canvases.map(async (canvas) => getStatisticsForWorkspace(await resolveTaskCanvasWorkspace(projectRoot, canvas.canvasId)))
+  );
+  const totals = parts.reduce(
+    (sum, part) => ({
+      taskTotal: sum.taskTotal + part.stats.taskTotal,
+      implementedTaskCount: sum.implementedTaskCount + part.stats.implementedTaskCount,
+      taskThroughput: sum.taskThroughput + part.stats.taskThroughput,
+      blockTotal: sum.blockTotal + part.stats.blockTotal,
+      completedBlockCount: sum.completedBlockCount + part.stats.completedBlockCount,
+      reviewBlockCount: sum.reviewBlockCount + part.reviewBlockCount,
+      reviewPassedCount: sum.reviewPassedCount + part.stats.reviewPassedCount,
+      feedbackEnvelopeCount: sum.feedbackEnvelopeCount + part.stats.feedbackEnvelopeCount,
+      reworkCount: sum.reworkCount + part.stats.reworkCount,
+      estimatedRemainingBlocks: sum.estimatedRemainingBlocks + part.stats.estimatedRemainingBlocks,
+      implementationDurations: [...sum.implementationDurations, ...part.implementationDurations]
+    }),
+    {
+      taskTotal: 0,
+      implementedTaskCount: 0,
+      taskThroughput: 0,
+      blockTotal: 0,
+      completedBlockCount: 0,
+      reviewBlockCount: 0,
+      reviewPassedCount: 0,
+      feedbackEnvelopeCount: 0,
+      reworkCount: 0,
+      estimatedRemainingBlocks: 0,
+      implementationDurations: [] as number[]
+    }
+  );
+  return {
+    taskTotal: totals.taskTotal,
+    implementedTaskCount: totals.implementedTaskCount,
+    implementedRatio: totals.taskTotal === 0 ? 0 : totals.implementedTaskCount / totals.taskTotal,
+    taskThroughput: totals.taskThroughput,
+    blockTotal: totals.blockTotal,
+    completedBlockCount: totals.completedBlockCount,
+    averageImplementationTimeMs:
+      totals.implementationDurations.length === 0
+        ? null
+        : Math.round(totals.implementationDurations.reduce((sum, duration) => sum + duration, 0) / totals.implementationDurations.length),
+    reviewPassedCount: totals.reviewPassedCount,
+    reviewPassedRatio: totals.reviewBlockCount === 0 ? 0 : totals.reviewPassedCount / totals.reviewBlockCount,
+    feedbackEnvelopeCount: totals.feedbackEnvelopeCount,
+    reworkCount: totals.reworkCount,
+    estimatedRemainingBlocks: totals.estimatedRemainingBlocks
   };
 }

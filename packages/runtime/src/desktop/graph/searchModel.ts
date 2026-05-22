@@ -4,6 +4,8 @@ import { compileTaskGraph } from "../../graph/compileTaskGraph.js";
 import { loadPackage } from "../../package/loadPackage.js";
 import { resolvePackagePath } from "../../package/resolvePackagePath.js";
 import { readState } from "../../state.js";
+import type { PackageWorkspaceRef } from "../../types.js";
+import { listTaskCanvases, resolveTaskCanvasWorkspace } from "../canvasApi.js";
 import type { DesktopSearchFilters, DesktopSearchResult, DesktopSearchResultKind } from "../types.js";
 import { blockRef, getTask, promptPreview, readOptionalFile } from "./graphHelpers.js";
 
@@ -45,7 +47,12 @@ function runRecordIdFromResultPath(path: string): string | null {
   return `${match[1]}#${match[2]}::${match[3]}`;
 }
 
-export async function searchProject(projectRoot: string, query: string, filters: DesktopSearchFilters = {}): Promise<DesktopSearchResult[]> {
+async function searchWorkspace(
+  projectRoot: PackageWorkspaceRef,
+  query: string,
+  filters: DesktopSearchFilters = {},
+  canvasMeta?: { canvasId: string; canvasName: string }
+): Promise<DesktopSearchResult[]> {
   const normalized = query.trim().toLowerCase();
   if (!normalized) {
     return [];
@@ -61,7 +68,11 @@ export async function searchProject(projectRoot: string, query: string, filters:
   };
   const pushResult = (result: DesktopSearchResult) => {
     if (!allowedKinds || allowedKinds.has(result.kind)) {
-      results.push(result);
+      results.push({
+        ...result,
+        canvasId: canvasMeta?.canvasId,
+        canvasName: canvasMeta?.canvasName
+      });
     }
   };
   for (const taskId of graph.taskNodesInManifestOrder) {
@@ -128,6 +139,16 @@ export async function searchProject(projectRoot: string, query: string, filters:
       path: relativePath,
       recordId: kind === "run_record" ? runRecordIdFromResultPath(toPosixPath(relativePath)) ?? undefined : undefined
     });
+  }
+  return results;
+}
+
+export async function searchProject(projectRoot: string, query: string, filters: DesktopSearchFilters = {}): Promise<DesktopSearchResult[]> {
+  const results: DesktopSearchResult[] = [];
+  const canvases = await listTaskCanvases(projectRoot);
+  for (const canvas of canvases) {
+    const workspace = await resolveTaskCanvasWorkspace(projectRoot, canvas.canvasId);
+    results.push(...(await searchWorkspace(workspace, query, filters, { canvasId: canvas.canvasId, canvasName: canvas.name })));
   }
   return results;
 }

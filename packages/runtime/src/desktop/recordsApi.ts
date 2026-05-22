@@ -5,7 +5,7 @@ import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import { readJsonFile } from "../json.js";
 import { loadPackage } from "../package/loadPackage.js";
 import { readState } from "../state.js";
-import type { ExecutorProfile, ReviewVerdict } from "../types.js";
+import type { ExecutorProfile, PackageWorkspaceRef, ReviewVerdict } from "../types.js";
 import type {
   DesktopBlockRunRecordSummary,
   DesktopFeedbackRecord,
@@ -110,13 +110,13 @@ async function runRecordSummary(options: {
   };
 }
 
-export async function listBlockRunRecords(projectRoot: string, blockRef: string): Promise<DesktopBlockRunRecordSummary[]> {
+export async function listBlockRunRecords(projectRoot: PackageWorkspaceRef, blockRef: string): Promise<DesktopBlockRunRecordSummary[]> {
   const { workspace } = await loadPackage(projectRoot);
   const runIds = await listDirectories(blockRunRoot(workspace.resultsDir, blockRef));
   return Promise.all(runIds.map((runId) => runRecordSummary({ resultsDir: workspace.resultsDir, blockRef, runId })));
 }
 
-export async function getRunRecord(projectRoot: string, recordId: string): Promise<DesktopRunRecord> {
+export async function getRunRecord(projectRoot: PackageWorkspaceRef, recordId: string): Promise<DesktopRunRecord> {
   const { blockRef, runId } = parseRunRecordId(recordId);
   const { workspace } = await loadPackage(projectRoot);
   const summary = await runRecordSummary({ resultsDir: workspace.resultsDir, blockRef, runId });
@@ -130,7 +130,7 @@ export async function getRunRecord(projectRoot: string, recordId: string): Promi
   };
 }
 
-export async function getReviewAttempts(projectRoot: string, blockRef: string): Promise<DesktopReviewAttemptSummary[]> {
+export async function getReviewAttempts(projectRoot: PackageWorkspaceRef, blockRef: string): Promise<DesktopReviewAttemptSummary[]> {
   const { workspace } = await loadPackage(projectRoot);
   const { taskId, blockId } = parseBlockRef(blockRef);
   const attemptIds = await listDirectories(reviewAttemptRoot(workspace.resultsDir, blockRef));
@@ -155,7 +155,7 @@ export async function getReviewAttempts(projectRoot: string, blockRef: string): 
   );
 }
 
-export async function getFeedbackRecords(projectRoot: string, blockRef: string): Promise<DesktopFeedbackRecord[]> {
+export async function getFeedbackRecords(projectRoot: PackageWorkspaceRef, blockRef: string): Promise<DesktopFeedbackRecord[]> {
   const { workspace } = await loadPackage(projectRoot);
   const state = await readState(workspace.stateFile);
   return Object.entries(state.feedback)

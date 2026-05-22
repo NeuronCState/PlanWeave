@@ -11,6 +11,7 @@ import type {
   ManifestBlock,
   ManifestReviewBlock,
   ManifestTaskNode,
+  PackageWorkspaceRef,
   PlanPackageManifest,
   ReviewTriggerCondition,
   ValidationIssue
@@ -131,7 +132,7 @@ function reviewBlocks(task: ManifestTaskNode): ManifestReviewBlock[] {
   return task.blocks.filter((block): block is ManifestReviewBlock => block.type === "review");
 }
 
-export async function getReviewPipeline(projectRoot: string, taskId: string): Promise<DesktopReviewPipeline> {
+export async function getReviewPipeline(projectRoot: PackageWorkspaceRef, taskId: string): Promise<DesktopReviewPipeline> {
   const { workspace, manifest } = await loadPackage(projectRoot);
   const graph = compileTaskGraph(manifest);
   const task = graph.tasksById.get(taskId);
@@ -166,7 +167,7 @@ export async function getReviewPipeline(projectRoot: string, taskId: string): Pr
 }
 
 export async function updateReviewPipeline(
-  projectRoot: string,
+  projectRoot: PackageWorkspaceRef,
   taskId: string,
   input: DesktopUpdateReviewPipelineInput
 ): Promise<GraphEditResult> {

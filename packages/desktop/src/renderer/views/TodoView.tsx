@@ -4,7 +4,7 @@ import { TodoGroupCard } from "../components/TodoGroupCard";
 import type { createTranslator } from "../i18n";
 
 type TodoViewProps = {
-  handleBlockSelect: (ref: string) => Promise<void>;
+  handleBlockSelect: (ref: string, canvasId?: string | null) => Promise<void>;
   t: ReturnType<typeof createTranslator>;
   todoGroups: DesktopTodoGroups | null;
 };
@@ -29,7 +29,7 @@ export function TodoView({ handleBlockSelect, t, todoGroups }: TodoViewProps) {
                     parallelSafe: t("parallelSafe"),
                     parallelSafety: t("parallelSafety")
                   }}
-                  onSelect={(ref) => void handleBlockSelect(ref)}
+                  onSelect={(item) => void handleBlockSelect(item.ref, item.canvasId)}
                   status={status}
                 />
               ))

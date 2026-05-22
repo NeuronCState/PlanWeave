@@ -20,7 +20,7 @@ export function TodoGroupCard({
   status: string;
   items: DesktopTodoItem[];
   labels: TodoGroupCardLabels;
-  onSelect: (ref: string) => void;
+  onSelect: (item: DesktopTodoItem) => void;
 }) {
   return (
     <div className="flex flex-col gap-2 rounded-lg border p-3">
@@ -33,7 +33,7 @@ export function TodoGroupCard({
           className="flex flex-col gap-2 rounded-md bg-muted/50 px-2 py-2 text-left text-xs"
           key={item.ref}
           type="button"
-          onClick={() => onSelect(item.ref)}
+          onClick={() => onSelect(item)}
         >
           <div className="flex items-center justify-between gap-2">
             <span className="truncate font-medium">{item.title}</span>

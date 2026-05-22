@@ -6,7 +6,7 @@ import { SearchResultList } from "../components/SearchResultList";
 import type { createTranslator } from "../i18n";
 
 type SearchViewProps = {
-  handleSearchResultOpen: (result: DesktopSearchResult) => void;
+  handleSearchResultOpen: (result: DesktopSearchResult) => Promise<void>;
   searchQuery: string;
   searchResults: DesktopSearchResult[];
   setSearchQuery: Dispatch<SetStateAction<string>>;

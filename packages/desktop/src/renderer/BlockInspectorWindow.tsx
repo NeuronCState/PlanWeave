@@ -21,6 +21,7 @@ export function BlockInspectorWindow() {
   const params = useMemo(() => new URLSearchParams(search), [search]);
   const projectRoot = params.get("projectRoot") ?? "";
   const initialBlockRef = params.get("blockRef") ?? "";
+  const canvasId = params.get("canvasId");
   const language = supportedLanguage(params.get("language"));
   const t = useMemo(() => createTranslator(language), [language]);
   const { executorOptions } = useDetectedAgents();
@@ -40,11 +41,11 @@ export function BlockInspectorWindow() {
       }
       try {
         const [nextGraph, block, runRecords, reviewAttempts, feedbackRecords] = await Promise.all([
-          bridge.getGraphViewModel(projectRoot),
-          bridge.getBlockDetail(projectRoot, ref),
-          bridge.listBlockRunRecords(projectRoot, ref),
-          bridge.getReviewAttempts(projectRoot, ref),
-          bridge.getFeedbackRecords(projectRoot, ref)
+          bridge.getGraphViewModel(projectRoot, canvasId),
+          bridge.getBlockDetail(projectRoot, canvasId, ref),
+          bridge.listBlockRunRecords(projectRoot, canvasId, ref),
+          bridge.getReviewAttempts(projectRoot, canvasId, ref),
+          bridge.getFeedbackRecords(projectRoot, canvasId, ref)
         ]);
         setGraph(nextGraph);
         setSelectedBlock(block);
@@ -57,7 +58,7 @@ export function BlockInspectorWindow() {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [projectRoot]
+    [canvasId, projectRoot]
   );
 
   useEffect(() => {
@@ -82,52 +83,52 @@ export function BlockInspectorWindow() {
         return;
       }
       try {
-        setSelectedRunRecord(await bridge.getRunRecord(projectRoot, recordId));
+        setSelectedRunRecord(await bridge.getRunRecord(projectRoot, canvasId, recordId));
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [projectRoot]
+    [canvasId, projectRoot]
   );
 
   const saveSelectedBlockTitle = useCallback(async () => {
     if (!bridge || !projectRoot || !selectedBlock) {
       return;
     }
-    const result = await bridge.updateBlockTitle(projectRoot, selectedBlock.ref, selectedBlock.title);
+    const result = await bridge.updateBlockTitle(projectRoot, canvasId, selectedBlock.ref, selectedBlock.title);
     if (!result.ok) {
       setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
       return;
     }
     await refreshBlock();
-  }, [projectRoot, refreshBlock, selectedBlock]);
+  }, [canvasId, projectRoot, refreshBlock, selectedBlock]);
 
   const saveSelectedBlockExecutor = useCallback(
     async (executorName: string | null) => {
       if (!bridge || !projectRoot || !selectedBlock) {
         return;
       }
-      const result = await bridge.updateBlockExecutor(projectRoot, selectedBlock.ref, executorName);
+      const result = await bridge.updateBlockExecutor(projectRoot, canvasId, selectedBlock.ref, executorName);
       if (!result.ok) {
         setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
         return;
       }
       await refreshBlock();
     },
-    [projectRoot, refreshBlock, selectedBlock]
+    [canvasId, projectRoot, refreshBlock, selectedBlock]
   );
 
   const saveSelectedBlockPrompt = useCallback(async () => {
     if (!bridge || !projectRoot || !selectedBlock) {
       return;
     }
-    const result = await bridge.updateBlockPrompt(projectRoot, selectedBlock.ref, selectedBlock.promptMarkdown);
+    const result = await bridge.updateBlockPrompt(projectRoot, canvasId, selectedBlock.ref, selectedBlock.promptMarkdown);
     if (!result.ok) {
       setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
       return;
     }
     await refreshBlock();
-  }, [projectRoot, refreshBlock, selectedBlock]);
+  }, [canvasId, projectRoot, refreshBlock, selectedBlock]);
 
   return (
     <BlockInspector

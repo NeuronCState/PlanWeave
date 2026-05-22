@@ -32,7 +32,7 @@ export function SearchResultList({
 }: {
   results: DesktopSearchResult[];
   targetMissingLabel: string;
-  onOpenResult: (result: DesktopSearchResult) => void;
+  onOpenResult: (result: DesktopSearchResult) => void | Promise<void>;
 }) {
   return (
     <div className="flex flex-col gap-2 pr-2">
@@ -41,9 +41,9 @@ export function SearchResultList({
         return (
           <button
             className="flex flex-col gap-1 rounded-lg border p-3 text-left hover:bg-muted/50"
-            key={`${result.kind}-${result.ref}`}
+            key={`${result.canvasId ?? "project"}-${result.kind}-${result.ref}`}
             type="button"
-            onClick={() => onOpenResult(result)}
+            onClick={() => void onOpenResult(result)}
           >
             <div className="flex items-center justify-between gap-2">
               <span className="truncate text-sm font-medium">{result.title}</span>

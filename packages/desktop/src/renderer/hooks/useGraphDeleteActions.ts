@@ -7,8 +7,9 @@ type UseGraphDeleteActionsArgs = {
   clearSelectedBlockRecords: () => void;
   deleteBlockConfirm: string;
   deleteTaskConfirm: string;
-  loadProject: (project: DesktopProjectSummary) => Promise<void>;
+  loadProject: (project: DesktopProjectSummary, canvasId?: string | null) => Promise<void>;
   refreshGraph: () => Promise<void>;
+  selectedCanvasId: string | null;
   selectedBlock: DesktopBlockDetail | null;
   selectedProject: DesktopProjectSummary | null;
   selectedTaskPanelId: string | null;
@@ -25,6 +26,7 @@ export function useGraphDeleteActions({
   deleteTaskConfirm,
   loadProject,
   refreshGraph,
+  selectedCanvasId,
   selectedBlock,
   selectedProject,
   selectedTaskPanelId,
@@ -47,7 +49,7 @@ export function useGraphDeleteActions({
         return;
       }
       try {
-        const result = await bridge.removeTaskNode(selectedProject.rootPath, taskId);
+        const result = await bridge.removeTaskNode(selectedProject.rootPath, selectedCanvasId, taskId);
         if (!result.ok) {
           setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
           return;
@@ -56,12 +58,12 @@ export function useGraphDeleteActions({
           setSelectedTaskPanelId(null);
           clearBlockSelection();
         }
-        await loadProject(selectedProject);
+        await loadProject(selectedProject, selectedCanvasId);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [clearBlockSelection, deleteTaskConfirm, loadProject, selectedBlock, selectedProject, selectedTaskPanelId, setError, setSelectedTaskPanelId]
+    [clearBlockSelection, deleteTaskConfirm, loadProject, selectedBlock, selectedCanvasId, selectedProject, selectedTaskPanelId, setError, setSelectedTaskPanelId]
   );
 
   const handleDeleteBlock = useCallback(
@@ -70,7 +72,7 @@ export function useGraphDeleteActions({
         return;
       }
       try {
-        const result = await bridge.removeBlock(selectedProject.rootPath, ref);
+        const result = await bridge.removeBlock(selectedProject.rootPath, selectedCanvasId, ref);
         if (!result.ok) {
           setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
           return;
@@ -83,7 +85,7 @@ export function useGraphDeleteActions({
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [clearBlockSelection, deleteBlockConfirm, refreshGraph, selectedBlock, selectedProject, setError]
+    [clearBlockSelection, deleteBlockConfirm, refreshGraph, selectedBlock, selectedCanvasId, selectedProject, setError]
   );
 
   return { handleDeleteBlock, handleDeleteTaskNode };

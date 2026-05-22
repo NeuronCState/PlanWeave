@@ -12,6 +12,7 @@ import type { AppView } from "../types";
 
 type UseSelectedBlockArgs = {
   refreshGraph: () => Promise<void>;
+  selectedCanvasId: string | null;
   selectedProject: DesktopProjectSummary | null;
   setActiveView: (view: AppView) => void;
   setError: (message: string | null) => void;
@@ -21,6 +22,7 @@ type UseSelectedBlockArgs = {
 
 export function useSelectedBlock({
   refreshGraph,
+  selectedCanvasId,
   selectedProject,
   setActiveView,
   setError,
@@ -40,15 +42,16 @@ export function useSelectedBlock({
   }, []);
 
   const handleBlockSelect = useCallback(
-    async (ref: string) => {
+    async (ref: string, canvasIdOverride?: string | null) => {
       if (!bridge || !selectedProject) {
         return;
       }
+      const canvasId = canvasIdOverride === undefined ? selectedCanvasId : canvasIdOverride;
       const [block, runRecords, reviewAttempts, feedbackRecords] = await Promise.all([
-        bridge.getBlockDetail(selectedProject.rootPath, ref),
-        bridge.listBlockRunRecords(selectedProject.rootPath, ref),
-        bridge.getReviewAttempts(selectedProject.rootPath, ref),
-        bridge.getFeedbackRecords(selectedProject.rootPath, ref)
+        bridge.getBlockDetail(selectedProject.rootPath, canvasId, ref),
+        bridge.listBlockRunRecords(selectedProject.rootPath, canvasId, ref),
+        bridge.getReviewAttempts(selectedProject.rootPath, canvasId, ref),
+        bridge.getFeedbackRecords(selectedProject.rootPath, canvasId, ref)
       ]);
       setSelectedBlock(block);
       setBlockRunRecords(runRecords);
@@ -59,21 +62,22 @@ export function useSelectedBlock({
       setSelectedRunRecord(null);
       setActiveView("graph");
     },
-    [selectedProject, setActiveView, setSelectedContextNodeId, setSelectedTaskPanelId]
+    [selectedCanvasId, selectedProject, setActiveView, setSelectedContextNodeId, setSelectedTaskPanelId]
   );
 
   const handleOpenRunRecord = useCallback(
-    async (recordId: string | null | undefined) => {
+    async (recordId: string | null | undefined, canvasIdOverride?: string | null) => {
       if (!bridge || !selectedProject || !recordId) {
         return;
       }
       try {
-        setSelectedRunRecord(await bridge.getRunRecord(selectedProject.rootPath, recordId));
+        const canvasId = canvasIdOverride === undefined ? selectedCanvasId : canvasIdOverride;
+        setSelectedRunRecord(await bridge.getRunRecord(selectedProject.rootPath, canvasId, recordId));
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [selectedProject, setError]
+    [selectedCanvasId, selectedProject, setError]
   );
 
   const saveSelectedBlockTitle = useCallback(async () => {
@@ -81,12 +85,12 @@ export function useSelectedBlock({
       return;
     }
     try {
-      await bridge.updateBlockTitle(selectedProject.rootPath, selectedBlock.ref, selectedBlock.title);
+      await bridge.updateBlockTitle(selectedProject.rootPath, selectedCanvasId, selectedBlock.ref, selectedBlock.title);
       await refreshGraph();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [refreshGraph, selectedBlock, selectedProject, setError]);
+  }, [refreshGraph, selectedBlock, selectedCanvasId, selectedProject, setError]);
 
   const saveSelectedBlockExecutor = useCallback(
     async (executorName: string | null) => {
@@ -94,18 +98,18 @@ export function useSelectedBlock({
         return;
       }
       try {
-        const result = await bridge.updateBlockExecutor(selectedProject.rootPath, selectedBlock.ref, executorName);
+        const result = await bridge.updateBlockExecutor(selectedProject.rootPath, selectedCanvasId, selectedBlock.ref, executorName);
         if (!result.ok) {
           setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
           return;
         }
-        setSelectedBlock(await bridge.getBlockDetail(selectedProject.rootPath, selectedBlock.ref));
+        setSelectedBlock(await bridge.getBlockDetail(selectedProject.rootPath, selectedCanvasId, selectedBlock.ref));
         await refreshGraph();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [refreshGraph, selectedBlock, selectedProject, setError]
+    [refreshGraph, selectedBlock, selectedCanvasId, selectedProject, setError]
   );
 
   const saveSelectedBlockPrompt = useCallback(async () => {
@@ -113,12 +117,12 @@ export function useSelectedBlock({
       return;
     }
     try {
-      await bridge.updateBlockPrompt(selectedProject.rootPath, selectedBlock.ref, selectedBlock.promptMarkdown);
+      await bridge.updateBlockPrompt(selectedProject.rootPath, selectedCanvasId, selectedBlock.ref, selectedBlock.promptMarkdown);
       await refreshGraph();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [refreshGraph, selectedBlock, selectedProject, setError]);
+  }, [refreshGraph, selectedBlock, selectedCanvasId, selectedProject, setError]);
 
   return {
     blockFeedbackRecords,

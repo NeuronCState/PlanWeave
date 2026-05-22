@@ -5,8 +5,10 @@ import { searchNavigationTarget } from "../components/SearchResultList";
 import type { AppView } from "../types";
 
 type UseDesktopSearchArgs = {
-  handleBlockSelect: (ref: string) => Promise<void>;
-  handleOpenRunRecord: (recordId: string | null | undefined) => Promise<void>;
+  handleBlockSelect: (ref: string, canvasId?: string | null) => Promise<void>;
+  handleOpenRunRecord: (recordId: string | null | undefined, canvasId?: string | null) => Promise<void>;
+  loadProject: (project: DesktopProjectSummary, canvasId?: string | null) => Promise<void>;
+  selectedCanvasId: string | null;
   selectedProject: DesktopProjectSummary | null;
   setActiveView: (view: AppView) => void;
   setError: (message: string | null) => void;
@@ -17,6 +19,8 @@ type UseDesktopSearchArgs = {
 export function useDesktopSearch({
   handleBlockSelect,
   handleOpenRunRecord,
+  loadProject,
+  selectedCanvasId,
   selectedProject,
   setActiveView,
   setError,
@@ -50,7 +54,10 @@ export function useDesktopSearch({
   }, [searchQuery, selectedProject, setError]);
 
   const handleSearchResultOpen = useCallback(
-    (result: DesktopSearchResult) => {
+    async (result: DesktopSearchResult) => {
+      if (selectedProject && result.canvasId && result.canvasId !== selectedCanvasId) {
+        await loadProject(selectedProject, result.canvasId);
+      }
       const target = searchNavigationTarget(result);
       if (target.kind === "task") {
         setSelectedTaskPanelId(target.ref);
@@ -59,7 +66,7 @@ export function useDesktopSearch({
         return;
       }
       if (target.kind === "block") {
-        void handleBlockSelect(target.ref);
+        await handleBlockSelect(target.ref, result.canvasId ?? selectedCanvasId);
         return;
       }
       if (target.kind === "context") {
@@ -69,10 +76,10 @@ export function useDesktopSearch({
         return;
       }
       if (target.kind === "record") {
-        void handleOpenRunRecord(target.recordId);
+        await handleOpenRunRecord(target.recordId, result.canvasId ?? selectedCanvasId);
       }
     },
-    [handleBlockSelect, handleOpenRunRecord, setActiveView, setSelectedContextNodeId, setSelectedTaskPanelId]
+    [handleBlockSelect, handleOpenRunRecord, loadProject, selectedCanvasId, selectedProject, setActiveView, setSelectedContextNodeId, setSelectedTaskPanelId]
   );
 
   return { handleSearchResultOpen, searchQuery, searchResults, setSearchQuery };

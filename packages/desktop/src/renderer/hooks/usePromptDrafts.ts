@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DesktopGraphViewModel, DesktopProjectSummary } from "@planweave/runtime";
-import { bridge } from "../bridge";
+import { bridge, desktopCanvasReference } from "../bridge";
 import type { TaskNodeData } from "../types";
 
 type UsePromptDraftsArgs = {
@@ -56,7 +56,7 @@ export function usePromptDrafts({ graph, refreshGraph, selectedCanvasId, selecte
         return;
       }
       try {
-        await bridge.updateTaskTitle(selectedProject.rootPath, selectedCanvasId, taskId, titleDrafts[taskId] ?? "");
+        await bridge.updateTaskTitle(desktopCanvasReference(selectedProject, selectedCanvasId), taskId, titleDrafts[taskId] ?? "");
         await refreshGraph();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
@@ -77,7 +77,7 @@ export function usePromptDrafts({ graph, refreshGraph, selectedCanvasId, selecte
       }
       setSaveStates((current) => ({ ...current, [taskId]: "saving" }));
       try {
-        await bridge.updateTaskPrompt(selectedProject.rootPath, selectedCanvasId, taskId, promptDrafts[taskId] ?? "");
+        await bridge.updateTaskPrompt(desktopCanvasReference(selectedProject, selectedCanvasId), taskId, promptDrafts[taskId] ?? "");
         setSaveStates((current) => ({ ...current, [taskId]: "saved" }));
         await refreshGraph();
       } catch (caught) {

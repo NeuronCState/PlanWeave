@@ -7,7 +7,7 @@ import type {
   DesktopReviewAttemptSummary,
   DesktopRunRecord
 } from "@planweave/runtime";
-import { bridge } from "../bridge";
+import { bridge, desktopCanvasReference } from "../bridge";
 import type { AppView } from "../types";
 
 type UseSelectedBlockArgs = {
@@ -47,11 +47,12 @@ export function useSelectedBlock({
         return;
       }
       const canvasId = canvasIdOverride === undefined ? selectedCanvasId : canvasIdOverride;
+      const canvas = desktopCanvasReference(selectedProject, canvasId);
       const [block, runRecords, reviewAttempts, feedbackRecords] = await Promise.all([
-        bridge.getBlockDetail(selectedProject.rootPath, canvasId, ref),
-        bridge.listBlockRunRecords(selectedProject.rootPath, canvasId, ref),
-        bridge.getReviewAttempts(selectedProject.rootPath, canvasId, ref),
-        bridge.getFeedbackRecords(selectedProject.rootPath, canvasId, ref)
+        bridge.getBlockDetail(canvas, ref),
+        bridge.listBlockRunRecords(canvas, ref),
+        bridge.getReviewAttempts(canvas, ref),
+        bridge.getFeedbackRecords(canvas, ref)
       ]);
       setSelectedBlock(block);
       setBlockRunRecords(runRecords);
@@ -72,7 +73,7 @@ export function useSelectedBlock({
       }
       try {
         const canvasId = canvasIdOverride === undefined ? selectedCanvasId : canvasIdOverride;
-        setSelectedRunRecord(await bridge.getRunRecord(selectedProject.rootPath, canvasId, recordId));
+        setSelectedRunRecord(await bridge.getRunRecord(desktopCanvasReference(selectedProject, canvasId), recordId));
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -85,7 +86,7 @@ export function useSelectedBlock({
       return;
     }
     try {
-      await bridge.updateBlockTitle(selectedProject.rootPath, selectedCanvasId, selectedBlock.ref, selectedBlock.title);
+      await bridge.updateBlockTitle(desktopCanvasReference(selectedProject, selectedCanvasId), selectedBlock.ref, selectedBlock.title);
       await refreshGraph();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -98,12 +99,12 @@ export function useSelectedBlock({
         return;
       }
       try {
-        const result = await bridge.updateBlockExecutor(selectedProject.rootPath, selectedCanvasId, selectedBlock.ref, executorName);
+        const result = await bridge.updateBlockExecutor(desktopCanvasReference(selectedProject, selectedCanvasId), selectedBlock.ref, executorName);
         if (!result.ok) {
           setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
           return;
         }
-        setSelectedBlock(await bridge.getBlockDetail(selectedProject.rootPath, selectedCanvasId, selectedBlock.ref));
+        setSelectedBlock(await bridge.getBlockDetail(desktopCanvasReference(selectedProject, selectedCanvasId), selectedBlock.ref));
         await refreshGraph();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
@@ -117,7 +118,7 @@ export function useSelectedBlock({
       return;
     }
     try {
-      await bridge.updateBlockPrompt(selectedProject.rootPath, selectedCanvasId, selectedBlock.ref, selectedBlock.promptMarkdown);
+      await bridge.updateBlockPrompt(desktopCanvasReference(selectedProject, selectedCanvasId), selectedBlock.ref, selectedBlock.promptMarkdown);
       await refreshGraph();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));

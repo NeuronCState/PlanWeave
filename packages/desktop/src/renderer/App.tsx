@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type Edge, type ReactFlowInstance, useEdgesState, useNodesState } from "@xyflow/react";
 import type { DesktopPackageFileChangeEvent, DesktopProjectSummary } from "@planweave/runtime";
-import { PanelLeftOpenIcon, PanelRightCloseIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { bridge } from "./bridge";
-import { ComponentPalette } from "./palette/ComponentPalette";
-import { WindowTitleBar } from "./components/WindowTitleBar";
+import { bridge, desktopCanvasReference } from "./bridge";
 import { nodeTypes, graphEdges, graphNodes } from "./graph/flowModel";
 import { createTranslator } from "./i18n";
 import { ProjectSidebar } from "./sidebar/ProjectSidebar";
@@ -21,14 +17,15 @@ import { useSelectedBlock } from "./hooks/useSelectedBlock";
 import { useDesktopSearch } from "./hooks/useDesktopSearch";
 import { useTaskDraft } from "./hooks/useTaskDraft";
 import { useDesktopProject } from "./hooks/useDesktopProject";
+import { useDesktopProjectSession } from "./hooks/useDesktopProjectSession";
 import { usePromptDrafts } from "./hooks/usePromptDrafts";
 import { useAppViewHistory } from "./hooks/useAppViewHistory";
 import { useGraphDeleteActions } from "./hooks/useGraphDeleteActions";
 import { useDesktopSettingsEffects } from "./hooks/useDesktopSettingsEffects";
 import { useVisibleGraphTasks } from "./hooks/useVisibleGraphTasks";
 import { useDetectedAgents } from "./hooks/useDetectedAgents";
-import { SettingsView } from "./views/SettingsView";
-import { HistoryNavigationButtons } from "./components/HistoryNavigationButtons";
+import { CollapsedSidebarControls, RightPaletteSidebar } from "./AppSidebars";
+import { AppSettingsRoute } from "./AppSettingsRoute";
 
 export function App() {
   const [settings, setSettings] = useState<DesktopUiSettings>(() => loadDesktopSettings());
@@ -56,14 +53,18 @@ export function App() {
 
   useDesktopSettingsEffects(settings);
 
+  const desktopProject = useDesktopProject({
+    setError,
+    setSelectedContextNodeId,
+    setSelectedTaskPanelId,
+    updateSettings
+  });
   const {
     expandedProjectId,
     graph,
     handleOpenProject,
     layout,
-    loadProject,
     projects,
-    refreshProjectSummary,
     refreshGraph,
     removeProject,
     selectedCanvasId,
@@ -71,12 +72,7 @@ export function App() {
     setLayout,
     statistics,
     todoGroups
-  } = useDesktopProject({
-    setError,
-    setSelectedContextNodeId,
-    setSelectedTaskPanelId,
-    updateSettings
-  });
+  } = desktopProject;
 
   const pinnedProjectIds = useMemo(() => new Set(settings.pinnedProjectIds), [settings.pinnedProjectIds]);
   const orderedProjects = useMemo(() => orderProjectsByPinnedIds(projects, settings.pinnedProjectIds), [projects, settings.pinnedProjectIds]);
@@ -129,38 +125,18 @@ export function App() {
     stopAutoRunControlDrag
   } = useAutoRunControl({ selectedCanvasId, selectedBlock, selectedProject, selectedTaskPanelId, setError, t });
 
-  useEffect(() => {
-    setSelectedBlock(null);
-    setSelectedRunRecord(null);
-    setBlockInspectorOpen(false);
-    clearSelectedBlockRecords();
-  }, [clearSelectedBlockRecords, selectedCanvasId, selectedProject?.projectId, setSelectedBlock, setSelectedRunRecord]);
-
-  useEffect(() => {
-    if (!bridge || !selectedProject) {
-      setAutoRunState(null);
-      return;
-    }
-    void bridge.getLatestAutoRunSummary(selectedProject.rootPath, selectedCanvasId).then(setAutoRunState);
-  }, [selectedCanvasId, selectedProject, setAutoRunState]);
-
-  const loadProjectWithSelectionReset = useCallback(
-    async (project: Parameters<typeof loadProject>[0], canvasId?: string | null) => {
-      const nextCanvasId = canvasId === undefined ? (project.taskCanvases[0]?.canvasId ?? null) : canvasId;
-      setSelectedBlock(null);
-      setSelectedRunRecord(null);
-      setBlockInspectorOpen(false);
-      clearSelectedBlockRecords();
-      await loadProject(project, nextCanvasId);
-      if (bridge) {
-        const summary = await bridge.getLatestAutoRunSummary(project.rootPath, nextCanvasId);
-        setAutoRunState(summary);
-      } else {
-        setAutoRunState(null);
-      }
-    },
-    [clearSelectedBlockRecords, loadProject, setAutoRunState, setSelectedBlock, setSelectedRunRecord]
-  );
+  const {
+    createTaskCanvas: createTaskCanvasInSession,
+    deleteTaskCanvas: deleteTaskCanvasInSession,
+    openProject: openProjectInSession
+  } = useDesktopProjectSession({
+    clearSelectedBlockRecords,
+    projectState: desktopProject,
+    setAutoRunState,
+    setBlockInspectorOpen,
+    setSelectedBlock,
+    setSelectedRunRecord
+  });
 
   const handleOpenBlockInspector = useCallback(
     async (ref: string, canvasIdOverride?: string | null) => {
@@ -172,9 +148,8 @@ export function App() {
         }
         await bridge.openBlockInspectorWindow({
           blockRef: ref,
-          canvasId,
+          canvas: desktopCanvasReference(selectedProject, canvasId),
           language,
-          projectRoot: selectedProject.rootPath
         });
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
@@ -187,7 +162,7 @@ export function App() {
     clearSelectedBlockRecords,
     deleteBlockConfirm: t("deleteBlockConfirm"),
     deleteTaskConfirm: t("deleteTaskConfirm"),
-    loadProject: loadProjectWithSelectionReset,
+    loadProject: openProjectInSession,
     refreshGraph,
     selectedCanvasId,
     selectedBlock,
@@ -210,12 +185,12 @@ export function App() {
     setNewTaskTargetId,
     setNewTaskText,
     taskDraft
-  } = useTaskDraft({ loadProject: loadProjectWithSelectionReset, selectedCanvasId, selectedProject, setActiveView, setError });
+  } = useTaskDraft({ loadProject: openProjectInSession, selectedCanvasId, selectedProject, setActiveView, setError });
 
   const { handleSearchResultOpen, searchQuery, searchResults, setSearchQuery } = useDesktopSearch({
     handleBlockSelect: handleOpenBlockInspector,
     handleOpenRunRecord,
-    loadProject: loadProjectWithSelectionReset,
+    loadProject: openProjectInSession,
     selectedCanvasId,
     selectedProject,
     setActiveView,
@@ -236,7 +211,7 @@ export function App() {
     setReviewDefaultCyclesDraft,
     setReviewTaskId,
     updateReviewStep
-  } = useReviewPipeline({ graph, loadProject: loadProjectWithSelectionReset, selectedCanvasId, selectedProject, setError, t });
+  } = useReviewPipeline({ graph, loadProject: openProjectInSession, selectedCanvasId, selectedProject, setError, t });
 
   const {
     handlePromptChange,
@@ -254,7 +229,7 @@ export function App() {
         return;
       }
       try {
-        const result = await bridge.updateTaskExecutor(selectedProject.rootPath, selectedCanvasId, taskId, executorName);
+        const result = await bridge.updateTaskExecutor(desktopCanvasReference(selectedProject, selectedCanvasId), taskId, executorName);
         if (!result.ok) {
           setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
           return;
@@ -280,15 +255,13 @@ export function App() {
         return;
       }
       try {
-        const canvas = await bridge.createTaskCanvas(project.rootPath);
-        const refreshed = await refreshProjectSummary(project.rootPath, canvas.canvasId);
-        await loadProjectWithSelectionReset(refreshed ?? project, canvas.canvasId);
+        await createTaskCanvasInSession(project);
         setActiveView("new-task");
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [loadProjectWithSelectionReset, refreshProjectSummary, setActiveView, t]
+    [createTaskCanvasInSession, setActiveView, t]
   );
 
   const handleRevealProject = useCallback(
@@ -329,17 +302,12 @@ export function App() {
         return;
       }
       try {
-        const canvases = await bridge.removeTaskCanvas(project.rootPath, canvasId);
-        const nextCanvasId = canvases[0]?.canvasId ?? null;
-        const refreshed = await refreshProjectSummary(project.rootPath, nextCanvasId);
-        if (selectedProject?.projectId === project.projectId && refreshed) {
-          await loadProjectWithSelectionReset(refreshed, nextCanvasId);
-        }
+        await deleteTaskCanvasInSession(project, canvasId);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [loadProjectWithSelectionReset, refreshProjectSummary, selectedProject?.projectId, t]
+    [deleteTaskCanvasInSession, t]
   );
 
 
@@ -445,7 +413,7 @@ export function App() {
     flowInstance,
     graph,
     layout,
-    loadProject: loadProjectWithSelectionReset,
+    loadProject: openProjectInSession,
     nodes,
     refreshGraph,
     selectedCanvasId,
@@ -460,7 +428,7 @@ export function App() {
     t
   });
   const { refreshPackageFiles } = usePackageFileSync({
-    loadProject: loadProjectWithSelectionReset,
+    loadProject: openProjectInSession,
     selectedCanvasId,
     selectedProject,
     setDirtyPromptRefs,
@@ -491,20 +459,17 @@ export function App() {
 
   if (activeView === "settings") {
     return (
-      <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground">
-        <WindowTitleBar t={t} />
-        <SettingsView
-          graph={graph}
-          agents={agentDetections}
-          agentDetectionRefreshing={agentDetectionRefreshing}
-          language={language}
-          refreshAgentDetections={refreshAgentDetections}
-          setActiveView={setActiveView}
-          settings={settings}
-          t={t}
-          updateSettings={updateSettings}
-        />
-      </div>
+      <AppSettingsRoute
+        graph={graph}
+        agents={agentDetections}
+        agentDetectionRefreshing={agentDetectionRefreshing}
+        language={language}
+        refreshAgentDetections={refreshAgentDetections}
+        setActiveView={setActiveView}
+        settings={settings}
+        t={t}
+        updateSettings={updateSettings}
+      />
     );
   }
 
@@ -523,7 +488,7 @@ export function App() {
           handleDeleteTaskNode={handleDeleteTaskNode}
           handleRevealProject={handleRevealProject}
           handleTaskPanelSelect={handleTaskPanelSelect}
-          loadProject={loadProjectWithSelectionReset}
+          loadProject={openProjectInSession}
           notificationItems={notificationItems}
           onToggleSidebar={() => setLeftSidebarCollapsed((current) => !current)}
           onTogglePinnedProject={handleTogglePinnedProject}
@@ -607,34 +572,22 @@ export function App() {
           visibleTaskIds={visibleTaskIds}
           visibleTasks={visibleTasks}
         />
-        {rightSidebarCollapsed ? null : (
-          <aside className="flex w-[300px] shrink-0 flex-col overflow-hidden border-l bg-background">
-            <div className="app-drag-region flex h-11 shrink-0 items-center justify-end border-b px-2">
-              <Button className="app-no-drag" size="icon-sm" variant="ghost" aria-label={t("collapseSidebar")} onClick={() => setRightSidebarCollapsed(true)}>
-                <PanelRightCloseIcon data-icon="inline-start" />
-              </Button>
-            </div>
-            <ComponentPalette addPaletteComponent={addPaletteComponent} handlePaletteDragStart={handlePaletteDragStart} settings={settings} t={t} />
-          </aside>
-        )}
+        <RightPaletteSidebar
+          addPaletteComponent={addPaletteComponent}
+          handlePaletteDragStart={handlePaletteDragStart}
+          rightSidebarCollapsed={rightSidebarCollapsed}
+          setRightSidebarCollapsed={setRightSidebarCollapsed}
+          settings={settings}
+          t={t}
+        />
       </main>
-      {leftSidebarCollapsed ? (
-        <div className="app-drag-region absolute left-0 top-0 z-20 flex h-11 w-[280px] items-center border-b bg-background px-3 pl-[124px]">
-          <div className="app-no-drag flex items-center gap-1">
-            <Button size="icon-sm" variant="ghost" aria-label={t("expandSidebar")} onClick={() => setLeftSidebarCollapsed(false)}>
-              <PanelLeftOpenIcon data-icon="inline-start" />
-            </Button>
-            <HistoryNavigationButtons t={t} />
-          </div>
-        </div>
-      ) : null}
-      {rightSidebarCollapsed ? (
-        <div className="app-drag-region absolute right-0 top-0 z-30 flex h-11 w-11 items-center justify-center border-b bg-background">
-          <Button className="app-no-drag" size="icon-sm" variant="ghost" aria-label={t("expandSidebar")} onClick={() => setRightSidebarCollapsed(false)}>
-            <PanelRightCloseIcon data-icon="inline-start" />
-          </Button>
-        </div>
-      ) : null}
+      <CollapsedSidebarControls
+        leftSidebarCollapsed={leftSidebarCollapsed}
+        rightSidebarCollapsed={rightSidebarCollapsed}
+        setLeftSidebarCollapsed={setLeftSidebarCollapsed}
+        setRightSidebarCollapsed={setRightSidebarCollapsed}
+        t={t}
+      />
     </div>
   );
 }

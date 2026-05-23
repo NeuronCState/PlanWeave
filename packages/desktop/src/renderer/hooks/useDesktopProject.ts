@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { DesktopGraphViewModel, DesktopLayout, DesktopProjectSummary, DesktopStatistics, DesktopTodoGroups } from "@planweave/runtime";
-import { bridge } from "../bridge";
+import { bridge, desktopCanvasReference } from "../bridge";
 import type { DesktopUiSettings } from "../types";
 
-type UseDesktopProjectArgs = {
+export type UseDesktopProjectArgs = {
   setError: (message: string | null) => void;
   setSelectedContextNodeId: (nodeId: string | null) => void;
   setSelectedTaskPanelId: (taskId: string | null) => void;
@@ -40,8 +40,8 @@ export function useDesktopProject({
       setSelectedContextNodeId(null);
       setError(null);
       const [nextGraph, nextLayout, nextTodo, nextStats] = await Promise.all([
-        bridge.getGraphViewModel(project.rootPath, canvasId),
-        bridge.getDesktopLayout(project.rootPath, canvasId),
+        bridge.getGraphViewModel(desktopCanvasReference(project, canvasId)),
+        bridge.getDesktopLayout(desktopCanvasReference(project, canvasId)),
         bridge.getTodoGroups(project.rootPath),
         bridge.getStatistics(project.rootPath)
       ]);
@@ -49,8 +49,8 @@ export function useDesktopProject({
       setLayout(nextLayout);
       setTodoGroups(nextTodo);
       setStatistics(nextStats);
-      await bridge.refreshPackageFileChanges(project.rootPath, canvasId);
-      await bridge.watchPackageFiles(project.rootPath, canvasId);
+      await bridge.refreshPackageFileChanges(desktopCanvasReference(project, canvasId));
+      await bridge.watchPackageFiles(desktopCanvasReference(project, canvasId));
       updateSettings({ runtimePath: project.workspaceRoot });
     },
     [setError, setSelectedContextNodeId, setSelectedTaskPanelId, updateSettings]
@@ -76,7 +76,7 @@ export function useDesktopProject({
   const canvasId = selectedCanvasId;
     return () => {
       if (bridge && projectRoot) {
-        void bridge.unwatchPackageFiles(projectRoot, canvasId);
+        void bridge.unwatchPackageFiles({ projectRoot, canvasId });
       }
     };
   }, [selectedCanvasId, selectedProject?.rootPath]);
@@ -85,7 +85,7 @@ export function useDesktopProject({
     if (!bridge || !selectedProject) {
       return;
     }
-    const nextGraph = await bridge.getGraphViewModel(selectedProject.rootPath, selectedCanvasId);
+    const nextGraph = await bridge.getGraphViewModel(desktopCanvasReference(selectedProject, selectedCanvasId));
     setGraph(nextGraph);
   }, [selectedCanvasId, selectedProject]);
 

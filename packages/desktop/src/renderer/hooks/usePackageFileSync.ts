@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 import type { DesktopPackageFileChangeEvent, DesktopProjectSummary } from "@planweave/runtime";
-import { bridge } from "../bridge";
+import { bridge, desktopCanvasReference } from "../bridge";
 
 type UsePackageFileSyncArgs = {
   loadProject: (project: DesktopProjectSummary, canvasId?: string | null) => Promise<void>;
@@ -26,7 +26,7 @@ export function usePackageFileSync({
       return;
     }
     try {
-      const result = await bridge.refreshPackageFileChanges(selectedProject.rootPath, selectedCanvasId);
+      const result = await bridge.refreshPackageFileChanges(desktopCanvasReference(selectedProject, selectedCanvasId));
       setDirtyPromptRefs(result.dirtyPromptRefs);
       setFileSyncDiagnostics(result.diagnostics.map((diagnostic) => diagnostic.message));
       if (!result.ok) {

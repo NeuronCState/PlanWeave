@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import type { DesktopProjectSummary, DesktopTaskDraft, DesktopTaskDraftMode } from "@planweave/runtime";
-import { bridge } from "../bridge";
+import { bridge, desktopCanvasReference } from "../bridge";
 import type { AppView } from "../types";
 
 type UseTaskDraftArgs = {
@@ -23,7 +23,7 @@ export function useTaskDraft({ loadProject, selectedCanvasId, selectedProject, s
     }
     try {
       setTaskDraft(
-        await bridge.createTaskDraft(selectedProject.rootPath, selectedCanvasId, {
+        await bridge.createTaskDraft(desktopCanvasReference(selectedProject, selectedCanvasId), {
           mode: newTaskMode,
           text: newTaskText,
           targetTaskId: newTaskTargetId
@@ -39,15 +39,16 @@ export function useTaskDraft({ loadProject, selectedCanvasId, selectedProject, s
       return;
       }
       try {
+        const canvas = desktopCanvasReference(selectedProject, selectedCanvasId);
         for (const task of taskDraft.tasks) {
-        const result = await bridge.addTaskNode(selectedProject.rootPath, selectedCanvasId, task);
+        const result = await bridge.addTaskNode(canvas, task);
         if (!result.ok) {
           setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
           return;
         }
       }
       for (const block of taskDraft.blocks) {
-        const result = await bridge.addBlock(selectedProject.rootPath, selectedCanvasId, block);
+        const result = await bridge.addBlock(canvas, block);
         if (!result.ok) {
           setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
           return;

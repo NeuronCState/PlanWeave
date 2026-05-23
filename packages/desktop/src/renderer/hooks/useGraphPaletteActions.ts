@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import type * as React from "react";
 import type { Connection, Edge, Node, ReactFlowInstance } from "@xyflow/react";
 import type { DesktopBlockDetail, DesktopGraphViewModel, DesktopLayout, DesktopProjectSummary } from "@planweave/runtime";
-import { bridge } from "../bridge";
+import { bridge, desktopCanvasReference } from "../bridge";
 import type { createTranslator } from "../i18n";
 import { visibleBlockSet } from "../settings";
 import type { AppFlowNode, DesktopUiSettings, PaletteDropComponent, PaletteDropPosition } from "../types";
@@ -50,7 +50,8 @@ export function useGraphPaletteActions({
       if (!bridge || !selectedProject) {
         return;
       }
-      const baseLayout = layout ?? (await bridge.getDesktopLayout(selectedProject.rootPath, selectedCanvasId));
+      const canvas = desktopCanvasReference(selectedProject, selectedCanvasId);
+      const baseLayout = layout ?? (await bridge.getDesktopLayout(canvas));
       const nextLayout: DesktopLayout = {
         ...baseLayout,
         nodes: nodes.map((item) => ({
@@ -59,7 +60,7 @@ export function useGraphPaletteActions({
           y: item.id === node.id ? node.position.y : item.position.y
         }))
       };
-      const saved = await bridge.saveDesktopLayout(selectedProject.rootPath, selectedCanvasId, nextLayout);
+      const saved = await bridge.saveDesktopLayout(canvas, nextLayout);
       setLayout(saved);
     },
     [layout, nodes, selectedCanvasId, selectedProject, setLayout]
@@ -69,7 +70,7 @@ export function useGraphPaletteActions({
     if (!bridge || !selectedProject) {
       return;
     }
-    setLayout(await bridge.resetDesktopLayout(selectedProject.rootPath, selectedCanvasId));
+    setLayout(await bridge.resetDesktopLayout(desktopCanvasReference(selectedProject, selectedCanvasId)));
   }, [selectedCanvasId, selectedProject, setLayout]);
 
   const handleConnect = useCallback(
@@ -78,7 +79,7 @@ export function useGraphPaletteActions({
         return;
       }
       try {
-        const result = await bridge.addDependencyEdge(selectedProject.rootPath, selectedCanvasId, connection.source, connection.target);
+        const result = await bridge.addDependencyEdge(desktopCanvasReference(selectedProject, selectedCanvasId), connection.source, connection.target);
         if (!result.ok) {
           setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
           return;
@@ -98,7 +99,7 @@ export function useGraphPaletteActions({
       }
       for (const edge of deletedEdges) {
         if (edge.source && edge.target) {
-          await bridge.removeDependencyEdge(selectedProject.rootPath, selectedCanvasId, edge.source, edge.target);
+          await bridge.removeDependencyEdge(desktopCanvasReference(selectedProject, selectedCanvasId), edge.source, edge.target);
         }
       }
       await refreshGraph();
@@ -112,9 +113,10 @@ export function useGraphPaletteActions({
         return;
       }
       try {
+        const canvas = desktopCanvasReference(selectedProject, selectedCanvasId);
         if (type === "task") {
           const previousTaskIds = new Set(graph?.tasks.map((task) => task.taskId) ?? []);
-          const result = await bridge.addTaskNode(selectedProject.rootPath, selectedCanvasId, {
+          const result = await bridge.addTaskNode(canvas, {
             title: t("defaultTaskTitle"),
             promptMarkdown: t("defaultTaskPrompt"),
             acceptance: [t("defaultTaskAcceptance")],
@@ -126,15 +128,15 @@ export function useGraphPaletteActions({
             return;
           }
           if (dropPosition) {
-            const nextGraph = await bridge.getGraphViewModel(selectedProject.rootPath, selectedCanvasId);
+            const nextGraph = await bridge.getGraphViewModel(canvas);
             const createdTask = nextGraph.tasks.find((task) => !previousTaskIds.has(task.taskId));
             if (createdTask) {
-              const baseLayout = await bridge.getDesktopLayout(selectedProject.rootPath, selectedCanvasId);
+              const baseLayout = await bridge.getDesktopLayout(canvas);
               const nextLayout: DesktopLayout = {
                 ...baseLayout,
                 nodes: [...baseLayout.nodes.filter((node) => node.nodeId !== createdTask.taskId), { nodeId: createdTask.taskId, x: dropPosition.x, y: dropPosition.y }]
               };
-              const savedLayout = await bridge.saveDesktopLayout(selectedProject.rootPath, selectedCanvasId, nextLayout);
+              const savedLayout = await bridge.saveDesktopLayout(canvas, nextLayout);
               await loadProject(selectedProject, selectedCanvasId);
               setLayout(savedLayout);
               setSelectedTaskPanelId(createdTask.taskId);
@@ -147,7 +149,7 @@ export function useGraphPaletteActions({
         }
         if (type === "context") {
           const previousContextIds = new Set(graph?.contextNodes.map((node) => node.nodeId) ?? []);
-          const result = await bridge.addContextNode(selectedProject.rootPath, selectedCanvasId, {
+          const result = await bridge.addContextNode(canvas, {
             type: "component",
             title: t("defaultContextTitle"),
             summary: t("defaultContextSummary")
@@ -157,15 +159,15 @@ export function useGraphPaletteActions({
             return;
           }
           if (dropPosition) {
-            const nextGraph = await bridge.getGraphViewModel(selectedProject.rootPath, selectedCanvasId);
+            const nextGraph = await bridge.getGraphViewModel(canvas);
             const createdContext = nextGraph.contextNodes.find((node) => !previousContextIds.has(node.nodeId));
             if (createdContext) {
-              const baseLayout = await bridge.getDesktopLayout(selectedProject.rootPath, selectedCanvasId);
+              const baseLayout = await bridge.getDesktopLayout(canvas);
               const nextLayout: DesktopLayout = {
                 ...baseLayout,
                 nodes: [...baseLayout.nodes.filter((node) => node.nodeId !== createdContext.nodeId), { nodeId: createdContext.nodeId, x: dropPosition.x, y: dropPosition.y }]
               };
-              const savedLayout = await bridge.saveDesktopLayout(selectedProject.rootPath, selectedCanvasId, nextLayout);
+              const savedLayout = await bridge.saveDesktopLayout(canvas, nextLayout);
               await loadProject(selectedProject, selectedCanvasId);
               setLayout(savedLayout);
               return;
@@ -179,7 +181,7 @@ export function useGraphPaletteActions({
           setError(t("selectTaskBeforeBlock"));
           return;
         }
-        const result = await bridge.addBlock(selectedProject.rootPath, selectedCanvasId, {
+        const result = await bridge.addBlock(canvas, {
           taskId: targetTaskId,
           type,
           title: defaultBlockTitleForUi(type, t),

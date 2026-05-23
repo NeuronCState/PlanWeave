@@ -39,13 +39,14 @@ export function BlockInspectorWindow() {
       if (!bridge || !projectRoot || !ref) {
         return;
       }
+      const canvas = { projectRoot, canvasId };
       try {
         const [nextGraph, block, runRecords, reviewAttempts, feedbackRecords] = await Promise.all([
-          bridge.getGraphViewModel(projectRoot, canvasId),
-          bridge.getBlockDetail(projectRoot, canvasId, ref),
-          bridge.listBlockRunRecords(projectRoot, canvasId, ref),
-          bridge.getReviewAttempts(projectRoot, canvasId, ref),
-          bridge.getFeedbackRecords(projectRoot, canvasId, ref)
+          bridge.getGraphViewModel(canvas),
+          bridge.getBlockDetail(canvas, ref),
+          bridge.listBlockRunRecords(canvas, ref),
+          bridge.getReviewAttempts(canvas, ref),
+          bridge.getFeedbackRecords(canvas, ref)
         ]);
         setGraph(nextGraph);
         setSelectedBlock(block);
@@ -83,7 +84,7 @@ export function BlockInspectorWindow() {
         return;
       }
       try {
-        setSelectedRunRecord(await bridge.getRunRecord(projectRoot, canvasId, recordId));
+        setSelectedRunRecord(await bridge.getRunRecord({ projectRoot, canvasId }, recordId));
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -95,7 +96,7 @@ export function BlockInspectorWindow() {
     if (!bridge || !projectRoot || !selectedBlock) {
       return;
     }
-    const result = await bridge.updateBlockTitle(projectRoot, canvasId, selectedBlock.ref, selectedBlock.title);
+    const result = await bridge.updateBlockTitle({ projectRoot, canvasId }, selectedBlock.ref, selectedBlock.title);
     if (!result.ok) {
       setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
       return;
@@ -108,7 +109,7 @@ export function BlockInspectorWindow() {
       if (!bridge || !projectRoot || !selectedBlock) {
         return;
       }
-      const result = await bridge.updateBlockExecutor(projectRoot, canvasId, selectedBlock.ref, executorName);
+      const result = await bridge.updateBlockExecutor({ projectRoot, canvasId }, selectedBlock.ref, executorName);
       if (!result.ok) {
         setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
         return;
@@ -122,7 +123,7 @@ export function BlockInspectorWindow() {
     if (!bridge || !projectRoot || !selectedBlock) {
       return;
     }
-    const result = await bridge.updateBlockPrompt(projectRoot, canvasId, selectedBlock.ref, selectedBlock.promptMarkdown);
+    const result = await bridge.updateBlockPrompt({ projectRoot, canvasId }, selectedBlock.ref, selectedBlock.promptMarkdown);
     if (!result.ok) {
       setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
       return;

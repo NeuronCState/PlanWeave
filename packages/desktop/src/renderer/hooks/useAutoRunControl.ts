@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type * as React from "react";
 import type { DesktopAutoRunScope, DesktopAutoRunState, DesktopBlockDetail, DesktopProjectSummary } from "@planweave/runtime";
-import { bridge } from "../bridge";
+import { bridge, desktopCanvasReference } from "../bridge";
 import type { createTranslator } from "../i18n";
 import type { AutoRunScopeMode, FloatingControlDrag, FloatingControlPosition } from "../types";
 import { clamp } from "../viewHelpers";
@@ -67,7 +67,7 @@ export function useAutoRunControl({ selectedCanvasId, selectedBlock, selectedPro
           setError(t("selectBlockFirst"));
           return;
         }
-        setAutoRunState(await bridge.startAutoRun(selectedProject.rootPath, selectedCanvasId, scope, 20));
+        setAutoRunState(await bridge.startAutoRun(desktopCanvasReference(selectedProject, selectedCanvasId), scope, 20));
         return;
       }
       if (autoRunState.phase === "running") {

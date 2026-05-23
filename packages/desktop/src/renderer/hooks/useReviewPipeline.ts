@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { DesktopGraphViewModel, DesktopProjectSummary, DesktopReviewPipeline, DesktopReviewPipelineStepInput } from "@planweave/runtime";
-import { bridge } from "../bridge";
+import { bridge, desktopCanvasReference } from "../bridge";
 import type { createTranslator } from "../i18n";
 
 type UseReviewPipelineArgs = {
@@ -35,8 +35,9 @@ export function useReviewPipeline({ graph, loadProject, selectedCanvasId, select
       return;
     }
     let cancelled = false;
+    const canvas = desktopCanvasReference(selectedProject, selectedCanvasId);
     bridge
-      .getReviewPipeline(selectedProject.rootPath, selectedCanvasId, reviewTaskId)
+      .getReviewPipeline(canvas, reviewTaskId)
       .then((pipeline) => {
         if (cancelled) {
           return;
@@ -99,7 +100,8 @@ export function useReviewPipeline({ graph, loadProject, selectedCanvasId, select
       return;
     }
     try {
-      const result = await bridge.updateReviewPipeline(selectedProject.rootPath, selectedCanvasId, reviewTaskId, {
+      const canvas = desktopCanvasReference(selectedProject, selectedCanvasId);
+      const result = await bridge.updateReviewPipeline(canvas, reviewTaskId, {
         packageDefaults: {
           maxFeedbackCycles: reviewDefaultCyclesDraft,
           completionPolicy: "strict"
@@ -110,7 +112,7 @@ export function useReviewPipeline({ graph, loadProject, selectedCanvasId, select
         setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
         return;
       }
-      const pipeline = await bridge.getReviewPipeline(selectedProject.rootPath, selectedCanvasId, reviewTaskId);
+      const pipeline = await bridge.getReviewPipeline(canvas, reviewTaskId);
       setReviewPipeline(pipeline);
       setReviewDraft(pipeline.steps);
       await loadProject(selectedProject, selectedCanvasId);

@@ -2,10 +2,9 @@ import { ipcMain } from "electron";
 import { existsSync, watch, type FSWatcher } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { resolveTaskCanvasWorkspace } from "@planweave/runtime";
-import type { DesktopPackageFileChangeEvent } from "@planweave/runtime";
+import type { DesktopCanvasReference, DesktopPackageFileChangeEvent } from "@planweave/runtime";
 import type { WebContents } from "electron";
-
-const packageFileChangedChannel = "planweave:packageFileChanged";
+import { desktopBridgeInvokeChannels, packageFileChangedChannel } from "../shared/ipcChannels.js";
 
 type PackageWatch = {
   watchers: FSWatcher[];
@@ -126,6 +125,6 @@ function stopPackageWatch(projectRoot: string, canvasId: string | null | undefin
 }
 
 export function registerPackageWatchHandlers(): void {
-  ipcMain.handle("planweave:watchPackageFiles", (event, projectRoot: string, canvasId?: string | null) => startPackageWatch(projectRoot, canvasId, event.sender));
-  ipcMain.handle("planweave:unwatchPackageFiles", (event, projectRoot: string, canvasId?: string | null) => stopPackageWatch(projectRoot, canvasId, event.sender));
+  ipcMain.handle(desktopBridgeInvokeChannels.watchPackageFiles, (event, ref: DesktopCanvasReference) => startPackageWatch(ref.projectRoot, ref.canvasId, event.sender));
+  ipcMain.handle(desktopBridgeInvokeChannels.unwatchPackageFiles, (event, ref: DesktopCanvasReference) => stopPackageWatch(ref.projectRoot, ref.canvasId, event.sender));
 }

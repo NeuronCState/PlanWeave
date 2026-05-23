@@ -1,15 +1,15 @@
 import { BrowserWindow } from "electron";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { DesktopCanvasReference } from "@planweave/runtime";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const blockInspectorWindows = new Map<string, BrowserWindow>();
 
 type OpenBlockInspectorWindowInput = {
   blockRef: string;
-  canvasId?: string | null;
+  canvas: DesktopCanvasReference;
   language: string;
-  projectRoot: string;
 };
 
 function rendererEntry(): string {
@@ -17,15 +17,15 @@ function rendererEntry(): string {
 }
 
 function blockWindowKey(input: OpenBlockInspectorWindowInput): string {
-  return `${input.projectRoot}:${input.canvasId ?? "default"}:${input.blockRef}`;
+  return `${input.canvas.projectRoot}:${input.canvas.canvasId ?? "default"}:${input.blockRef}`;
 }
 
 function blockWindowQuery(input: OpenBlockInspectorWindowInput): Record<string, string> {
   return {
     blockRef: input.blockRef,
-    canvasId: input.canvasId ?? "",
+    canvasId: input.canvas.canvasId ?? "",
     language: input.language,
-    projectRoot: input.projectRoot,
+    projectRoot: input.canvas.projectRoot,
     window: "block-inspector"
   };
 }

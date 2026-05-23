@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { DesktopBlockDetail, DesktopProjectSummary, DesktopRunRecord } from "@planweave/runtime";
-import { bridge } from "../bridge";
+import { bridge, desktopCanvasReference } from "../bridge";
 
 type UseGraphDeleteActionsArgs = {
   clearSelectedBlockRecords: () => void;
@@ -49,7 +49,7 @@ export function useGraphDeleteActions({
         return;
       }
       try {
-        const result = await bridge.removeTaskNode(selectedProject.rootPath, selectedCanvasId, taskId);
+        const result = await bridge.removeTaskNode(desktopCanvasReference(selectedProject, selectedCanvasId), taskId);
         if (!result.ok) {
           setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
           return;
@@ -72,7 +72,7 @@ export function useGraphDeleteActions({
         return;
       }
       try {
-        const result = await bridge.removeBlock(selectedProject.rootPath, selectedCanvasId, ref);
+        const result = await bridge.removeBlock(desktopCanvasReference(selectedProject, selectedCanvasId), ref);
         if (!result.ok) {
           setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
           return;

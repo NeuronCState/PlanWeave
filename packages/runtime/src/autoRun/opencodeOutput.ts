@@ -28,13 +28,71 @@ function extractSessionIdFromObject(value: unknown): string | null {
   );
 }
 
+const ansiEscapePattern = /\x1B\[[0-?]*[ -/]*[@-~]/g;
+const sessionLabels = new Set(["opencodesessionid", "sessionid", "threadid"]);
+
+function normalizeTerminalLine(line: string): string {
+  return line.replace(ansiEscapePattern, "").trim();
+}
+
+function cleanSessionToken(value: string | undefined): string | null {
+  const cleaned = value?.replace(/^[`'"]+|[`'",;]+$/g, "");
+  if (!cleaned || !/^[A-Za-z0-9_.:-]+$/.test(cleaned)) {
+    return null;
+  }
+  return cleaned;
+}
+
+function firstSessionToken(value: string): string | null {
+  for (const token of value.replaceAll("*", "").trim().split(/\s+/)) {
+    const sessionId = cleanSessionToken(token);
+    if (sessionId) {
+      return sessionId;
+    }
+  }
+  return null;
+}
+
+function labeledSessionId(line: string): string | null {
+  const colonIndex = line.indexOf(":");
+  const equalsIndex = line.indexOf("=");
+  const separatorIndex =
+    colonIndex === -1 ? equalsIndex : equalsIndex === -1 ? colonIndex : Math.min(colonIndex, equalsIndex);
+  if (separatorIndex === -1) {
+    return null;
+  }
+  const label = line
+    .slice(0, separatorIndex)
+    .replaceAll("*", "")
+    .toLowerCase()
+    .replace(/[\s_-]/g, "");
+  if (!sessionLabels.has(label)) {
+    return null;
+  }
+  return firstSessionToken(line.slice(separatorIndex + 1));
+}
+
+function commandSessionId(line: string): string | null {
+  const tokens = line.split(/\s+/).filter(Boolean);
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index] !== "opencode") {
+      continue;
+    }
+    const option = tokens[index + 1];
+    if (option === "-s" || option === "--session") {
+      return cleanSessionToken(tokens[index + 2]);
+    }
+  }
+  return null;
+}
+
 export function extractOpencodeSessionId(output: string): string | null {
   const jsonSessionId = parseOpencodeJsonOutput(output).sessionId;
   if (jsonSessionId) {
     return jsonSessionId;
   }
   for (const line of output.split(/\r?\n/)) {
-    const trimmed = line.trim();
+    const trimmed = normalizeTerminalLine(line);
     if (!trimmed) {
       continue;
     }
@@ -45,12 +103,9 @@ export function extractOpencodeSessionId(output: string): string | null {
         return sessionId;
       }
     } catch {
-      const match =
-        trimmed.match(/^(?:opencodeSessionId|sessionId|session_id|session id|threadId|thread_id)\s*[:=]\s*([A-Za-z0-9_.:-]+)$/i) ??
-        trimmed.match(/^\*\*Session ID:\*\*\s*([A-Za-z0-9_.:-]+)$/i) ??
-        trimmed.match(/^Continue\s+opencode\s+-s\s+([A-Za-z0-9_.:-]+)$/i);
-      if (match) {
-        return match[1];
+      const sessionId = labeledSessionId(trimmed) ?? commandSessionId(trimmed);
+      if (sessionId) {
+        return sessionId;
       }
     }
   }
@@ -136,12 +191,25 @@ export function parseOpencodeJsonOutput(output: string): OpencodeJsonOutput {
   };
 }
 
-export function opencodeReport(output: OpencodeJsonOutput, fallbackStdout: string, fallbackStderr: string): string {
+const sessionListHint =
+  "OpenCode session id was not found in this run output. Run `opencode session list` in the execution directory to find the latest OpenCode session.";
+
+function withSessionListHint(report: string, output: OpencodeJsonOutput, fallbackStdout: string, fallbackStderr: string, knownSessionId?: string | null): string {
+  const sessionId = knownSessionId ?? output.sessionId ?? extractOpencodeSessionId(`${fallbackStdout}\n${fallbackStderr}`);
+  if (sessionId || !report.trim()) {
+    return report;
+  }
+  return `${report.trim()}\n\n---\n${sessionListHint}`;
+}
+
+export function opencodeReport(output: OpencodeJsonOutput, fallbackStdout: string, fallbackStderr: string, knownSessionId?: string | null): string {
+  let report: string;
   if (output.text) {
-    return output.text;
+    report = output.text;
+  } else if (output.toolSummaries.length > 0) {
+    report = ["## OpenCode Tool Summary", "", ...output.toolSummaries].join("\n");
+  } else {
+    report = fallbackStdout.trim() || fallbackStderr.trim();
   }
-  if (output.toolSummaries.length > 0) {
-    return ["## OpenCode Tool Summary", "", ...output.toolSummaries].join("\n");
-  }
-  return fallbackStdout.trim() || fallbackStderr.trim();
+  return withSessionListHint(report, output, fallbackStdout, fallbackStderr, knownSessionId);
 }

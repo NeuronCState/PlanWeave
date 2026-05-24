@@ -5,6 +5,7 @@ export type OpencodeInvocation = {
   args: string[];
   stdin: string;
   jsonMode: boolean;
+  sessionId: string | null;
 };
 
 function hasOption(args: string[], name: string): boolean {
@@ -19,6 +20,15 @@ function optionValue(args: string[], name: string): string | null {
     }
     if (arg.startsWith(`${name}=`)) {
       return arg.slice(name.length + 1);
+    }
+  }
+  return null;
+}
+
+function shortOptionValue(args: string[], name: string): string | null {
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === name) {
+      return args[index + 1] ?? null;
     }
   }
   return null;
@@ -40,10 +50,11 @@ function isDirectOpencodeRun(profile: OpencodeExecExecutorProfile): boolean {
 
 export function opencodeInvocation(profile: OpencodeExecExecutorProfile, prompt: string, cwd: string): OpencodeInvocation {
   if (!isDirectOpencodeRun(profile)) {
-    return { args: profile.args, stdin: prompt, jsonMode: false };
+    return { args: profile.args, stdin: prompt, jsonMode: false, sessionId: null };
   }
 
   const args = withWorkingDirectory(profile.args, cwd);
+  const sessionId = optionValue(args, "--session") ?? shortOptionValue(args, "-s");
   const runIndex = args.indexOf("run");
   const promptPlaceholderIndex = args.lastIndexOf("-");
   if (promptPlaceholderIndex > runIndex) {
@@ -51,5 +62,5 @@ export function opencodeInvocation(profile: OpencodeExecExecutorProfile, prompt:
   } else {
     args.push(prompt);
   }
-  return { args, stdin: "", jsonMode: optionValue(args, "--format") === "json" };
+  return { args, stdin: "", jsonMode: optionValue(args, "--format") === "json", sessionId };
 }

@@ -75,6 +75,9 @@ export async function runOpencodeBlock(options: {
       opencodeSessionId: sessionId
     });
   };
+  if (invocation.sessionId) {
+    await onSessionId(invocation.sessionId);
+  }
   const result = await runOpencodeStreamingCommand({
     command: options.profile.command,
     args: invocation.args,
@@ -143,7 +146,7 @@ export async function runOpencodeBlock(options: {
     };
   }
   const reportPath = join(run.runDir, "report.md");
-  await writeFile(reportPath, opencodeReport(jsonOutput, result.stdout, result.stderr), "utf8");
+  await writeFile(reportPath, opencodeReport(jsonOutput, result.stdout, result.stderr, agentSessionId), "utf8");
   return { kind: "block", reportPath, runId: run.runId, executor: options.executorName, adapter: "opencode-exec", agentSessionId, opencodeSessionId: agentSessionId, ...result };
 }
 
@@ -191,6 +194,9 @@ export async function runOpencodeFeedback(options: {
       opencodeSessionId: sessionId
     });
   };
+  if (invocation.sessionId) {
+    await onSessionId(invocation.sessionId);
+  }
   const result = await runOpencodeStreamingCommand({
     command: options.profile.command,
     args: invocation.args,
@@ -228,6 +234,6 @@ export async function runOpencodeFeedback(options: {
     throw new Error(`Executor '${options.executorName}' returned an OpenCode error event: ${jsonOutput.error}`);
   }
   const reportPath = join(runDir, "report.md");
-  await writeFile(reportPath, opencodeReport(jsonOutput, result.stdout, result.stderr), "utf8");
+  await writeFile(reportPath, opencodeReport(jsonOutput, result.stdout, result.stderr, agentSessionId), "utf8");
   return { kind: "feedback", reportPath, runId, executor: options.executorName, adapter: "opencode-exec", agentSessionId, opencodeSessionId: agentSessionId, ...result };
 }

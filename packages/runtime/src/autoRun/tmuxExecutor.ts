@@ -105,7 +105,11 @@ export async function createTmuxSessionInfo(options: {
   runId: string;
   ref?: string;
   kind: "block" | "feedback";
+  enabled?: boolean;
 }): Promise<TmuxSessionInfo | null> {
+  if (options.enabled === false) {
+    return null;
+  }
   if (!(await isTmuxAvailable())) {
     return null;
   }

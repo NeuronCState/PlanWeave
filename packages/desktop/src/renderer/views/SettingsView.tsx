@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
-import type { BlockType, DesktopAgentDetection, DesktopGraphViewModel } from "@planweave/runtime";
+import type { BlockType, DesktopAgentDetection, DesktopGraphViewModel, DesktopRuntimeToolAvailability } from "@planweave/runtime";
 import { ArrowLeftIcon, BlocksIcon, BotIcon, GitPullRequestIcon, SettingsIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
@@ -20,6 +20,8 @@ type SettingsViewProps = {
   graph: DesktopGraphViewModel | null;
   language: Language;
   refreshAgentDetections: () => Promise<void>;
+  refreshRuntimeTools: () => Promise<void>;
+  runtimeTools: DesktopRuntimeToolAvailability;
   setActiveView: Dispatch<SetStateAction<AppView>>;
   settings: DesktopUiSettings;
   t: ReturnType<typeof createTranslator>;
@@ -72,6 +74,8 @@ export function SettingsView({
   graph,
   language,
   refreshAgentDetections,
+  refreshRuntimeTools,
+  runtimeTools,
   setActiveView,
   settings,
   t,
@@ -169,6 +173,20 @@ export function SettingsView({
                     }
                   />
                 ))}
+              </SettingGroup>
+              <SettingGroup title={t("executionSettings")}>
+                <SettingsSwitchRow
+                  checked={runtimeTools.tmux.available && settings.execution.tmuxMonitoring}
+                  disabled={!runtimeTools.tmux.available}
+                  title={t("tmuxMonitoring")}
+                  description={runtimeTools.tmux.available ? t("tmuxMonitoringHint") : t("tmuxMonitoringUnavailableHint")}
+                  onCheckedChange={(checked) => updateSettings({ execution: { ...settings.execution, tmuxMonitoring: checked } })}
+                />
+                <div className="flex justify-end px-5 py-3">
+                  <Button size="sm" variant="outline" onClick={() => void refreshRuntimeTools()}>
+                    {t("refreshRuntimeTools")}
+                  </Button>
+                </div>
               </SettingGroup>
             </section>
           ) : null}

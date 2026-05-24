@@ -5,6 +5,10 @@ export type DesktopAutoRunScope =
 
 export type DesktopAutoRunPhase = "idle" | "running" | "pausing" | "paused" | "manual" | "completed" | "blocked" | "failed" | "stopped";
 
+export type DesktopAutoRunOptions = {
+  tmuxEnabled?: boolean;
+};
+
 export type DesktopAutoRunState = {
   runId: string;
   projectRoot: string;
@@ -21,6 +25,7 @@ export type DesktopAutoRunState = {
   latestRecordPath: string | null;
   statePath: string;
   eventLogPath: string;
+  options: Required<DesktopAutoRunOptions>;
   error: string | null;
   startedAt: string;
   updatedAt: string;

@@ -12,6 +12,21 @@ afterEach(async () => {
 });
 
 describe("tmux executor", () => {
+  it("does not create a session when tmux monitoring is disabled", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "planweave-tmux-disabled-"));
+    tempDirs.push(dir);
+
+    await expect(
+      createTmuxSessionInfo({
+        runDir: dir,
+        runId: "RUN-DISABLED",
+        ref: "T-001#B-001",
+        kind: "block",
+        enabled: false
+      })
+    ).resolves.toBeNull();
+  });
+
   it("runs a command inside a per-run tmux session and mirrors output to log files", async () => {
     if (!(await isTmuxAvailable())) {
       return;

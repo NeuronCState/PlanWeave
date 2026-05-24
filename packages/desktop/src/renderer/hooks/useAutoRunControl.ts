@@ -14,6 +14,7 @@ type UseAutoRunControlArgs = {
   selectedTaskPanelId: string | null;
   setError: (message: string | null) => void;
   t: ReturnType<typeof createTranslator>;
+  tmuxMonitoringEnabled: boolean;
 };
 
 export function useAutoRunControl({
@@ -23,7 +24,8 @@ export function useAutoRunControl({
   selectedProject,
   selectedTaskPanelId,
   setError,
-  t
+  t,
+  tmuxMonitoringEnabled
 }: UseAutoRunControlArgs) {
   const [autoRunState, setAutoRunState] = useState<DesktopAutoRunState | null>(null);
   const [autoRunScopeMode, setAutoRunScopeMode] = useState<AutoRunScopeMode>("project");
@@ -95,11 +97,11 @@ export function useAutoRunControl({
       if (autoRunState?.phase === "blocked" && autoRunState.currentRef) {
         await bridge.unblockBlock(desktopCanvasReference(selectedProject, selectedCanvasId), autoRunState.currentRef, "Retry requested from Auto Run.");
       }
-      await applyAutoRunState(await bridge.startAutoRun(desktopCanvasReference(selectedProject, selectedCanvasId), scope, 20));
+      await applyAutoRunState(await bridge.startAutoRun(desktopCanvasReference(selectedProject, selectedCanvasId), scope, 20, { tmuxEnabled: tmuxMonitoringEnabled }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [applyAutoRunState, autoRunState, selectedCanvasId, selectedProject, setError]);
+  }, [applyAutoRunState, autoRunState, selectedCanvasId, selectedProject, setError, tmuxMonitoringEnabled]);
 
   const handleAutoRunClick = useCallback(async () => {
     if (!bridge || !selectedProject) {

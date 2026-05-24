@@ -42,6 +42,9 @@ const settings: DesktopUiSettings = {
     pipelineEnabled: true,
     strictReview: true
   },
+  execution: {
+    tmuxMonitoring: true
+  },
   agents: {
     codex: {
       enabled: false,
@@ -217,6 +220,7 @@ describe("desktop renderer interface interactions", () => {
       latestOutputSummary: "Updated files",
       statePath: "/tmp/project/.planweave/results/auto-runs/RUN-001/state.json",
       eventLogPath: "/tmp/project/.planweave/results/auto-runs/RUN-001/events.ndjson",
+      options: { tmuxEnabled: true },
       error: null,
       startedAt: "2026-05-23T00:00:00.000Z",
       updatedAt: "2026-05-23T00:00:01.000Z"

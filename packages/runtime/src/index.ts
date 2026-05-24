@@ -59,6 +59,7 @@ export {
   getExecutionStatus
 } from "./taskManager/index.js";
 export { getAutoRunStatus, runAutoRunStep } from "./taskManager/autoRun.js";
+export { isTmuxAvailable } from "./autoRun/tmuxExecutor.js";
 export {
   addBlock,
   addContextNode,

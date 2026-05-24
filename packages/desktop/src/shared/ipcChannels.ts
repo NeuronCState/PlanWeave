@@ -12,6 +12,7 @@ export const desktopBridgeInvokeChannels = {
   createTaskCanvas: "planweave:createTaskCanvas",
   createTaskDraft: "planweave:createTaskDraft",
   detectAgentTools: "planweave:detectAgentTools",
+  detectRuntimeTools: "planweave:detectRuntimeTools",
   detectPackageFileChanges: "planweave:detectPackageFileChanges",
   getAutoRunState: "planweave:getAutoRunState",
   getBlockDetail: "planweave:getBlockDetail",

@@ -4,12 +4,18 @@ import { runAutoRunStep } from "../taskManager/autoRun.js";
 import { resetMaxCycleReviewsForRetry } from "../taskManager/reviewRetry.js";
 import { loadPackage } from "../package/loadPackage.js";
 import { resolveTaskCanvasWorkspace } from "./canvasApi.js";
-import type { DesktopAutoRunScope, DesktopAutoRunState } from "./types.js";
+import type { DesktopAutoRunOptions, DesktopAutoRunScope, DesktopAutoRunState } from "./types.js";
 import { appendAutoRunEvent, autoRunRoot, cloneAutoRunState, nextRunId, now, writeAutoRunState } from "./runStateStore.js";
 import { claimRef, claimScope, executorName, latestStatus, outputSummary, phaseAfterStep, terminalPatch } from "./runStepState.js";
 
 const runs = new Map<string, DesktopAutoRunState>();
 const activeLoops = new Set<string>();
+
+function normalizeAutoRunOptions(options?: DesktopAutoRunOptions): Required<DesktopAutoRunOptions> {
+  return {
+    tmuxEnabled: options?.tmuxEnabled ?? true
+  };
+}
 
 async function setState(runId: string, patch: Partial<DesktopAutoRunState>, eventType?: string, data: Record<string, unknown> = {}): Promise<DesktopAutoRunState> {
   const current = runs.get(runId);
@@ -55,7 +61,12 @@ async function runLoop(runId: string): Promise<void> {
         const workspace = await resolveTaskCanvasWorkspace(current.projectRoot, current.canvasId);
         const { manifest } = await loadPackage(workspace);
         await appendAutoRunEvent(current, "step_start", { scope: current.scope });
-        const step = await runAutoRunStep({ projectRoot: workspace, parallel: manifest.execution.parallel.enabled, scope: claimScope(current.scope) });
+        const step = await runAutoRunStep({
+          projectRoot: workspace,
+          parallel: manifest.execution.parallel.enabled,
+          scope: claimScope(current.scope),
+          tmuxEnabled: current.options.tmuxEnabled
+        });
         const { record, warnings } = await latestStatus(workspace);
         const patch = terminalPatch(step, warnings);
         const afterStep = runs.get(runId);
@@ -107,7 +118,8 @@ export async function startAutoRun(
   projectRoot: string,
   canvasId: string | null | undefined,
   scope: DesktopAutoRunScope = { kind: "project" },
-  stepLimit = 20
+  stepLimit = 20,
+  options?: DesktopAutoRunOptions
 ): Promise<DesktopAutoRunState> {
   const workspace = await resolveTaskCanvasWorkspace(projectRoot, canvasId);
   const resetReviews = await resetMaxCycleReviewsForRetry({ projectRoot: workspace, scope: claimScope(scope) });
@@ -130,6 +142,7 @@ export async function startAutoRun(
     latestRecordPath: null,
     statePath: join(root, "state.json"),
     eventLogPath: join(root, "events.ndjson"),
+    options: normalizeAutoRunOptions(options),
     error: null,
     startedAt: timestamp,
     updatedAt: timestamp

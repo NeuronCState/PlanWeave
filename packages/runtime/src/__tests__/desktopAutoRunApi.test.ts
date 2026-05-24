@@ -68,6 +68,37 @@ describe("desktop auto run API", () => {
     await expect(stopAutoRun(started.runId)).resolves.toMatchObject({ phase: "stopped" });
   });
 
+  it("can disable tmux monitoring while preserving streaming run records", async () => {
+    const manifest = basicManifest() as any;
+    manifest.executors = {
+      "fake-codex": {
+        adapter: "codex-exec",
+        command: process.execPath,
+        args: [
+          "-e",
+          "let input=''; process.stdin.on('data', c => input += c); process.stdin.on('end', () => { console.log('streamed without tmux ' + input.split('\\n')[0]); });"
+        ]
+      }
+    };
+    manifest.execution.defaultExecutor = "fake-codex";
+    const { root } = await createTestWorkspace(manifest);
+
+    const started = await startAutoRun(root, null, { kind: "project" }, 1, { tmuxEnabled: false });
+    expect(started.options.tmuxEnabled).toBe(false);
+    const current = await waitForRun(started.runId, (nextState) => nextState.phase !== "running");
+
+    expect(current).toMatchObject({
+      phase: "paused",
+      currentExecutor: "fake-codex",
+      latestOutputSummary: expect.stringContaining("streamed without tmux"),
+      options: { tmuxEnabled: false }
+    });
+    expect(current.latestRecordPath).toEqual(expect.any(String));
+    const metadata = JSON.parse(await readFile(current.latestRecordPath!, "utf8")) as Record<string, unknown>;
+    expect(metadata.tmuxSessionId).toBeUndefined();
+    await expect(readFile(current.latestRecordPath!.replace("metadata.json", "stdout.md"), "utf8")).resolves.toContain("streamed without tmux");
+  });
+
   it("finishes the in-flight block before pausing and resumes the same run", async () => {
     const manifest = basicManifest() as any;
     manifest.executors = {

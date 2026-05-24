@@ -38,6 +38,9 @@ const settings: DesktopUiSettings = {
     pipelineEnabled: true,
     strictReview: true
   },
+  execution: {
+    tmuxMonitoring: true
+  },
   agents: {
     codex: {
       enabled: false,
@@ -54,6 +57,19 @@ const settings: DesktopUiSettings = {
   }
 };
 
+function stubLayoutApis() {
+  class ResizeObserverMock {
+    disconnect = vi.fn();
+    observe = vi.fn();
+    unobserve = vi.fn();
+  }
+  vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+  Object.defineProperty(window.HTMLElement.prototype, "hasPointerCapture", { configurable: true, value: vi.fn(() => false) });
+  Object.defineProperty(window.HTMLElement.prototype, "setPointerCapture", { configurable: true, value: vi.fn() });
+  Object.defineProperty(window.HTMLElement.prototype, "releasePointerCapture", { configurable: true, value: vi.fn() });
+  Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+}
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -62,16 +78,7 @@ afterEach(() => {
 
 describe("desktop renderer settings interactions", () => {
   it("renders the interface language setting as a dropdown select", async () => {
-    class ResizeObserverMock {
-      disconnect = vi.fn();
-      observe = vi.fn();
-      unobserve = vi.fn();
-    }
-    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
-    Object.defineProperty(window.HTMLElement.prototype, "hasPointerCapture", { configurable: true, value: vi.fn(() => false) });
-    Object.defineProperty(window.HTMLElement.prototype, "setPointerCapture", { configurable: true, value: vi.fn() });
-    Object.defineProperty(window.HTMLElement.prototype, "releasePointerCapture", { configurable: true, value: vi.fn() });
-    Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+    stubLayoutApis();
     const updateSettings = vi.fn();
 
     render(
@@ -81,6 +88,8 @@ describe("desktop renderer settings interactions", () => {
         graph={null}
         language="zh-CN"
         refreshAgentDetections={vi.fn().mockResolvedValue(undefined)}
+        refreshRuntimeTools={vi.fn().mockResolvedValue(undefined)}
+        runtimeTools={{ tmux: { available: true, command: "tmux" } }}
         setActiveView={vi.fn()}
         settings={{ ...settings, language: "zh-CN" }}
         t={createTranslator("zh-CN")}
@@ -93,6 +102,53 @@ describe("desktop renderer settings interactions", () => {
     await userEvent.click(screen.getByRole("option", { name: "English" }));
 
     expect(updateSettings).toHaveBeenCalledWith({ language: "en" });
+  });
+
+  it("only enables tmux monitoring when the runtime tool is detected", async () => {
+    stubLayoutApis();
+    const refreshRuntimeTools = vi.fn().mockResolvedValue(undefined);
+    const updateSettings = vi.fn();
+
+    const { rerender } = render(
+      <SettingsView
+        agentDetectionRefreshing={false}
+        agents={[]}
+        graph={null}
+        language="en"
+        refreshAgentDetections={vi.fn().mockResolvedValue(undefined)}
+        refreshRuntimeTools={refreshRuntimeTools}
+        runtimeTools={{ tmux: { available: false, command: "tmux" } }}
+        setActiveView={vi.fn()}
+        settings={settings}
+        t={createTranslator("en")}
+        updateSettings={updateSettings}
+      />
+    );
+
+    const unavailableSwitch = screen.getByRole("switch", { name: "tmux monitoring" });
+    expect(unavailableSwitch).toBeDisabled();
+    expect(unavailableSwitch).not.toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Refresh tools" }));
+    expect(refreshRuntimeTools).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <SettingsView
+        agentDetectionRefreshing={false}
+        agents={[]}
+        graph={null}
+        language="en"
+        refreshAgentDetections={vi.fn().mockResolvedValue(undefined)}
+        refreshRuntimeTools={refreshRuntimeTools}
+        runtimeTools={{ tmux: { available: true, command: "tmux" } }}
+        setActiveView={vi.fn()}
+        settings={{ ...settings, execution: { tmuxMonitoring: false } }}
+        t={createTranslator("en")}
+        updateSettings={updateSettings}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("switch", { name: "tmux monitoring" }));
+    expect(updateSettings).toHaveBeenCalledWith({ execution: { tmuxMonitoring: true } });
   });
 
   it("disables agent switches when the CLI is not detected", async () => {

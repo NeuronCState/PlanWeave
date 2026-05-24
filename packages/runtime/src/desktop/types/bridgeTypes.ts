@@ -33,6 +33,7 @@ import type {
   DesktopPackageFileSnapshotRef
 } from "./syncTypes.js";
 import type {
+  DesktopAutoRunOptions,
   DesktopAutoRunScope,
   DesktopAutoRunState
 } from "./runTypes.js";
@@ -54,6 +55,13 @@ export type DesktopAgentDetection = DesktopAgentCliProfile & {
   unavailableReason: string | null;
 };
 
+export type DesktopRuntimeToolAvailability = {
+  tmux: {
+    available: boolean;
+    command: "tmux";
+  };
+};
+
 export type DesktopCanvasReference = {
   projectRoot: string;
   canvasId?: string | null;
@@ -65,6 +73,7 @@ export type DesktopBridgeApi = {
   revealProjectInFinder(rootPath: string): Promise<void>;
   revealPathInFinder(path: string): Promise<void>;
   detectAgentTools(): Promise<DesktopAgentDetection[]>;
+  detectRuntimeTools(): Promise<DesktopRuntimeToolAvailability>;
   openBlockInspectorWindow(input: { blockRef: string; canvas: DesktopCanvasReference; language: string }): Promise<void>;
   openTaskInspectorWindow(input: { taskId: string; canvas: DesktopCanvasReference; language: string }): Promise<void>;
   openProject(input: { projectId?: string; rootPath?: string }): Promise<DesktopProjectSummary>;
@@ -110,7 +119,7 @@ export type DesktopBridgeApi = {
   watchPackageFiles(ref: DesktopCanvasReference): Promise<void>;
   unwatchPackageFiles(ref: DesktopCanvasReference): Promise<void>;
   onPackageFileChanged(callback: (event: DesktopPackageFileChangeEvent) => void): () => void;
-  startAutoRun(ref: DesktopCanvasReference, scope: DesktopAutoRunScope, stepLimit?: number): Promise<DesktopAutoRunState>;
+  startAutoRun(ref: DesktopCanvasReference, scope: DesktopAutoRunScope, stepLimit?: number, options?: DesktopAutoRunOptions): Promise<DesktopAutoRunState>;
   unblockBlock(ref: DesktopCanvasReference, blockRef: string, reason: string): Promise<void>;
   pauseAutoRun(runId: string): Promise<DesktopAutoRunState>;
   resumeAutoRun(runId: string): Promise<DesktopAutoRunState>;

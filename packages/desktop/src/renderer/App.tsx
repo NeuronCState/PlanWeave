@@ -25,6 +25,7 @@ import { useGraphDeleteActions } from "./hooks/useGraphDeleteActions";
 import { useDesktopSettingsEffects } from "./hooks/useDesktopSettingsEffects";
 import { useVisibleGraphTasks } from "./hooks/useVisibleGraphTasks";
 import { useDetectedAgents } from "./hooks/useDetectedAgents";
+import { useRuntimeTools } from "./hooks/useRuntimeTools";
 import { useTaskNodeFocus } from "./hooks/useTaskNodeFocus";
 import { CollapsedSidebarControls, RightPaletteSidebar } from "./AppSidebars";
 import { AppSettingsRoute } from "./AppSettingsRoute";
@@ -38,6 +39,7 @@ export function App() {
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
   const [, setBlockInspectorOpen] = useState(false);
   const { agentDetectionRefreshing, agentDetections, executorOptions, refreshAgentDetections } = useDetectedAgents();
+  const { refreshRuntimeTools, runtimeTools } = useRuntimeTools();
   const [selectedTaskPanelId, setSelectedTaskPanelId] = useState<string | null>(null);
   const [selectedContextNodeId, setSelectedContextNodeId] = useState<string | null>(null);
   const [, setProjectPath] = useState(settings.runtimePath);
@@ -133,7 +135,8 @@ export function App() {
     selectedProject,
     selectedTaskPanelId,
     setError,
-    t
+    t,
+    tmuxMonitoringEnabled: settings.execution.tmuxMonitoring && runtimeTools.tmux.available
   });
   const { requestTaskFocus } = useTaskNodeFocus({
     activeView,
@@ -500,6 +503,8 @@ export function App() {
         agentDetectionRefreshing={agentDetectionRefreshing}
         language={language}
         refreshAgentDetections={refreshAgentDetections}
+        refreshRuntimeTools={refreshRuntimeTools}
+        runtimeTools={runtimeTools}
         setActiveView={setActiveView}
         settings={settings}
         t={t}

@@ -16,6 +16,9 @@ export const defaultDesktopSettings: DesktopUiSettings = {
     dirtyPrompts: true,
     fileSyncConflict: true
   },
+  execution: {
+    tmuxMonitoring: true
+  },
   review: {
     pipelineEnabled: true,
     strictReview: true,
@@ -58,6 +61,10 @@ export function mergeDesktopSettings(current: DesktopUiSettings, patch: Partial<
     notifications: {
       ...current.notifications,
       ...patch.notifications
+    },
+    execution: {
+      ...current.execution,
+      ...patch.execution
     },
     review: {
       ...current.review,

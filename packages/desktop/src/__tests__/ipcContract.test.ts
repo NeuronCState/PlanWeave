@@ -14,6 +14,7 @@ const expectedBridgeInvokeMethods = [
   "createTaskDraft",
   "detectAgentTools",
   "detectPackageFileChanges",
+  "detectRuntimeTools",
   "getAutoRunState",
   "getBlockDetail",
   "getDesktopLayout",

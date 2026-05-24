@@ -14,6 +14,7 @@ const api: DesktopBridgeApi = {
   revealProjectInFinder: (rootPath) => ipcRenderer.invoke(desktopBridgeInvokeChannels.revealProjectInFinder, rootPath) as Promise<void>,
   revealPathInFinder: (path) => ipcRenderer.invoke(desktopBridgeInvokeChannels.revealPathInFinder, path) as Promise<void>,
   detectAgentTools: () => ipcRenderer.invoke(desktopBridgeInvokeChannels.detectAgentTools),
+  detectRuntimeTools: () => ipcRenderer.invoke(desktopBridgeInvokeChannels.detectRuntimeTools),
   openBlockInspectorWindow: (input) => ipcRenderer.invoke(desktopBridgeInvokeChannels.openBlockInspectorWindow, input) as Promise<void>,
   openTaskInspectorWindow: (input) => ipcRenderer.invoke(desktopBridgeInvokeChannels.openTaskInspectorWindow, input) as Promise<void>,
   openProject: (input) => ipcRenderer.invoke(desktopBridgeInvokeChannels.openProject, input) as Promise<DesktopProjectSummary>,
@@ -63,7 +64,7 @@ const api: DesktopBridgeApi = {
     ipcRenderer.on(packageFileChangedChannel, listener);
     return () => ipcRenderer.off(packageFileChangedChannel, listener);
   },
-  startAutoRun: (ref, scope, stepLimit) => ipcRenderer.invoke(desktopBridgeInvokeChannels.startAutoRun, ref, scope, stepLimit),
+  startAutoRun: (ref, scope, stepLimit, options) => ipcRenderer.invoke(desktopBridgeInvokeChannels.startAutoRun, ref, scope, stepLimit, options),
   unblockBlock: (ref, blockRef, reason) => ipcRenderer.invoke(desktopBridgeInvokeChannels.unblockBlock, ref, blockRef, reason) as Promise<void>,
   pauseAutoRun: (runId) => ipcRenderer.invoke(desktopBridgeInvokeChannels.pauseAutoRun, runId),
   resumeAutoRun: (runId) => ipcRenderer.invoke(desktopBridgeInvokeChannels.resumeAutoRun, runId),

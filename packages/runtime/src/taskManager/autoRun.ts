@@ -151,6 +151,7 @@ export async function runAutoRunStep(options: {
   projectRoot: PackageWorkspaceRef;
   executor?: ExecutorAdapter;
   executorName?: string;
+  tmuxEnabled?: boolean;
   parallel?: boolean;
   scope?: ClaimScope;
   session?: ExecutionGraphSession;
@@ -166,7 +167,13 @@ export async function runAutoRunStep(options: {
     return { kind: "blocked", claim };
   }
   if (claim.kind === "batch") {
-    const executor = options.executor ?? createExecutorAdapter({ projectRoot: options.projectRoot, executorName: options.executorName });
+    const executor =
+      options.executor ??
+      createExecutorAdapter({
+        projectRoot: options.projectRoot,
+        executorName: options.executorName,
+        runtime: { tmuxEnabled: options.tmuxEnabled }
+      });
     const steps: SubmittedOrManualStep[] = [];
     for (const ref of claim.refs) {
       const blockClaim = await claimForBatchRef({ projectRoot: options.projectRoot, ref, session: options.session });
@@ -184,7 +191,13 @@ export async function runAutoRunStep(options: {
     return { kind: "batch_submitted", claim, steps };
   }
 
-  const executor = options.executor ?? createExecutorAdapter({ projectRoot: options.projectRoot, executorName: options.executorName });
+  const executor =
+    options.executor ??
+    createExecutorAdapter({
+      projectRoot: options.projectRoot,
+      executorName: options.executorName,
+      runtime: { tmuxEnabled: options.tmuxEnabled }
+    });
   if (claim.kind === "feedback") {
     let adapterResult: Awaited<ReturnType<ExecutorAdapter["runFeedback"]>>;
     try {

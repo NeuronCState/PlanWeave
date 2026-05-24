@@ -53,10 +53,12 @@ import {
   validateGraphEdit
 } from "@planweave/runtime";
 import type { DesktopAutoRunScope, DesktopCanvasReference, DesktopGraphEditResult, DesktopLayout, GraphEditResult } from "@planweave/runtime";
+import type { DesktopAutoRunOptions } from "@planweave/runtime";
 import { desktopBridgeInvokeChannels } from "../shared/ipcChannels.js";
 import { detectAgentTools } from "./agentTools.js";
 import { openBlockInspectorWindow } from "./blockInspectorWindow.js";
 import { openTaskInspectorWindow } from "./taskInspectorWindow.js";
+import { detectRuntimeTools } from "./runtimeTools.js";
 import { cloneableGraphEditResult } from "./runtimeBridgeResult.js";
 
 async function invokeGraphEdit(promise: Promise<GraphEditResult>): Promise<DesktopGraphEditResult> {
@@ -85,6 +87,7 @@ export function registerRuntimeBridgeHandlers(): void {
     shell.showItemInFolder(path);
   });
   ipcMain.handle(desktopBridgeInvokeChannels.detectAgentTools, () => detectAgentTools());
+  ipcMain.handle(desktopBridgeInvokeChannels.detectRuntimeTools, () => detectRuntimeTools());
   ipcMain.handle(desktopBridgeInvokeChannels.openBlockInspectorWindow, (_event, input: { blockRef: string; canvas: DesktopCanvasReference; language: string }) =>
     openBlockInspectorWindow(input)
   );
@@ -163,8 +166,8 @@ export function registerRuntimeBridgeHandlers(): void {
   );
   ipcMain.handle(desktopBridgeInvokeChannels.refreshPackageFileChanges, async (_event, ref: DesktopCanvasReference) => refreshPackageFileChanges(await resolveDesktopCanvasReference(ref)));
   ipcMain.handle(desktopBridgeInvokeChannels.getDirtyPromptRefs, async (_event, ref: DesktopCanvasReference) => getDirtyPromptRefs(await resolveDesktopCanvasReference(ref)));
-  ipcMain.handle(desktopBridgeInvokeChannels.startAutoRun, (_event, ref: DesktopCanvasReference, scope: DesktopAutoRunScope, stepLimit?: number) =>
-    startAutoRun(ref.projectRoot, ref.canvasId, scope, stepLimit)
+  ipcMain.handle(desktopBridgeInvokeChannels.startAutoRun, (_event, ref: DesktopCanvasReference, scope: DesktopAutoRunScope, stepLimit?: number, options?: DesktopAutoRunOptions) =>
+    startAutoRun(ref.projectRoot, ref.canvasId, scope, stepLimit, options)
   );
   ipcMain.handle(desktopBridgeInvokeChannels.unblockBlock, async (_event, ref: DesktopCanvasReference, blockRef: string, reason: string) => {
     await unblockBlock({ projectRoot: await resolveDesktopCanvasReference(ref), ref: blockRef, reason });

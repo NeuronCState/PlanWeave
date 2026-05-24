@@ -14,6 +14,10 @@ import { execWithStdin, nextRunId, prepareBlockRun, type BlockClaim } from "./ex
 import { runLocalReviewBlock, runLocalReviewFeedback } from "./localReviewExecutor.js";
 import { runOpencodeBlock, runOpencodeFeedback } from "./opencodeExecutor.js";
 
+type ExecutorRuntimeOptions = {
+  tmuxEnabled?: boolean;
+};
+
 const builtinExecutors: Record<string, ExecutorProfile> = {
   default: { adapter: "manual" },
   manual: { adapter: "manual" },
@@ -62,6 +66,7 @@ async function resolveProfileForClaim(options: {
 function createProfiledAdapter(options: {
   projectRoot: PackageWorkspaceRef;
   executorName?: string;
+  runtime?: ExecutorRuntimeOptions;
   expectedAdapter?: ExecutorProfile["adapter"];
 }): ExecutorAdapter {
   return {
@@ -96,12 +101,12 @@ function createProfiledAdapter(options: {
         };
       }
       if (profile.adapter === "codex-exec") {
-        return runCodexBlock({ projectRoot: options.projectRoot, claim, prompt, executorName: name, profile });
+        return runCodexBlock({ projectRoot: options.projectRoot, claim, prompt, executorName: name, profile, tmuxEnabled: options.runtime?.tmuxEnabled });
       }
       if (profile.adapter === "opencode-exec") {
-        return runOpencodeBlock({ projectRoot: options.projectRoot, claim, prompt, executorName: name, profile });
+        return runOpencodeBlock({ projectRoot: options.projectRoot, claim, prompt, executorName: name, profile, tmuxEnabled: options.runtime?.tmuxEnabled });
       }
-      return runLocalReviewBlock({ projectRoot: options.projectRoot, claim, prompt, executorName: name, profile });
+      return runLocalReviewBlock({ projectRoot: options.projectRoot, claim, prompt, executorName: name, profile, tmuxEnabled: options.runtime?.tmuxEnabled });
     },
     async runFeedback({ claim }) {
       const { manifest, workspace } = await loadPackage(options.projectRoot);
@@ -137,7 +142,8 @@ function createProfiledAdapter(options: {
           workspaceResultsDir: workspace.resultsDir,
           claim,
           executorName: name,
-          profile
+          profile,
+          tmuxEnabled: options.runtime?.tmuxEnabled
         });
       }
       if (profile.adapter === "opencode-exec") {
@@ -147,7 +153,8 @@ function createProfiledAdapter(options: {
           workspaceResultsDir: workspace.resultsDir,
           claim,
           executorName: name,
-          profile
+          profile,
+          tmuxEnabled: options.runtime?.tmuxEnabled
         });
       }
       return runLocalReviewFeedback({
@@ -156,29 +163,30 @@ function createProfiledAdapter(options: {
         workspaceResultsDir: workspace.resultsDir,
         claim,
         executorName: name,
-        profile
+        profile,
+        tmuxEnabled: options.runtime?.tmuxEnabled
       });
     }
   };
 }
 
-export function createManualExecutorAdapter(options: { projectRoot: PackageWorkspaceRef; executorName?: string }): ExecutorAdapter {
+export function createManualExecutorAdapter(options: { projectRoot: PackageWorkspaceRef; executorName?: string; runtime?: ExecutorRuntimeOptions }): ExecutorAdapter {
   return createProfiledAdapter({ ...options, expectedAdapter: "manual" });
 }
 
-export function createCodexExecAdapter(options: { projectRoot: PackageWorkspaceRef; executorName?: string }): ExecutorAdapter {
+export function createCodexExecAdapter(options: { projectRoot: PackageWorkspaceRef; executorName?: string; runtime?: ExecutorRuntimeOptions }): ExecutorAdapter {
   return createProfiledAdapter({ ...options, expectedAdapter: "codex-exec" });
 }
 
-export function createOpencodeExecAdapter(options: { projectRoot: PackageWorkspaceRef; executorName?: string }): ExecutorAdapter {
+export function createOpencodeExecAdapter(options: { projectRoot: PackageWorkspaceRef; executorName?: string; runtime?: ExecutorRuntimeOptions }): ExecutorAdapter {
   return createProfiledAdapter({ ...options, expectedAdapter: "opencode-exec" });
 }
 
-export function createLocalReviewAdapter(options: { projectRoot: PackageWorkspaceRef; executorName?: string }): ExecutorAdapter {
+export function createLocalReviewAdapter(options: { projectRoot: PackageWorkspaceRef; executorName?: string; runtime?: ExecutorRuntimeOptions }): ExecutorAdapter {
   return createProfiledAdapter({ ...options, expectedAdapter: "local-review" });
 }
 
-export function createExecutorAdapter(options: { projectRoot: PackageWorkspaceRef; executorName?: string }): ExecutorAdapter {
+export function createExecutorAdapter(options: { projectRoot: PackageWorkspaceRef; executorName?: string; runtime?: ExecutorRuntimeOptions }): ExecutorAdapter {
   return createProfiledAdapter(options);
 }
 

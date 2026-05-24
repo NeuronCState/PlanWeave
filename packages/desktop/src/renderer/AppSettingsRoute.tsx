@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { DesktopAgentDetection, DesktopGraphViewModel } from "@planweave/runtime";
+import type { DesktopAgentDetection, DesktopGraphViewModel, DesktopRuntimeToolAvailability } from "@planweave/runtime";
 import { WindowTitleBar } from "./components/WindowTitleBar";
 import type { createTranslator, Language } from "./i18n";
 import type { AppView, DesktopUiSettings } from "./types";
@@ -11,6 +11,8 @@ type AppSettingsRouteProps = {
   graph: DesktopGraphViewModel | null;
   language: Language;
   refreshAgentDetections: () => Promise<void>;
+  refreshRuntimeTools: () => Promise<void>;
+  runtimeTools: DesktopRuntimeToolAvailability;
   setActiveView: Dispatch<SetStateAction<AppView>>;
   settings: DesktopUiSettings;
   t: ReturnType<typeof createTranslator>;
@@ -23,6 +25,8 @@ export function AppSettingsRoute({
   graph,
   language,
   refreshAgentDetections,
+  refreshRuntimeTools,
+  runtimeTools,
   setActiveView,
   settings,
   t,
@@ -37,6 +41,8 @@ export function AppSettingsRoute({
         agentDetectionRefreshing={agentDetectionRefreshing}
         language={language}
         refreshAgentDetections={refreshAgentDetections}
+        refreshRuntimeTools={refreshRuntimeTools}
+        runtimeTools={runtimeTools}
         setActiveView={setActiveView}
         settings={settings}
         t={t}

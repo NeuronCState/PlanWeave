@@ -110,6 +110,9 @@ export type DesktopUiSettings = {
     dirtyPrompts: boolean;
     fileSyncConflict: boolean;
   };
+  execution: {
+    tmuxMonitoring: boolean;
+  };
   review: {
     pipelineEnabled: boolean;
     strictReview: boolean;

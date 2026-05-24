@@ -48,6 +48,7 @@ function autoRunState(patch: Partial<DesktopAutoRunState> = {}): DesktopAutoRunS
     latestRecordPath: null,
     statePath: "/tmp/project/.planweave/results/auto-runs/DESKTOP-RUN-0001/state.json",
     eventLogPath: "/tmp/project/.planweave/results/auto-runs/DESKTOP-RUN-0001/events.ndjson",
+    options: { tmuxEnabled: true },
     error: null,
     startedAt: "2026-05-23T00:00:00.000Z",
     updatedAt: "2026-05-23T00:00:00.000Z",
@@ -79,7 +80,8 @@ describe("auto run control hook", () => {
         selectedProject: project,
         selectedTaskPanelId: null,
         setError: vi.fn(),
-        t: createTranslator("zh-CN")
+        t: createTranslator("zh-CN"),
+        tmuxMonitoringEnabled: true
       })
     );
 
@@ -90,7 +92,12 @@ describe("auto run control hook", () => {
       await result.current.handleAutoRunClick();
     });
 
-    expect(bridge.startAutoRun).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" }, { kind: "block", blockRef: selectedBlock.ref }, 20);
+    expect(bridge.startAutoRun).toHaveBeenCalledWith(
+      { projectRoot: project.rootPath, canvasId: "canvas-main" },
+      { kind: "block", blockRef: selectedBlock.ref },
+      20,
+      { tmuxEnabled: true }
+    );
   });
 
   it("unblocks the current blocked block before retrying auto-run", async () => {
@@ -128,7 +135,8 @@ describe("auto run control hook", () => {
         selectedProject: project,
         selectedTaskPanelId: null,
         setError: vi.fn(),
-        t: createTranslator("zh-CN")
+        t: createTranslator("zh-CN"),
+        tmuxMonitoringEnabled: false
       })
     );
 
@@ -140,7 +148,12 @@ describe("auto run control hook", () => {
     });
 
     expect(bridge.unblockBlock).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" }, selectedBlock.ref, "Retry requested from Auto Run.");
-    expect(bridge.startAutoRun).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" }, { kind: "project" }, 20);
+    expect(bridge.startAutoRun).toHaveBeenCalledWith(
+      { projectRoot: project.rootPath, canvasId: "canvas-main" },
+      { kind: "project" },
+      20,
+      { tmuxEnabled: false }
+    );
     expect(calls).toEqual(["unblock", "start"]);
     expect(result.current.autoRunState).toEqual(runningState);
   });
@@ -176,7 +189,8 @@ describe("auto run control hook", () => {
         selectedProject: project,
         selectedTaskPanelId: null,
         setError: vi.fn(),
-        t: createTranslator("zh-CN")
+        t: createTranslator("zh-CN"),
+        tmuxMonitoringEnabled: true
       })
     );
 
@@ -218,7 +232,8 @@ describe("auto run control hook", () => {
         selectedProject: project,
         selectedTaskPanelId: null,
         setError: vi.fn(),
-        t: createTranslator("zh-CN")
+        t: createTranslator("zh-CN"),
+        tmuxMonitoringEnabled: true
       })
     );
 

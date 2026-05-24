@@ -1,6 +1,7 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { createTaskCanvas, resolveTaskCanvasWorkspace } from "../desktop/index.js";
 import { writeJsonFile } from "../json.js";
 import { validatePackage } from "../validatePackage.js";
 import { basicManifest, createTestWorkspace } from "./promptTestHelpers.js";
@@ -34,5 +35,28 @@ describe("validatePackage", () => {
 
     expect(report.ok).toBe(false);
     expect(report.errors.map((error) => error.code)).toContain("prompt_missing");
+  });
+
+  it("validates prompt references inside desktop task canvas packages", async () => {
+    const { root } = await createTestWorkspace();
+    const canvas = await createTaskCanvas(root, { name: "Canvas missing prompts" });
+    const canvasWorkspace = await resolveTaskCanvasWorkspace(root, canvas.canvasId);
+    await writeJsonFile(canvasWorkspace.manifestFile, basicManifest());
+
+    const report = await validatePackage({ projectRoot: root });
+
+    expect(report.ok).toBe(false);
+    expect(report.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "prompt_missing",
+          path: expect.stringContaining(`canvases/${canvas.canvasId}/package/nodes/T-001/prompt.md`)
+        }),
+        expect.objectContaining({
+          code: "prompt_missing",
+          path: expect.stringContaining(`canvases/${canvas.canvasId}/package/nodes/T-001/blocks/B-001.prompt.md`)
+        })
+      ])
+    );
   });
 });

@@ -25,6 +25,8 @@ describe("getExecutionStatus", () => {
     const claim = await claimNext({ projectRoot: root });
 
     expect(status.nextClaimable).toEqual(["T-002#B-001"]);
+    expect(status.counts.blocks.ready).toBe(1);
+    expect(status.blocks.find((block) => block.ref === "T-001#B-001")?.status).toBe("planned");
     expect(claim).toMatchObject({ kind: "block", ref: "T-002#B-001" });
   });
 });

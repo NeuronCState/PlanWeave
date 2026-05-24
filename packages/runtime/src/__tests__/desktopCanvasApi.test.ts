@@ -13,7 +13,8 @@ import {
   saveDesktopLayout,
   searchProject
 } from "../desktop/index.js";
-import { createTestWorkspace } from "./promptTestHelpers.js";
+import { writeJsonFile } from "../json.js";
+import { basicManifest, createTestWorkspace } from "./promptTestHelpers.js";
 
 afterEach(() => {
   delete process.env.PLANWEAVE_HOME;
@@ -103,6 +104,22 @@ describe("desktop task canvas API", () => {
       taskTotal: 2,
       blockTotal: 6,
       estimatedRemainingBlocks: 6
+    });
+  });
+
+  it("summarizes canvas package health diagnostics", async () => {
+    const { root } = await createTestWorkspace();
+    const canvas = await createTaskCanvas(root, { name: "Broken canvas" });
+    const canvasWorkspace = await resolveTaskCanvasWorkspace(root, canvas.canvasId);
+    await writeJsonFile(canvasWorkspace.manifestFile, basicManifest());
+
+    const canvases = await listTaskCanvases(root);
+
+    expect(canvases.find((item) => item.canvasId === canvas.canvasId)).toMatchObject({
+      canvasId: canvas.canvasId,
+      taskCount: 1,
+      missingPromptCount: 4,
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: "prompt_missing" })])
     });
   });
 });

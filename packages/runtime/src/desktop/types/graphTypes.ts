@@ -21,6 +21,7 @@ export type DesktopBlockPreview = {
   title: string;
   status: BlockStatus;
   executor: string | null;
+  promptMissing: boolean;
   exceptionReason: string | null;
 };
 
@@ -31,6 +32,7 @@ export type DesktopTaskNodeViewModel = {
   executor: string | null;
   executorLabel: string;
   promptMarkdown: string;
+  promptMissing: boolean;
   promptPreview: string;
   blocks: DesktopBlockPreview[];
   blockPreview: DesktopBlockPreview[];
@@ -69,6 +71,7 @@ export type DesktopTaskDetail = {
   status: TaskStatus;
   executor: string | null;
   promptMarkdown: string;
+  promptMissing: boolean;
   acceptance: string[];
   blockOrder: string[];
 };
@@ -88,6 +91,7 @@ export type DesktopBlockDetail = {
   executor: string | null;
   effectiveExecutor: string | null;
   promptMarkdown: string;
+  promptMissing: boolean;
   dependencies: string[];
   latestRunId: string | null;
   latestReviewAttemptId: string | null;

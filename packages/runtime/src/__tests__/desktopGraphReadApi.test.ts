@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -121,5 +121,26 @@ describe("desktop graph read API", () => {
       title: "Implement task",
       promptMarkdown: "# Updated block prompt\n"
     });
+  });
+
+  it("marks missing source prompts in graph and detail view models", async () => {
+    const { root, init } = await createTestWorkspace();
+    await rm(join(init.workspace.packageDir, "nodes", "T-001", "prompt.md"));
+    await rm(join(init.workspace.packageDir, "nodes", "T-001", "blocks", "B-001.prompt.md"));
+
+    const graph = await getGraphViewModel(root);
+    const taskDetail = await getTaskDetail(root, "T-001");
+    const blockDetail = await getBlockDetail(root, "T-001#B-001");
+
+    expect(graph.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "prompt_missing", path: "nodes/T-001/prompt.md" }),
+        expect.objectContaining({ code: "prompt_missing", path: "nodes/T-001/blocks/B-001.prompt.md" })
+      ])
+    );
+    expect(graph.tasks[0]).toMatchObject({ promptMarkdown: "", promptMissing: true });
+    expect(graph.tasks[0].blocks[0]).toMatchObject({ ref: "T-001#B-001", promptMissing: true });
+    expect(taskDetail).toMatchObject({ promptMarkdown: "", promptMissing: true });
+    expect(blockDetail).toMatchObject({ promptMarkdown: "", promptMissing: true });
   });
 });

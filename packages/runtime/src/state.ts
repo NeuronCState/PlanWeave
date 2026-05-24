@@ -39,6 +39,10 @@ export async function writeState(stateFile: string, state: RuntimeState): Promis
 }
 
 function defaultBlockStatus(ref: string, graph: CompiledExecutionGraph, state: RuntimeState): BlockStatus {
+  const taskId = graph.blockTaskByRef.get(ref);
+  if (!taskId || !taskDependenciesSatisfied(taskId, graph, state)) {
+    return "planned";
+  }
   const dependencies = graph.blockDependenciesByRef.get(ref) ?? [];
   return dependencies.every((dependency) => state.blocks[dependency]?.status === "completed") ? "ready" : "planned";
 }

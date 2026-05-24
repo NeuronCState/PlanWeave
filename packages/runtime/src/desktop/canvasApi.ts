@@ -8,6 +8,7 @@ import { resolveProjectWorkspace } from "../project.js";
 import { manifestSchema } from "../schema/manifest.js";
 import { createEmptyState } from "../state.js";
 import type { PlanPackageManifest, ProjectWorkspace } from "../types.js";
+import { canvasDiagnostics } from "./canvasDiagnostics.js";
 import type { DesktopTaskCanvasSummary } from "./types.js";
 
 const registryVersion = "desktop-canvases/v1" as const;
@@ -26,6 +27,12 @@ type TaskCanvasRecord = {
 type TaskCanvasRegistry = {
   version: typeof registryVersion;
   canvases: TaskCanvasRecord[];
+};
+
+export type DesktopTaskCanvasWorkspace = {
+  canvasId: string;
+  canvasName: string;
+  workspace: ProjectWorkspace;
 };
 
 async function exists(path: string): Promise<boolean> {
@@ -71,10 +78,16 @@ async function readManifestTitle(workspace: ProjectWorkspace): Promise<string> {
   }
 }
 
-async function readRegistry(projectRoot: string): Promise<{ projectWorkspace: ProjectWorkspace; registry: TaskCanvasRegistry }> {
+async function readRegistry(
+  projectRoot: string,
+  options: { createDefault?: boolean } = {}
+): Promise<{ projectWorkspace: ProjectWorkspace; registry: TaskCanvasRegistry }> {
   const projectWorkspace = await resolveProjectWorkspace(projectRoot);
   const path = registryPath(projectWorkspace);
   if (!(await exists(path))) {
+    if (options.createDefault === false) {
+      return { projectWorkspace, registry: { version: registryVersion, canvases: [] } };
+    }
     const title = await readManifestTitle(projectWorkspace);
     const registry: TaskCanvasRegistry = {
       version: registryVersion,
@@ -130,10 +143,14 @@ async function taskCount(workspace: ProjectWorkspace): Promise<number> {
 }
 
 async function summarizeCanvas(projectWorkspace: ProjectWorkspace, record: TaskCanvasRecord): Promise<DesktopTaskCanvasSummary> {
+  const workspace = canvasWorkspace(projectWorkspace, record);
+  const diagnostics = await canvasDiagnostics(workspace);
   return {
     canvasId: record.canvasId,
     name: record.name,
-    taskCount: await taskCount(canvasWorkspace(projectWorkspace, record)),
+    taskCount: await taskCount(workspace),
+    missingPromptCount: diagnostics.filter((diagnostic) => diagnostic.code === "prompt_missing").length,
+    diagnostics,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
   };
@@ -164,6 +181,18 @@ function assertWorkspaceChild(projectWorkspace: ProjectWorkspace, path: string):
 export async function listTaskCanvases(projectRoot: string): Promise<DesktopTaskCanvasSummary[]> {
   const { projectWorkspace, registry } = await readRegistry(projectRoot);
   return Promise.all(registry.canvases.map((record) => summarizeCanvas(projectWorkspace, record)));
+}
+
+export async function listTaskCanvasWorkspaces(
+  projectRoot: string,
+  options: { createRegistry?: boolean } = {}
+): Promise<DesktopTaskCanvasWorkspace[]> {
+  const { projectWorkspace, registry } = await readRegistry(projectRoot, { createDefault: options.createRegistry ?? false });
+  return registry.canvases.map((record) => ({
+    canvasId: record.canvasId,
+    canvasName: record.name,
+    workspace: canvasWorkspace(projectWorkspace, record)
+  }));
 }
 
 export async function resolveTaskCanvasWorkspace(projectRoot: string, canvasId?: string | null): Promise<ProjectWorkspace> {

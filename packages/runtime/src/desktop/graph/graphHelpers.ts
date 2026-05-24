@@ -1,13 +1,36 @@
 import { readFile } from "node:fs/promises";
 import { parseBlockRef } from "../../graph/compileTaskGraph.js";
-import type { BlockStatus, CompiledExecutionGraph, ManifestBlock, ManifestTaskNode } from "../../types.js";
+import type { BlockStatus, CompiledExecutionGraph, ManifestBlock, ManifestTaskNode, ValidationIssue } from "../../types.js";
 import type { DesktopTaskException } from "../types.js";
 
-export async function readOptionalFile(path: string): Promise<string> {
+export type PromptFileReadResult = {
+  markdown: string;
+  missing: boolean;
+  diagnostic: ValidationIssue | null;
+};
+
+function fileReadCode(error: unknown): string | null {
+  return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string" ? error.code : null;
+}
+
+export async function readOptionalFile(path: string, packagePath: string): Promise<PromptFileReadResult> {
   try {
-    return await readFile(path, "utf8");
-  } catch {
-    return "";
+    return {
+      markdown: await readFile(path, "utf8"),
+      missing: false,
+      diagnostic: null
+    };
+  } catch (error) {
+    const missing = fileReadCode(error) === "ENOENT";
+    return {
+      markdown: "",
+      missing,
+      diagnostic: {
+        code: missing ? "prompt_missing" : "prompt_read_failed",
+        message: missing ? `Prompt file '${packagePath}' does not exist.` : `Prompt '${packagePath}' could not be read.`,
+        path: packagePath
+      }
+    };
   }
 }
 

@@ -5,9 +5,19 @@ import { resolvePackagePath } from "../../package/resolvePackagePath.js";
 import { readState } from "../../state.js";
 import { getExecutionStatus } from "../../taskManager/index.js";
 import { listExecutorProfiles } from "../../autoRun/executors.js";
-import type { ManifestContextNode, PackageWorkspaceRef } from "../../types.js";
+import type { ManifestContextNode, PackageWorkspaceRef, ValidationIssue } from "../../types.js";
 import type { DesktopBlockDetail, DesktopBlockPreview, DesktopGraphViewModel, DesktopTaskDetail, DesktopTaskException, DesktopTaskExecutionOrder } from "../types.js";
 import { exceptionForBlock, executorLabel, getBlock, getTask, promptPreview, readOptionalFile, sortBlockRefsForTask } from "./graphHelpers.js";
+
+function appendDiagnostic(diagnostics: ValidationIssue[], diagnostic: ValidationIssue | null): void {
+  if (!diagnostic) {
+    return;
+  }
+  if (diagnostics.some((item) => item.code === diagnostic.code && item.path === diagnostic.path && item.message === diagnostic.message)) {
+    return;
+  }
+  diagnostics.push(diagnostic);
+}
 
 export async function getGraphViewModel(projectRoot: PackageWorkspaceRef): Promise<DesktopGraphViewModel> {
   const { workspace, manifest } = await loadPackage(projectRoot);
@@ -17,16 +27,20 @@ export async function getGraphViewModel(projectRoot: PackageWorkspaceRef): Promi
   const statusByBlock = new Map(status.blocks.map((block) => [block.ref, block]));
   const dirtyPromptRefs = new Set<string>();
   const executorOptions = (await listExecutorProfiles({ projectRoot })).map((profile) => profile.name);
+  const diagnostics = [...graph.diagnostics.errors];
 
   const tasks = await Promise.all(
     graph.taskNodesInManifestOrder.map(async (taskId) => {
       const task = getTask(graph, taskId);
       const taskStatus = status.tasks.find((item) => item.taskId === taskId)?.status ?? "planned";
-      const markdown = await readOptionalFile(await resolvePackagePath(workspace.packageDir, task.prompt));
+      const taskPrompt = await readOptionalFile(await resolvePackagePath(workspace.packageDir, task.prompt), task.prompt);
+      appendDiagnostic(diagnostics, taskPrompt.diagnostic);
       const orderedRefs = sortBlockRefsForTask(graph, taskId);
-      const blocks: DesktopBlockPreview[] = orderedRefs.map((ref) => {
+      const blocks: DesktopBlockPreview[] = await Promise.all(orderedRefs.map(async (ref) => {
         const block = getBlock(graph, ref);
         const blockStatus = statusByBlock.get(ref);
+        const blockPrompt = await readOptionalFile(await resolvePackagePath(workspace.packageDir, block.prompt), block.prompt);
+        appendDiagnostic(diagnostics, blockPrompt.diagnostic);
         return {
           ref,
           blockId: parseBlockRef(ref).blockId,
@@ -34,9 +48,10 @@ export async function getGraphViewModel(projectRoot: PackageWorkspaceRef): Promi
           title: block.title,
           status: blockStatus?.status ?? "planned",
           executor: block.executor ?? task.executor ?? manifest.execution.defaultExecutor ?? null,
+          promptMissing: blockPrompt.missing,
           exceptionReason: blockStatus?.reason ?? null
         };
-      });
+      }));
       const blockPreview = blocks.slice(0, 4);
       const exceptions = orderedRefs
         .map((ref) => {
@@ -60,8 +75,9 @@ export async function getGraphViewModel(projectRoot: PackageWorkspaceRef): Promi
         status: taskStatus,
         executor: task.executor ?? null,
         executorLabel: executorLabel(task),
-        promptMarkdown: markdown,
-        promptPreview: promptPreview(markdown),
+        promptMarkdown: taskPrompt.markdown,
+        promptMissing: taskPrompt.missing,
+        promptPreview: promptPreview(taskPrompt.markdown),
         blocks,
         blockPreview,
         hiddenBlockRefs: orderedRefs.slice(blockPreview.length),
@@ -85,7 +101,7 @@ export async function getGraphViewModel(projectRoot: PackageWorkspaceRef): Promi
         summary: node.summary
       })),
     edges: manifest.edges.map((edge) => ({ from: edge.from, to: edge.to, type: edge.type })),
-    diagnostics: graph.diagnostics.errors,
+    diagnostics,
     dirtyPromptRefs: [...dirtyPromptRefs]
   };
 }
@@ -95,12 +111,14 @@ export async function getTaskDetail(projectRoot: PackageWorkspaceRef, taskId: st
   const graph = compileTaskGraph(manifest);
   const task = getTask(graph, taskId);
   const status = await getExecutionStatus({ projectRoot });
+  const prompt = await readOptionalFile(await resolvePackagePath(workspace.packageDir, task.prompt), task.prompt);
   return {
     taskId,
     title: task.title,
     status: status.tasks.find((item) => item.taskId === taskId)?.status ?? "planned",
     executor: task.executor ?? null,
-    promptMarkdown: await readOptionalFile(await resolvePackagePath(workspace.packageDir, task.prompt)),
+    promptMarkdown: prompt.markdown,
+    promptMissing: prompt.missing,
     acceptance: task.acceptance,
     blockOrder: sortBlockRefsForTask(graph, taskId)
   };
@@ -124,6 +142,7 @@ export async function getBlockDetail(projectRoot: PackageWorkspaceRef, ref: stri
   const block = getBlock(graph, ref);
   const status = await getExecutionStatus({ projectRoot });
   const blockStatus = status.blocks.find((item) => item.ref === ref);
+  const prompt = await readOptionalFile(await resolvePackagePath(workspace.packageDir, block.prompt), block.prompt);
   return {
     ref,
     taskId,
@@ -133,7 +152,8 @@ export async function getBlockDetail(projectRoot: PackageWorkspaceRef, ref: stri
     status: blockStatus?.status ?? "planned",
     executor: block.executor ?? null,
     effectiveExecutor: block.executor ?? task.executor ?? manifest.execution.defaultExecutor ?? null,
-    promptMarkdown: await readOptionalFile(await resolvePackagePath(workspace.packageDir, block.prompt)),
+    promptMarkdown: prompt.markdown,
+    promptMissing: prompt.missing,
     dependencies: graph.blockDependenciesByRef.get(ref) ?? [],
     latestRunId: blockStatus?.lastRunId ?? null,
     latestReviewAttemptId: blockStatus?.latestReviewAttemptId ?? null,

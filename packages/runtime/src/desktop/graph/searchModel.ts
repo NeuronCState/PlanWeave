@@ -77,7 +77,7 @@ async function searchWorkspace(
   };
   for (const taskId of graph.taskNodesInManifestOrder) {
     const task = getTask(graph, taskId);
-    const taskPrompt = await readOptionalFile(await resolvePackagePath(workspace.packageDir, task.prompt));
+    const taskPrompt = (await readOptionalFile(await resolvePackagePath(workspace.packageDir, task.prompt), task.prompt)).markdown;
     if (task.title.toLowerCase().includes(normalized)) {
       pushResult({ kind: "task", ref: taskId, title: task.title, excerpt: task.title });
     }
@@ -86,7 +86,7 @@ async function searchWorkspace(
     }
     for (const block of task.blocks) {
       const ref = blockRef(taskId, block.id);
-      const blockPrompt = await readOptionalFile(await resolvePackagePath(workspace.packageDir, block.prompt));
+      const blockPrompt = (await readOptionalFile(await resolvePackagePath(workspace.packageDir, block.prompt), block.prompt)).markdown;
       if (block.title.toLowerCase().includes(normalized)) {
         pushResult({ kind: "block", ref, title: block.title, excerpt: block.title });
       }

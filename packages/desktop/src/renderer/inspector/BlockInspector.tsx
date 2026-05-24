@@ -26,6 +26,7 @@ type BlockInspectorProps = {
   handleOpenRunRecord: (recordId: string | null | undefined) => Promise<void>;
   onBlockSelect: (ref: string) => Promise<void>;
   onClose: () => void;
+  onDraftDirtyChange?: (dirty: boolean) => void;
   saveSelectedBlockExecutor: (executorName: string | null) => Promise<void>;
   saveSelectedBlockPrompt: () => Promise<void>;
   saveSelectedBlockTitle: () => Promise<void>;
@@ -50,6 +51,7 @@ export function BlockInspector({
   handleOpenRunRecord,
   onBlockSelect,
   onClose,
+  onDraftDirtyChange,
   saveSelectedBlockExecutor,
   saveSelectedBlockPrompt,
   saveSelectedBlockTitle,
@@ -62,7 +64,6 @@ export function BlockInspector({
 }: BlockInspectorProps) {
   const latestBlockRun = blockRunRecords[0];
   const latestReviewAttempt = blockReviewAttempts[0];
-  const latestFeedbackRecord = blockFeedbackRecords[0];
   const selectedExecutor = selectedBlock?.executor && executorOptions.includes(selectedBlock.executor) ? selectedBlock.executor : "__inherit";
   const blockPromptBaselineRef = useRef<{ promptMarkdown: string; ref: string } | null>(null);
   const taskBlocks = useMemo(() => {
@@ -74,12 +75,16 @@ export function BlockInspector({
   useEffect(() => {
     if (!selectedBlock) {
       blockPromptBaselineRef.current = null;
+      onDraftDirtyChange?.(false);
       return;
     }
     if (blockPromptBaselineRef.current?.ref !== selectedBlock.ref) {
       blockPromptBaselineRef.current = { promptMarkdown: selectedBlock.promptMarkdown, ref: selectedBlock.ref };
+      onDraftDirtyChange?.(false);
+      return;
     }
-  }, [selectedBlock]);
+    onDraftDirtyChange?.(blockPromptBaselineRef.current.promptMarkdown !== selectedBlock.promptMarkdown);
+  }, [onDraftDirtyChange, selectedBlock]);
   const saveBlockPromptIfDirty = useCallback(() => {
     if (!selectedBlock || selectedRunRecord) {
       return;
@@ -89,8 +94,9 @@ export function BlockInspector({
       return;
     }
     blockPromptBaselineRef.current = { promptMarkdown: selectedBlock.promptMarkdown, ref: selectedBlock.ref };
+    onDraftDirtyChange?.(false);
     void saveSelectedBlockPrompt();
-  }, [saveSelectedBlockPrompt, selectedBlock, selectedRunRecord]);
+  }, [onDraftDirtyChange, saveSelectedBlockPrompt, selectedBlock, selectedRunRecord]);
   useEffect(() => {
     if (!selectedBlock || selectedRunRecord) {
       return undefined;
@@ -127,8 +133,11 @@ export function BlockInspector({
                 aria-label={t("title")}
                 className="min-w-0 font-medium"
                 value={selectedBlock.title}
-                onChange={(event) => setSelectedBlock({ ...selectedBlock, title: event.target.value })}
-                onBlur={() => void saveSelectedBlockTitle()}
+                onChange={(event) => {
+                  onDraftDirtyChange?.(true);
+                  setSelectedBlock({ ...selectedBlock, title: event.target.value });
+                }}
+                onBlur={() => void saveSelectedBlockTitle().then(() => onDraftDirtyChange?.(false))}
               />
               <Badge variant={statusVariant[selectedBlock.status]}>{selectedBlock.status}</Badge>
             </div>
@@ -175,15 +184,17 @@ export function BlockInspector({
                     <div className="max-h-40 overflow-auto whitespace-pre-wrap text-muted-foreground">{latestReviewAttempt.contentPreview}</div>
                   </div>
                 ) : null}
-                {latestFeedbackRecord ? (
-                  <div className="rounded-md border p-2">
+                {blockFeedbackRecords.map((feedbackRecord) => (
+                  <div className="rounded-md border p-2" key={feedbackRecord.feedbackId}>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium">{t("feedbackMarker")}</span>
-                      <Badge variant={latestFeedbackRecord.status === "resolved" ? "secondary" : "destructive"}>{latestFeedbackRecord.status}</Badge>
+                      <span className="font-medium">
+                        {t("feedbackMarker")} {feedbackRecord.feedbackId}
+                      </span>
+                      <Badge variant={feedbackRecord.status === "resolved" ? "secondary" : "destructive"}>{feedbackRecord.status}</Badge>
                     </div>
-                    <div className="max-h-40 overflow-auto whitespace-pre-wrap text-muted-foreground">{latestFeedbackRecord.content}</div>
+                    <div className="max-h-40 overflow-auto whitespace-pre-wrap text-muted-foreground">{feedbackRecord.content}</div>
                   </div>
-                ) : null}
+                ))}
                 {selectedBlock.exceptionReason ? <div className="rounded-md border border-destructive p-2 text-destructive">{selectedBlock.exceptionReason}</div> : null}
               </div>
             </div>

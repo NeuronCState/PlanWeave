@@ -203,21 +203,30 @@ describe("desktop renderer interface interactions", () => {
     Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
     const autoRunState: DesktopAutoRunState = {
       runId: "RUN-001",
+      projectRoot: "/tmp/project",
+      canvasId: "canvas-main",
       phase: "running",
-      scope: { mode: "project" },
+      scope: { kind: "project" },
       currentRef: "T-001#B-001",
       currentExecutor: "codex",
       stepCount: 3,
+      stepLimit: 20,
       elapsedMs: 1250,
       latestRecordId: "T-001#B-001::RUN-001",
       latestRecordPath: "/tmp/result.json",
       latestOutputSummary: "Updated files",
-      error: null
+      statePath: "/tmp/project/.planweave/results/auto-runs/RUN-001/state.json",
+      eventLogPath: "/tmp/project/.planweave/results/auto-runs/RUN-001/events.ndjson",
+      error: null,
+      startedAt: "2026-05-23T00:00:00.000Z",
+      updatedAt: "2026-05-23T00:00:01.000Z"
     };
     const handleAutoRunClick = vi.fn().mockResolvedValue(undefined);
     const handleOpenRunRecord = vi.fn().mockResolvedValue(undefined);
+    const handleRevealPathInFinder = vi.fn().mockResolvedValue(undefined);
     const refreshPackageFiles = vi.fn().mockResolvedValue(undefined);
     const setAutoRunScopeMode = vi.fn();
+    const stopAutoRunClick = vi.fn().mockResolvedValue(undefined);
 
     render(
       <FloatingAutoRunControl
@@ -225,7 +234,7 @@ describe("desktop renderer interface interactions", () => {
         autoRunState={autoRunState}
         dirtyPromptCount={2}
         handleAutoRunClick={handleAutoRunClick}
-        handleOpenRunRecord={handleOpenRunRecord}
+        handleRevealPathInFinder={handleRevealPathInFinder}
         miniRunPanelOpen={true}
         moveAutoRunControl={vi.fn()}
         refreshPackageFiles={refreshPackageFiles}
@@ -235,7 +244,7 @@ describe("desktop renderer interface interactions", () => {
         setAutoRunScopeMode={setAutoRunScopeMode}
         setMiniRunPanelOpen={vi.fn()}
         startAutoRunControlDrag={vi.fn()}
-        stopAutoRunClick={vi.fn().mockResolvedValue(undefined)}
+        stopAutoRunClick={stopAutoRunClick}
         stopAutoRunControlDrag={vi.fn()}
         style={{ right: 24, bottom: 24 }}
         t={t}
@@ -246,11 +255,14 @@ describe("desktop renderer interface interactions", () => {
     expect(screen.getByText("Agent: codex")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Sync file changes" }));
     await userEvent.click(screen.getByRole("button", { name: "Auto Run" }));
+    await userEvent.click(screen.getAllByRole("button", { name: "Stop" })[0]);
     await userEvent.click(screen.getByRole("button", { name: "Open record" }));
 
     expect(refreshPackageFiles).toHaveBeenCalledTimes(1);
     expect(handleAutoRunClick).toHaveBeenCalledTimes(1);
-    expect(handleOpenRunRecord).toHaveBeenCalledWith("T-001#B-001::RUN-001");
+    expect(stopAutoRunClick).toHaveBeenCalledTimes(1);
+    expect(handleOpenRunRecord).not.toHaveBeenCalled();
+    expect(handleRevealPathInFinder).toHaveBeenCalledWith("/tmp/result.json");
 
     await userEvent.click(screen.getByRole("combobox"));
     await userEvent.click(screen.getByRole("option", { name: "Selected Task" }));

@@ -63,8 +63,10 @@ export type DesktopBridgeApi = {
   listProjects(): Promise<DesktopProjectSummary[]>;
   chooseProjectFolder(): Promise<string | null>;
   revealProjectInFinder(rootPath: string): Promise<void>;
+  revealPathInFinder(path: string): Promise<void>;
   detectAgentTools(): Promise<DesktopAgentDetection[]>;
   openBlockInspectorWindow(input: { blockRef: string; canvas: DesktopCanvasReference; language: string }): Promise<void>;
+  openTaskInspectorWindow(input: { taskId: string; canvas: DesktopCanvasReference; language: string }): Promise<void>;
   openProject(input: { projectId?: string; rootPath?: string }): Promise<DesktopProjectSummary>;
   initOrOpenProject(rootPath: string): Promise<DesktopProjectSummary>;
   removeProject(projectId: string): Promise<void>;
@@ -109,6 +111,7 @@ export type DesktopBridgeApi = {
   unwatchPackageFiles(ref: DesktopCanvasReference): Promise<void>;
   onPackageFileChanged(callback: (event: DesktopPackageFileChangeEvent) => void): () => void;
   startAutoRun(ref: DesktopCanvasReference, scope: DesktopAutoRunScope, stepLimit?: number): Promise<DesktopAutoRunState>;
+  unblockBlock(ref: DesktopCanvasReference, blockRef: string, reason: string): Promise<void>;
   pauseAutoRun(runId: string): Promise<DesktopAutoRunState>;
   resumeAutoRun(runId: string): Promise<DesktopAutoRunState>;
   stopAutoRun(runId: string): Promise<DesktopAutoRunState>;

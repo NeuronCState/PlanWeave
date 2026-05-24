@@ -17,7 +17,7 @@ describe("task node status visuals", () => {
     });
     expect(taskNodeStatusVisual("in_progress", false)).toMatchObject({
       tone: "running",
-      iconName: "activity"
+      iconName: "loader"
     });
     expect(taskNodeStatusVisual("implemented", false)).toMatchObject({
       tone: "complete",
@@ -34,5 +34,13 @@ describe("task node status visuals", () => {
     expect(marker).toHaveAttribute("data-status-tone", "neutral");
     expect(marker).toHaveClass("bg-transparent");
     expect(marker.querySelector("[data-status-icon='empty-circle']")).toBeInTheDocument();
+  });
+
+  it("uses a spinning loader for in-progress task nodes", () => {
+    render(<TaskNodeStatusMarker hasException={false} label="in_progress" status="in_progress" />);
+
+    const icon = screen.getByTestId("task-node-status-marker").querySelector("[data-status-icon='loader']");
+    expect(icon).toBeInTheDocument();
+    expect(icon).toHaveClass("animate-spin");
   });
 });

@@ -30,6 +30,7 @@ describe("desktop graph edit API", () => {
     const { root, init } = await createTestWorkspace(basicManifest({ includeSecondTask: true }));
 
     await expect(updateTaskTitle(root, "T-001", "Updated task title")).resolves.toMatchObject({ ok: true });
+    await expect(updateBlockExecutor(root, "T-001#R-001", "manual")).resolves.toMatchObject({ ok: true });
     await expect(updateTaskExecutor(root, "T-001", "codex-auto")).resolves.toMatchObject({ ok: true });
     await expect(updateBlockTitle(root, "T-001#B-001", "Updated block title")).resolves.toMatchObject({ ok: true });
     await expect(updateBlockExecutor(root, "T-001#B-001", "manual")).resolves.toMatchObject({ ok: true });
@@ -46,6 +47,7 @@ describe("desktop graph edit API", () => {
       title: "Updated block title",
       executor: "manual"
     });
+    expect(task.blocks.find((block) => block.id === "R-001")).not.toHaveProperty("executor");
     expect(manifest.edges).toContainEqual({ from: "T-001", to: "T-002", type: "depends_on" });
 
     const cyclic = await addDependencyEdge(root, "T-002", "T-001");

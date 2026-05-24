@@ -78,7 +78,7 @@ export function executorLabel(task: ManifestTaskNode): string {
   if (blockExecutors.size > 1) {
     return "Mixed";
   }
-  return task.executor ?? "manual";
+  return [...blockExecutors][0] ?? task.executor ?? "manual";
 }
 
 export function promptPreview(markdown: string): string {

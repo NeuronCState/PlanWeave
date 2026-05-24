@@ -16,10 +16,10 @@ type BlockRunRecordCardProps = {
 export function BlockRunRecordCard({ selectedRunRecord, setSelectedRunRecord, t }: BlockRunRecordCardProps) {
   const executorLabel = selectedRunRecord.executor ?? selectedRunRecord.adapter ?? t("manualExecutor");
   const stderrIsFailure = typeof selectedRunRecord.exitCode === "number" && selectedRunRecord.exitCode !== 0;
-  const exitCodeSucceeded = selectedRunRecord.exitCode === null || selectedRunRecord.exitCode === undefined || selectedRunRecord.exitCode === 0;
+  const displayMarkdown = selectedRunRecord.displayMarkdown || selectedRunRecord.reportMarkdown;
 
   return (
-    <Card className="min-h-0 flex-1" size="sm">
+    <Card className="min-h-0 flex-1 border-0 shadow-none ring-0" size="sm">
       <CardHeader>
         <CardTitle className="text-sm">{selectedRunRecord.ref}</CardTitle>
         <CardDescription>{selectedRunRecord.runId}</CardDescription>
@@ -30,13 +30,22 @@ export function BlockRunRecordCard({ selectedRunRecord, setSelectedRunRecord, t 
         </CardAction>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
-        <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="flex text-xs">
           <Badge variant="outline">{executorLabel}</Badge>
-          <Badge variant={exitCodeSucceeded ? "secondary" : "destructive"}>{selectedRunRecord.exitCode ?? "-"}</Badge>
         </div>
         {selectedRunRecord.agentSessionId ? (
           <div className="rounded-md border bg-muted/40 px-2 py-1 text-xs">
             <span className="font-medium">{t("agentSession")}:</span> <span className="font-mono">{selectedRunRecord.agentSessionId}</span>
+          </div>
+        ) : null}
+        {selectedRunRecord.tmuxSessionId ? (
+          <div className="rounded-md border bg-muted/40 px-2 py-1 text-xs">
+            <span className="font-medium">{t("tmuxSession")}:</span> <span className="font-mono">{selectedRunRecord.tmuxSessionId}</span>
+          </div>
+        ) : null}
+        {selectedRunRecord.tmuxReadOnlyAttachCommand ? (
+          <div className="rounded-md border bg-muted/40 px-2 py-1 text-xs">
+            <span className="font-medium">{t("tmuxReadOnlyAttach")}:</span> <span className="break-all font-mono">{selectedRunRecord.tmuxReadOnlyAttachCommand}</span>
           </div>
         ) : null}
         {selectedRunRecord.executionCwd ? (
@@ -55,9 +64,9 @@ export function BlockRunRecordCard({ selectedRunRecord, setSelectedRunRecord, t 
           </div>
         ) : null}
         <div className="text-xs font-medium text-muted-foreground">{t("runReport")}</div>
-        {selectedRunRecord.reportMarkdown ? (
+        {displayMarkdown ? (
           <ScrollArea className="min-h-0 flex-1 rounded-md border p-2">
-            <pre className="whitespace-pre-wrap text-xs">{selectedRunRecord.reportMarkdown}</pre>
+            <pre className="whitespace-pre-wrap text-xs">{displayMarkdown}</pre>
           </ScrollArea>
         ) : (
           <div className="rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">{t("noRunReport")}</div>

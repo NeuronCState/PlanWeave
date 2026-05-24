@@ -121,16 +121,23 @@ describe("desktop renderer hook interfaces", () => {
     const bridge = createDesktopBridgeMock({
       getLatestAutoRunSummary: vi.fn().mockResolvedValue({
         runId: "RUN-001",
+        projectRoot: project.rootPath,
+        canvasId: "canvas-main",
         phase: "paused",
-        scope: { mode: "project" },
+        scope: { kind: "project" },
         currentRef: null,
         currentExecutor: null,
         stepCount: 1,
+        stepLimit: 20,
         elapsedMs: 10,
         latestRecordId: null,
         latestRecordPath: null,
         latestOutputSummary: null,
-        error: null
+        statePath: "/tmp/project/.planweave/results/auto-runs/RUN-001/state.json",
+        eventLogPath: "/tmp/project/.planweave/results/auto-runs/RUN-001/events.ndjson",
+        error: null,
+        startedAt: "2026-05-23T00:00:00.000Z",
+        updatedAt: "2026-05-23T00:00:01.000Z"
       })
     });
     vi.stubGlobal("planweave", bridge);
@@ -183,4 +190,5 @@ describe("desktop renderer hook interfaces", () => {
     expect(bridge.getLatestAutoRunSummary).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
     expect(setAutoRunState).toHaveBeenCalledWith(expect.objectContaining({ runId: "RUN-001" }));
   });
+
 });

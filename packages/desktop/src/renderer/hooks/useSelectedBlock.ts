@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type {
   DesktopBlockDetail,
   DesktopBlockRunRecordSummary,
@@ -80,6 +80,21 @@ export function useSelectedBlock({
     },
     [selectedCanvasId, selectedProject, setError]
   );
+
+  useEffect(() => {
+    if (!bridge || !selectedProject || !selectedRunRecord || selectedRunRecord.finishedAt) {
+      return undefined;
+    }
+    const runtimeBridge = bridge;
+    const recordId = selectedRunRecord.recordId;
+    const timer = window.setInterval(() => {
+      void runtimeBridge
+        .getRunRecord(desktopCanvasReference(selectedProject, selectedCanvasId), recordId)
+        .then(setSelectedRunRecord)
+        .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught)));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [selectedCanvasId, selectedProject, selectedRunRecord, setError]);
 
   const saveSelectedBlockTitle = useCallback(async () => {
     if (!bridge || !selectedProject || !selectedBlock) {

@@ -1,4 +1,5 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
+import type { MouseEvent } from "react";
 import { MessageSquareWarningIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,17 +28,28 @@ export function TaskNodeCard({ data }: NodeProps<TaskFlowNode>) {
     onPromptChange,
     onPromptSave,
     onBlockSelect,
+    onTaskOpen,
+    onAutoRunScopeStart,
     onTaskDelete,
     onBlockDelete
   } = data;
   const hasException = task.exceptions.length > 0;
-  const selectedExecutor = task.executor && executorOptions.includes(task.executor) ? task.executor : "__inherit";
+  const selectedExecutor = task.executorLabel === "Mixed" ? "__custom" : task.executorLabel;
+  const taskExecutorOptions =
+    selectedExecutor !== "__custom" && selectedExecutor && !executorOptions.includes(selectedExecutor) ? [selectedExecutor, ...executorOptions] : executorOptions;
   const statusVisual = taskNodeStatusVisual(task.status, hasException);
+  const handleTaskDoubleClick = (event: MouseEvent) => {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest("button, [role='combobox'], [role='menuitem']")) {
+      return;
+    }
+    onTaskOpen(task.taskId);
+  };
 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <Card className={cn("h-auto min-h-[220px] w-[320px] border", statusVisual.cardClassName)} size="sm">
+        <Card className={cn("h-auto min-h-[220px] w-[320px] border", statusVisual.cardClassName)} size="sm" onDoubleClick={handleTaskDoubleClick}>
           <Handle type="target" position={Position.Left} />
           <CardHeader className="min-h-12">
             <CardTitle className="flex min-w-0 items-center justify-between gap-2">
@@ -51,14 +63,18 @@ export function TaskNodeCard({ data }: NodeProps<TaskFlowNode>) {
               <TaskNodeStatusMarker hasException={hasException} label={hasException ? labels.exception : task.status} status={task.status} />
             </CardTitle>
             <CardDescription className="flex items-center gap-2">
-              <Select value={selectedExecutor} onValueChange={(value) => onExecutorChange(task.taskId, value === "__inherit" ? null : value)}>
+              <Select value={selectedExecutor} onValueChange={(value) => onExecutorChange(task.taskId, value)}>
                 <SelectTrigger className="h-7 w-28">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="__inherit">{labels.inherit}</SelectItem>
-                    {executorOptions.map((executor) => (
+                    {selectedExecutor === "__custom" ? (
+                      <SelectItem value="__custom" disabled>
+                        {labels.customExecutor}
+                      </SelectItem>
+                    ) : null}
+                    {taskExecutorOptions.map((executor) => (
                       <SelectItem value={executor} key={executor}>
                         {executor}
                       </SelectItem>
@@ -116,6 +132,7 @@ export function TaskNodeCard({ data }: NodeProps<TaskFlowNode>) {
                     key={block.ref}
                     labels={labels}
                     onDelete={onBlockDelete}
+                    onRun={(ref) => void onAutoRunScopeStart({ kind: "block", blockRef: ref })}
                     onSelect={onBlockSelect}
                     selectedBlockRef={selectedBlock?.ref ?? null}
                   />
@@ -127,6 +144,9 @@ export function TaskNodeCard({ data }: NodeProps<TaskFlowNode>) {
         </Card>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        <ContextMenuItem onSelect={() => void onAutoRunScopeStart({ kind: "task", taskId: task.taskId })}>
+          {labels.runTask}
+        </ContextMenuItem>
         <ContextMenuItem variant="destructive" onSelect={() => onTaskDelete(task.taskId)}>
           {labels.deleteTask}
         </ContextMenuItem>

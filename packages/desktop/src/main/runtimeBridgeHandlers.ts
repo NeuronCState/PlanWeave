@@ -42,6 +42,7 @@ import {
   searchProject,
   startAutoRun,
   stopAutoRun,
+  unblockBlock,
   updateBlockExecutor,
   updateBlockPrompt,
   updateBlockTitle,
@@ -55,6 +56,7 @@ import type { DesktopAutoRunScope, DesktopCanvasReference, DesktopGraphEditResul
 import { desktopBridgeInvokeChannels } from "../shared/ipcChannels.js";
 import { detectAgentTools } from "./agentTools.js";
 import { openBlockInspectorWindow } from "./blockInspectorWindow.js";
+import { openTaskInspectorWindow } from "./taskInspectorWindow.js";
 import { cloneableGraphEditResult } from "./runtimeBridgeResult.js";
 
 async function invokeGraphEdit(promise: Promise<GraphEditResult>): Promise<DesktopGraphEditResult> {
@@ -79,9 +81,15 @@ export function registerRuntimeBridgeHandlers(): void {
   ipcMain.handle(desktopBridgeInvokeChannels.revealProjectInFinder, async (_event, rootPath: string) => {
     await shell.openPath(rootPath);
   });
+  ipcMain.handle(desktopBridgeInvokeChannels.revealPathInFinder, (_event, path: string) => {
+    shell.showItemInFolder(path);
+  });
   ipcMain.handle(desktopBridgeInvokeChannels.detectAgentTools, () => detectAgentTools());
   ipcMain.handle(desktopBridgeInvokeChannels.openBlockInspectorWindow, (_event, input: { blockRef: string; canvas: DesktopCanvasReference; language: string }) =>
     openBlockInspectorWindow(input)
+  );
+  ipcMain.handle(desktopBridgeInvokeChannels.openTaskInspectorWindow, (_event, input: { taskId: string; canvas: DesktopCanvasReference; language: string }) =>
+    openTaskInspectorWindow(input)
   );
   ipcMain.handle(desktopBridgeInvokeChannels.openProject, (_event, input: { projectId?: string; rootPath?: string }) => openProject(input));
   ipcMain.handle(desktopBridgeInvokeChannels.initOrOpenProject, (_event, rootPath: string) => initOrOpenProject(rootPath));
@@ -158,6 +166,9 @@ export function registerRuntimeBridgeHandlers(): void {
   ipcMain.handle(desktopBridgeInvokeChannels.startAutoRun, (_event, ref: DesktopCanvasReference, scope: DesktopAutoRunScope, stepLimit?: number) =>
     startAutoRun(ref.projectRoot, ref.canvasId, scope, stepLimit)
   );
+  ipcMain.handle(desktopBridgeInvokeChannels.unblockBlock, async (_event, ref: DesktopCanvasReference, blockRef: string, reason: string) => {
+    await unblockBlock({ projectRoot: await resolveDesktopCanvasReference(ref), ref: blockRef, reason });
+  });
   ipcMain.handle(desktopBridgeInvokeChannels.pauseAutoRun, (_event, runId: string) => pauseAutoRun(runId));
   ipcMain.handle(desktopBridgeInvokeChannels.resumeAutoRun, (_event, runId: string) => resumeAutoRun(runId));
   ipcMain.handle(desktopBridgeInvokeChannels.stopAutoRun, (_event, runId: string) => stopAutoRun(runId));

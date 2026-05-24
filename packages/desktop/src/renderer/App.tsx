@@ -122,10 +122,19 @@ export function App() {
     setAutoRunScopeMode,
     setAutoRunState,
     setMiniRunPanelOpen,
+    startAutoRunWithScope,
     startAutoRunControlDrag,
     stopAutoRunClick,
     stopAutoRunControlDrag
-  } = useAutoRunControl({ selectedCanvasId, selectedBlock, selectedProject, selectedTaskPanelId, setError, t });
+  } = useAutoRunControl({
+    onAutoRunStateRefresh: refreshGraph,
+    selectedCanvasId,
+    selectedBlock,
+    selectedProject,
+    selectedTaskPanelId,
+    setError,
+    t
+  });
   const { requestTaskFocus } = useTaskNodeFocus({
     activeView,
     flowInstance,
@@ -164,6 +173,29 @@ export function App() {
       }
     },
     [handleBlockSelect, language, selectedCanvasId, selectedProject]
+  );
+
+  const handleOpenTaskInspector = useCallback(
+    async (taskId: string, canvasIdOverride?: string | null) => {
+      const canvasId = canvasIdOverride === undefined ? selectedCanvasId : canvasIdOverride;
+      try {
+        setSelectedTaskPanelId(taskId);
+        setSelectedContextNodeId(null);
+        setActiveView("graph");
+        requestTaskFocus(taskId);
+        if (!bridge || !selectedProject) {
+          return;
+        }
+        await bridge.openTaskInspectorWindow({
+          taskId,
+          canvas: desktopCanvasReference(selectedProject, canvasId),
+          language
+        });
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    },
+    [language, requestTaskFocus, selectedCanvasId, selectedProject, setActiveView]
   );
 
   const { handleDeleteBlock, handleDeleteTaskNode } = useGraphDeleteActions({
@@ -288,6 +320,20 @@ export function App() {
     [t]
   );
 
+  const handleRevealPathInFinder = useCallback(
+    async (path: string | null | undefined) => {
+      if (!bridge || !path) {
+        return;
+      }
+      try {
+        await bridge.revealPathInFinder(path);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    },
+    [bridge, setError]
+  );
+
   const handleDeleteProject = useCallback(
     async (project: DesktopProjectSummary) => {
       if (!window.confirm(t("deleteProjectConfirm"))) {
@@ -346,6 +392,8 @@ export function App() {
         handlePromptSave,
         handleOpenBlockInspector,
         handleOpenBlockInspector,
+        handleOpenTaskInspector,
+        startAutoRunWithScope,
         handleDeleteTaskNode,
         handleDeleteBlock,
         setSelectedBlock,
@@ -366,6 +414,7 @@ export function App() {
     handleDeleteBlock,
     handleDeleteTaskNode,
     handleOpenBlockInspector,
+    handleOpenTaskInspector,
     handleOpenRunRecord,
     handlePromptChange,
     handlePromptSave,
@@ -507,6 +556,7 @@ export function App() {
           handleGraphDrop={handleGraphDrop}
           handleOpenProject={handleOpenProject}
           handleOpenRunRecord={handleOpenRunRecord}
+          handleRevealPathInFinder={handleRevealPathInFinder}
           handleSearchResultOpen={handleSearchResultOpen}
           language={language}
           miniRunPanelOpen={miniRunPanelOpen}
@@ -522,6 +572,7 @@ export function App() {
           onEdgesChange={onEdgesChange}
           onNodeDragStop={handleNodeDragStop}
           onNodesChange={onNodesChange}
+          onTaskPanelSelect={handleTaskPanelSelect}
           refreshPackageFiles={refreshPackageFiles}
           removeReviewStep={removeReviewStep}
           reviewDefaultCyclesDraft={reviewDefaultCyclesDraft}

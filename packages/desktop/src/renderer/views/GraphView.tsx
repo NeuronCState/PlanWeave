@@ -32,13 +32,14 @@ type GraphViewProps = {
   handleGraphDragOver: (event: DragEvent) => void;
   handleGraphDrop: (event: DragEvent) => void;
   handleOpenProject: () => Promise<void>;
-  handleOpenRunRecord: (recordId: string | null | undefined) => Promise<void>;
+  handleRevealPathInFinder: (path: string | null | undefined) => Promise<void>;
   miniRunPanelOpen: boolean;
   moveAutoRunControl: (event: PointerEvent<HTMLButtonElement>) => void;
   nodeTypes: AppNodeTypes;
   nodes: AppFlowNode[];
   onEdgesChange: OnEdgesChange<Edge>;
   onNodesChange: OnNodesChange<AppFlowNode>;
+  onTaskPanelSelect: (taskId: string | null) => void;
   refreshPackageFiles: () => Promise<void>;
   selectedBlockPresent: boolean;
   selectedProject: DesktopProjectSummary | null;
@@ -68,7 +69,7 @@ export function GraphView({
   handleGraphDragOver,
   handleGraphDrop,
   handleOpenProject,
-  handleOpenRunRecord,
+  handleRevealPathInFinder,
   miniRunPanelOpen,
   moveAutoRunControl,
   nodeTypes,
@@ -76,6 +77,7 @@ export function GraphView({
   onEdgesChange,
   onNodeDragStop,
   onNodesChange,
+  onTaskPanelSelect,
   refreshPackageFiles,
   selectedBlockPresent,
   selectedProject,
@@ -120,6 +122,11 @@ export function GraphView({
           onEdgesDelete={(deletedEdges) => void handleEdgesDelete(deletedEdges)}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onNodeClick={(_event, node) => {
+            if (node.type === "task") {
+              onTaskPanelSelect(node.id);
+            }
+          }}
           onNodeDragStop={(event, node) => void onNodeDragStop(event, node)}
           onInit={setFlowInstance}
           proOptions={{ hideAttribution: true }}
@@ -136,7 +143,7 @@ export function GraphView({
         autoRunState={autoRunState}
         dirtyPromptCount={dirtyPromptCount}
         handleAutoRunClick={handleAutoRunClick}
-        handleOpenRunRecord={handleOpenRunRecord}
+        handleRevealPathInFinder={handleRevealPathInFinder}
         miniRunPanelOpen={miniRunPanelOpen}
         moveAutoRunControl={moveAutoRunControl}
         refreshPackageFiles={refreshPackageFiles}

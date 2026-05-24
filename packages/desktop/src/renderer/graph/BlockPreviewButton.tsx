@@ -8,12 +8,14 @@ export function BlockPreviewButton({
   block,
   labels,
   onDelete,
+  onRun,
   onSelect,
   selectedBlockRef
 }: {
   block: DesktopBlockPreview;
   labels: TaskNodeData["labels"];
   onDelete: (ref: string) => void;
+  onRun: (ref: string) => void;
   onSelect: (ref: string) => void;
   selectedBlockRef: string | null;
 }) {
@@ -35,6 +37,7 @@ export function BlockPreviewButton({
         </button>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        <ContextMenuItem onSelect={() => onRun(block.ref)}>{labels.runBlock}</ContextMenuItem>
         <ContextMenuItem variant="destructive" onSelect={() => onDelete(block.ref)}>
           {labels.deleteBlock}
         </ContextMenuItem>

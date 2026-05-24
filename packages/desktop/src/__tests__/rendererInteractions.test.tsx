@@ -247,6 +247,9 @@ describe("desktop renderer component interactions", () => {
       projectRoot: "/tmp/project",
       agentSessionId: "ses_123",
       codexSessionId: null,
+      tmuxSessionId: "planweave-T-001-B-001-RUN-001-abcd1234",
+      tmuxAttachCommand: "tmux attach-session -t planweave-T-001-B-001-RUN-001-abcd1234",
+      tmuxReadOnlyAttachCommand: "tmux attach-session -r -t planweave-T-001-B-001-RUN-001-abcd1234",
       exitCode: 0,
       startedAt: null,
       finishedAt: "2026-05-23T01:49:38.307Z",
@@ -257,12 +260,16 @@ describe("desktop renderer component interactions", () => {
       stderrSummary: "> build · mimo-v2.5-pro → Read README.md ← Write CHECKLIST.md Wrote file successfully.",
       promptMarkdown: "",
       reportMarkdown: "## Implementation Report",
+      displayMarkdown: "## Implementation Report",
+      displayMarkdownSource: "report",
       metadata: {}
     };
 
     const { rerender } = render(<BlockRunRecordCard selectedRunRecord={runRecord} setSelectedRunRecord={vi.fn()} t={createTranslator("zh-CN")} />);
 
     expect(screen.getByText(/终端输出:/)).toBeInTheDocument();
+    expect(screen.getByText(/只读监控命令:/)).toBeInTheDocument();
+    expect(screen.getByText("tmux attach-session -r -t planweave-T-001-B-001-RUN-001-abcd1234")).toBeInTheDocument();
     expect(screen.queryByText(/错误输出:/)).not.toBeInTheDocument();
 
     rerender(

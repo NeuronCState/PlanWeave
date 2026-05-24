@@ -1,4 +1,4 @@
-import { ActivityIcon, CheckCircle2Icon, CircleAlertIcon, CircleIcon } from "lucide-react";
+import { CheckCircle2Icon, CircleAlertIcon, CircleIcon, LoaderCircleIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -8,7 +8,7 @@ type TaskNodeStatusVisual = {
   tone: TaskNodeStatusTone;
   cardClassName: string;
   markerClassName: string;
-  iconName: "empty-circle" | "activity" | "check" | "alert";
+  iconName: "empty-circle" | "loader" | "check" | "alert";
   Icon: typeof CircleIcon;
 };
 
@@ -50,8 +50,8 @@ export function taskNodeStatusVisual(status: string, hasException: boolean): Tas
       tone: "running",
       cardClassName: cardClassNames.running,
       markerClassName: markerClassNames.running,
-      iconName: "activity",
-      Icon: ActivityIcon
+      iconName: "loader",
+      Icon: LoaderCircleIcon
     };
   }
   return {
@@ -74,7 +74,7 @@ export function TaskNodeStatusMarker({ hasException, label, status }: { hasExcep
       data-testid="task-node-status-marker"
       variant="outline"
     >
-      <Icon data-status-icon={visual.iconName} aria-hidden="true" />
+      <Icon className={visual.iconName === "loader" ? "animate-spin" : undefined} data-status-icon={visual.iconName} aria-hidden="true" />
       {label}
     </Badge>
   );

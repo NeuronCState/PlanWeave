@@ -7,6 +7,7 @@ import type { AutoRunScopeMode, FloatingControlDrag, FloatingControlPosition } f
 import { clamp } from "../viewHelpers";
 
 type UseAutoRunControlArgs = {
+  onAutoRunStateRefresh?: (state: DesktopAutoRunState) => Promise<void>;
   selectedCanvasId: string | null;
   selectedBlock: DesktopBlockDetail | null;
   selectedProject: DesktopProjectSummary | null;
@@ -15,29 +16,56 @@ type UseAutoRunControlArgs = {
   t: ReturnType<typeof createTranslator>;
 };
 
-export function useAutoRunControl({ selectedCanvasId, selectedBlock, selectedProject, selectedTaskPanelId, setError, t }: UseAutoRunControlArgs) {
+export function useAutoRunControl({
+  onAutoRunStateRefresh,
+  selectedCanvasId,
+  selectedBlock,
+  selectedProject,
+  selectedTaskPanelId,
+  setError,
+  t
+}: UseAutoRunControlArgs) {
   const [autoRunState, setAutoRunState] = useState<DesktopAutoRunState | null>(null);
   const [autoRunScopeMode, setAutoRunScopeMode] = useState<AutoRunScopeMode>("project");
   const [miniRunPanelOpen, setMiniRunPanelOpen] = useState(false);
   const [autoRunControlPosition, setAutoRunControlPosition] = useState<FloatingControlPosition | null>(null);
   const [autoRunControlDrag, setAutoRunControlDrag] = useState<FloatingControlDrag | null>(null);
 
+  const applyAutoRunState = useCallback(async (nextState: DesktopAutoRunState) => {
+    setAutoRunState(nextState);
+    await onAutoRunStateRefresh?.(nextState);
+  }, [onAutoRunStateRefresh]);
+
   const refreshAutoRunState = useCallback(async (runId: string) => {
     if (!bridge) {
       return;
     }
-    setAutoRunState(await bridge.getAutoRunState(runId));
-  }, []);
+    const nextState = await bridge.getAutoRunState(runId);
+    await applyAutoRunState(nextState);
+  }, [applyAutoRunState]);
+
+  const pollingRunId = autoRunState?.phase === "running" || autoRunState?.phase === "pausing" ? autoRunState.runId : null;
+  const pollingPhase = pollingRunId ? autoRunState?.phase : null;
 
   useEffect(() => {
-    if (!autoRunState || autoRunState.phase !== "running") {
+    if (!pollingRunId) {
       return;
     }
     const timer = window.setInterval(() => {
-      void refreshAutoRunState(autoRunState.runId);
+      void refreshAutoRunState(pollingRunId);
     }, 600);
     return () => window.clearInterval(timer);
-  }, [autoRunState, refreshAutoRunState]);
+  }, [pollingPhase, pollingRunId, refreshAutoRunState]);
+
+  useEffect(() => {
+    if (!autoRunState || autoRunState.phase === "running" || autoRunState.phase === "pausing") {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void onAutoRunStateRefresh?.(autoRunState);
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [autoRunState, onAutoRunStateRefresh]);
 
   const selectedAutoRunScope = useCallback((): DesktopAutoRunScope | null => {
     if (autoRunScopeMode === "project") {
@@ -55,6 +83,24 @@ export function useAutoRunControl({ selectedCanvasId, selectedBlock, selectedPro
     return { kind: "block", blockRef: selectedBlock.ref };
   }, [autoRunScopeMode, selectedBlock, selectedTaskPanelId]);
 
+  const startAutoRunWithScope = useCallback(async (scope: DesktopAutoRunScope) => {
+    if (!bridge || !selectedProject) {
+      return;
+    }
+    try {
+      setMiniRunPanelOpen(true);
+      if (autoRunState && ["running", "pausing"].includes(autoRunState.phase)) {
+        return;
+      }
+      if (autoRunState?.phase === "blocked" && autoRunState.currentRef) {
+        await bridge.unblockBlock(desktopCanvasReference(selectedProject, selectedCanvasId), autoRunState.currentRef, "Retry requested from Auto Run.");
+      }
+      await applyAutoRunState(await bridge.startAutoRun(desktopCanvasReference(selectedProject, selectedCanvasId), scope, 20));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [applyAutoRunState, autoRunState, selectedCanvasId, selectedProject, setError]);
+
   const handleAutoRunClick = useCallback(async () => {
     if (!bridge || !selectedProject) {
       return;
@@ -67,31 +113,31 @@ export function useAutoRunControl({ selectedCanvasId, selectedBlock, selectedPro
           setError(t("selectBlockFirst"));
           return;
         }
-        setAutoRunState(await bridge.startAutoRun(desktopCanvasReference(selectedProject, selectedCanvasId), scope, 20));
+        await startAutoRunWithScope(scope);
         return;
       }
       if (autoRunState.phase === "running") {
-        setAutoRunState(await bridge.pauseAutoRun(autoRunState.runId));
+        await applyAutoRunState(await bridge.pauseAutoRun(autoRunState.runId));
         return;
       }
-      if (autoRunState.phase === "paused") {
-        setAutoRunState(await bridge.resumeAutoRun(autoRunState.runId));
+      if (autoRunState.phase === "paused" || autoRunState.phase === "pausing") {
+        await applyAutoRunState(await bridge.resumeAutoRun(autoRunState.runId));
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [autoRunState, selectedAutoRunScope, selectedCanvasId, selectedProject, setError, t]);
+  }, [applyAutoRunState, autoRunState, selectedAutoRunScope, selectedProject, setError, startAutoRunWithScope, t]);
 
   const stopAutoRunClick = useCallback(async () => {
     if (!bridge || !autoRunState) {
       return;
     }
     try {
-      setAutoRunState(await bridge.stopAutoRun(autoRunState.runId));
+      await applyAutoRunState(await bridge.stopAutoRun(autoRunState.runId));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [autoRunState, setError]);
+  }, [applyAutoRunState, autoRunState, setError]);
 
   const startAutoRunControlDrag = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     const control = event.currentTarget.closest("[data-auto-run-control]");
@@ -148,6 +194,7 @@ export function useAutoRunControl({ selectedCanvasId, selectedBlock, selectedPro
     setAutoRunScopeMode,
     setAutoRunState,
     setMiniRunPanelOpen,
+    startAutoRunWithScope,
     startAutoRunControlDrag,
     stopAutoRunClick,
     stopAutoRunControlDrag

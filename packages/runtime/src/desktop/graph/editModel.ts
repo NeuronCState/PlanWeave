@@ -326,7 +326,10 @@ export async function updateTaskExecutor(projectRoot: PackageWorkspaceRef, taskI
   const executor = normalizeOptionalText(executorName);
   return updateNode({
     projectRoot,
-    node: executor === undefined ? { ...task, executor: undefined } : { ...task, executor }
+    node: {
+      ...(executor === undefined ? { ...task, executor: undefined } : { ...task, executor }),
+      blocks: task.blocks.map((block) => ({ ...block, executor: undefined }))
+    }
   });
 }
 

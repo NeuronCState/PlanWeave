@@ -24,7 +24,7 @@ type FloatingAutoRunControlProps = {
   autoRunState: DesktopAutoRunState | null;
   dirtyPromptCount: number;
   handleAutoRunClick: () => Promise<void>;
-  handleOpenRunRecord: (recordId: string | null | undefined) => Promise<void>;
+  handleRevealPathInFinder: (path: string | null | undefined) => Promise<void>;
   miniRunPanelOpen: boolean;
   moveAutoRunControl: (event: PointerEvent<HTMLButtonElement>) => void;
   refreshPackageFiles: () => Promise<void>;
@@ -45,7 +45,7 @@ export function FloatingAutoRunControl({
   autoRunState,
   dirtyPromptCount,
   handleAutoRunClick,
-  handleOpenRunRecord,
+  handleRevealPathInFinder,
   miniRunPanelOpen,
   moveAutoRunControl,
   refreshPackageFiles,
@@ -60,6 +60,8 @@ export function FloatingAutoRunControl({
   style,
   t
 }: FloatingAutoRunControlProps) {
+  const canStop = autoRunState ? ["running", "pausing", "paused", "manual", "blocked", "failed"].includes(autoRunState.phase) : false;
+
   return (
     <div className="absolute flex items-center gap-2 rounded-xl border bg-background p-2 shadow-lg" data-auto-run-control style={style}>
       <Button
@@ -87,7 +89,13 @@ export function FloatingAutoRunControl({
                   aria-label={t("autoRun")}
                   onClick={() => void handleAutoRunClick()}
                 >
-                  {autoRunState?.phase === "running" ? <PauseIcon data-icon="inline-start" /> : <PlayIcon data-icon="inline-start" />}
+                  {autoRunState?.phase === "running" ? (
+                    <PauseIcon data-icon="inline-start" />
+                  ) : autoRunState?.phase === "pausing" ? (
+                    <RefreshCwIcon className="animate-spin" data-icon="inline-start" />
+                  ) : (
+                    <PlayIcon data-icon="inline-start" />
+                  )}
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-96">
@@ -123,13 +131,13 @@ export function FloatingAutoRunControl({
                   ) : null}
                   {autoRunState?.error ? <div className="rounded-md border border-destructive p-2 text-xs text-destructive">{autoRunState.error}</div> : null}
                   <div className="flex justify-end gap-2">
-                    {autoRunState?.latestRecordId ? (
-                      <Button size="sm" variant="outline" onClick={() => void handleOpenRunRecord(autoRunState.latestRecordId)}>
+                    {autoRunState?.latestRecordPath ? (
+                      <Button size="sm" variant="outline" onClick={() => void handleRevealPathInFinder(autoRunState.latestRecordPath)}>
                         <FolderOpenIcon data-icon="inline-start" />
                         {t("openRecord")}
                       </Button>
                     ) : null}
-                    {autoRunState && ["running", "paused", "manual", "blocked", "failed"].includes(autoRunState.phase) ? (
+                    {canStop ? (
                       <Button size="sm" variant="outline" onClick={() => void stopAutoRunClick()}>
                         <SquareIcon data-icon="inline-start" />
                         {t("stop")}
@@ -156,6 +164,11 @@ export function FloatingAutoRunControl({
           <ContextMenuItem onSelect={() => setMiniRunPanelOpen(true)}>{t("miniRunPanel")}</ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
+      {canStop ? (
+        <Button size="icon-sm" variant="outline" aria-label={t("stop")} onClick={() => void stopAutoRunClick()}>
+          <SquareIcon data-icon="inline-start" />
+        </Button>
+      ) : null}
       <Select value={autoRunScopeMode} onValueChange={(value) => setAutoRunScopeMode(value as AutoRunScopeMode)}>
         <SelectTrigger className="h-9 w-36">
           <SelectValue aria-label={t("autoRunScope")} />

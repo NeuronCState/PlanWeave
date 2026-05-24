@@ -9,7 +9,7 @@ import {
   updateBlockPrompt,
   updateTaskPrompt
 } from "../desktop/index.js";
-import { readJsonFile } from "../json.js";
+import { readJsonFile, writeJsonFile } from "../json.js";
 import type { PlanPackageManifest } from "../types.js";
 import { basicManifest, createTestWorkspace } from "./promptTestHelpers.js";
 
@@ -47,6 +47,30 @@ describe("desktop graph read API", () => {
       taskId: "T-001",
       blockRefs: ["T-001#B-001", "T-001#C-001", "T-001#R-001"]
     });
+  });
+
+  it("labels task executors from effective block executors", async () => {
+    const { root, init } = await createTestWorkspace();
+    const manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    const task = manifest.nodes.find((node) => node.type === "task" && node.id === "T-001");
+    if (task?.type !== "task") {
+      throw new Error("Fixture task missing.");
+    }
+    manifest.executors = {
+      ...(manifest.executors ?? {}),
+      opencode: { adapter: "opencode-exec", command: "opencode", args: ["run", "-"] }
+    };
+    task.executor = "codex-auto";
+    task.blocks = task.blocks.map((block) => ({ ...block, executor: "opencode" }));
+    await writeJsonFile(init.workspace.manifestFile, manifest);
+
+    const graph = await getGraphViewModel(root);
+
+    expect(graph.tasks[0]).toMatchObject({
+      executor: "codex-auto",
+      executorLabel: "opencode"
+    });
+    expect(graph.tasks[0].blocks.map((block) => block.executor)).toEqual(["opencode", "opencode", "opencode"]);
   });
 
   it("reads details and writes task/block source prompts through package files", async () => {

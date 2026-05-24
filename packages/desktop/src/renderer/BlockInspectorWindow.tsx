@@ -33,6 +33,7 @@ export function BlockInspectorWindow() {
   const [blockReviewAttempts, setBlockReviewAttempts] = useState<DesktopReviewAttemptSummary[]>([]);
   const [blockFeedbackRecords, setBlockFeedbackRecords] = useState<DesktopFeedbackRecord[]>([]);
   const [error, setError] = useState<string | null>(bridge ? null : t("bridgeUnavailable"));
+  const [draftDirty, setDraftDirty] = useState(false);
 
   const loadBlock = useCallback(
     async (ref: string) => {
@@ -70,6 +71,16 @@ export function BlockInspectorWindow() {
     await loadBlock(blockRef);
   }, [blockRef, loadBlock]);
 
+  useEffect(() => {
+    if (draftDirty || selectedRunRecord) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      void loadBlock(blockRef);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [blockRef, draftDirty, loadBlock, selectedRunRecord]);
+
   const handleBlockSelect = useCallback(
     async (ref: string) => {
       setBlockRef(ref);
@@ -91,6 +102,21 @@ export function BlockInspectorWindow() {
     },
     [canvasId, projectRoot]
   );
+
+  useEffect(() => {
+    if (!bridge || !projectRoot || !selectedRunRecord || selectedRunRecord.finishedAt) {
+      return undefined;
+    }
+    const runtimeBridge = bridge;
+    const recordId = selectedRunRecord.recordId;
+    const timer = window.setInterval(() => {
+      void runtimeBridge
+        .getRunRecord({ projectRoot, canvasId }, recordId)
+        .then(setSelectedRunRecord)
+        .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught)));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [canvasId, projectRoot, selectedRunRecord]);
 
   const saveSelectedBlockTitle = useCallback(async () => {
     if (!bridge || !projectRoot || !selectedBlock) {
@@ -136,13 +162,14 @@ export function BlockInspectorWindow() {
       blockFeedbackRecords={blockFeedbackRecords}
       blockReviewAttempts={blockReviewAttempts}
       blockRunRecords={blockRunRecords}
-      className="inset-0 h-screen w-screen min-w-0 rounded-none border-0 shadow-none"
+      className="inset-0 h-screen w-screen min-w-0 rounded-none border-0 shadow-none ring-0"
       error={error}
       executorOptions={executorOptions}
       graph={graph}
       handleOpenRunRecord={handleOpenRunRecord}
       onBlockSelect={handleBlockSelect}
       onClose={() => window.close()}
+      onDraftDirtyChange={setDraftDirty}
       saveSelectedBlockExecutor={saveSelectedBlockExecutor}
       saveSelectedBlockPrompt={saveSelectedBlockPrompt}
       saveSelectedBlockTitle={saveSelectedBlockTitle}

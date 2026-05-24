@@ -49,6 +49,7 @@ type WorkspaceTabsProps = {
   handleGraphDrop: (event: DragEvent) => void;
   handleOpenProject: () => Promise<void>;
   handleOpenRunRecord: (recordId: string | null | undefined, canvasId?: string | null) => Promise<void>;
+  handleRevealPathInFinder: (path: string | null | undefined) => Promise<void>;
   handleSearchResultOpen: (result: DesktopSearchResult) => Promise<void>;
   language: Language;
   miniRunPanelOpen: boolean;
@@ -64,6 +65,7 @@ type WorkspaceTabsProps = {
   onEdgesChange: OnEdgesChange<Edge>;
   onNodeDragStop: (event: MouseEvent, node: Node) => Promise<void>;
   onNodesChange: OnNodesChange<AppFlowNode>;
+  onTaskPanelSelect: (taskId: string | null) => void;
   refreshPackageFiles: () => Promise<void>;
   removeReviewStep: (index: number) => void;
   reviewDefaultCyclesDraft: number;

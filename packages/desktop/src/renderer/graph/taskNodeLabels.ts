@@ -4,14 +4,15 @@ import type { TaskNodeLabels } from "../types";
 export function taskNodeLabels(t: ReturnType<typeof createTranslator>): TaskNodeLabels {
   return {
     blockStack: t("blockStack"),
+    customExecutor: t("customExecutor"),
     exception: t("exception"),
     exceptionOverlay: t("exceptionOverlay"),
-    inherit: t("inherit"),
     more: t("more"),
     noBlockRecords: t("noBlockRecords"),
     openRecord: t("openRecord"),
     savePrompt: t("savePrompt"),
     selectedBlock: t("selectedBlock"),
+    selectedTask: t("selectedTask"),
     sourcePrompt: t("sourcePrompt"),
     taskException: t("taskException"),
     taskPrompt: t("taskPrompt"),
@@ -23,6 +24,8 @@ export function taskNodeLabels(t: ReturnType<typeof createTranslator>): TaskNode
     feedbackMarker: t("feedbackMarker"),
     deleteTask: t("deleteTask"),
     deleteBlock: t("deleteBlock"),
+    runTask: t("runTask"),
+    runBlock: t("runBlock"),
     deleteTaskConfirm: t("deleteTaskConfirm"),
     deleteBlockConfirm: t("deleteBlockConfirm")
   };

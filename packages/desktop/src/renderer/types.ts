@@ -1,6 +1,7 @@
 import type { Node } from "@xyflow/react";
 import type {
   BlockType,
+  DesktopAutoRunScope,
   DesktopBlockDetail,
   DesktopBlockRunRecordSummary,
   DesktopAgentKind,
@@ -13,14 +14,15 @@ import type { Language } from "./i18n";
 
 export type TaskNodeLabels = {
   blockStack: string;
+  customExecutor: string;
   exception: string;
   exceptionOverlay: string;
-  inherit: string;
   more: string;
   noBlockRecords: string;
   openRecord: string;
   savePrompt: string;
   selectedBlock: string;
+  selectedTask: string;
   sourcePrompt: string;
   taskException: string;
   taskPrompt: string;
@@ -32,6 +34,8 @@ export type TaskNodeLabels = {
   feedbackMarker: string;
   deleteTask: string;
   deleteBlock: string;
+  runTask: string;
+  runBlock: string;
   deleteTaskConfirm: string;
   deleteBlockConfirm: string;
 };
@@ -55,6 +59,8 @@ export type TaskNodeData = {
   onBlockSelect: (ref: string) => void;
   onOverflowBlockSelect: (ref: string) => void;
   onTaskDelete: (taskId: string) => void;
+  onTaskOpen: (taskId: string) => void;
+  onAutoRunScopeStart: (scope: DesktopAutoRunScope) => Promise<void>;
   onBlockDelete: (ref: string) => void;
   onSelectedBlockChange: (block: DesktopBlockDetail) => void;
   onBlockTitleSave: () => void;

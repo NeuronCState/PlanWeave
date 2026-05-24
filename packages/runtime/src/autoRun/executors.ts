@@ -133,6 +133,7 @@ function createProfiledAdapter(options: {
       if (profile.adapter === "codex-exec") {
         return runCodexFeedback({
           projectRoot: workspace.rootPath,
+          planweaveHome: workspace.planweaveHome,
           workspaceResultsDir: workspace.resultsDir,
           claim,
           executorName: name,
@@ -142,6 +143,7 @@ function createProfiledAdapter(options: {
       if (profile.adapter === "opencode-exec") {
         return runOpencodeFeedback({
           projectRoot: workspace.rootPath,
+          planweaveHome: workspace.planweaveHome,
           workspaceResultsDir: workspace.resultsDir,
           claim,
           executorName: name,
@@ -150,6 +152,7 @@ function createProfiledAdapter(options: {
       }
       return runLocalReviewFeedback({
         projectRoot: workspace.rootPath,
+        planweaveHome: workspace.planweaveHome,
         workspaceResultsDir: workspace.resultsDir,
         claim,
         executorName: name,

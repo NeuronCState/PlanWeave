@@ -16,7 +16,7 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 async function waitForMetadataSession(metadataPath: string, expectedSessionId: string): Promise<void> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
     if (await pathExists(metadataPath)) {
       const metadata = await readJsonFile(metadataPath);
       if ((metadata as { agentSessionId?: string }).agentSessionId === expectedSessionId) {

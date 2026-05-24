@@ -4,7 +4,7 @@ import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import { writeJsonFile } from "../json.js";
 import { resolvePackageWorkspace } from "../package/loadPackage.js";
 import type { ExecutorAdapterResult, LocalReviewExecutorProfile, PackageWorkspaceRef } from "../types.js";
-import { execWithStreaming, execWithStdin, finishRunMetadata, nextRunId, prepareBlockRun, type BlockClaim, type FeedbackClaim } from "./executorShared.js";
+import { execWithStreaming, execWithStdin, finishRunMetadata, nextRunId, planweaveExecutorEnv, prepareBlockRun, type BlockClaim, type FeedbackClaim } from "./executorShared.js";
 import { createTmuxSessionInfo, tmuxMetadataPatch } from "./tmuxExecutor.js";
 
 export async function runLocalReviewBlock(options: {
@@ -35,11 +35,11 @@ export async function runLocalReviewBlock(options: {
     args: options.profile.args,
     cwd: workspace.rootPath,
     stdin: options.prompt,
-    env: {
+    env: planweaveExecutorEnv(workspace, {
       PLANWEAVE_REVIEW_BLOCK_REF: options.claim.ref,
       PLANWEAVE_TASK_ID: options.claim.taskId,
       PLANWEAVE_BLOCK_ID: blockId
-    },
+    }),
     timeoutMs: options.profile.timeoutMs,
     stdoutPath,
     stderrPath,
@@ -79,6 +79,7 @@ export async function runLocalReviewBlock(options: {
 
 export async function runLocalReviewFeedback(options: {
   projectRoot: string;
+  planweaveHome: string;
   workspaceResultsDir: string;
   claim: FeedbackClaim;
   executorName: string;
@@ -94,6 +95,7 @@ export async function runLocalReviewFeedback(options: {
     args: options.profile.args,
     cwd: options.projectRoot,
     stdin: options.claim.content,
+    env: planweaveExecutorEnv({ planweaveHome: options.planweaveHome }),
     timeoutMs: options.profile.timeoutMs
   });
   await writeFile(join(runDir, "stdout.md"), result.stdout, "utf8");

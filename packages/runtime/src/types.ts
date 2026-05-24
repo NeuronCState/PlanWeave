@@ -172,6 +172,7 @@ export type ProjectMetadata = {
 export type ProjectWorkspace = {
   id: string;
   rootPath: string;
+  planweaveHome: string;
   workspaceRoot: string;
   projectFile: string;
   packageDir: string;

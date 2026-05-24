@@ -9,10 +9,12 @@ import type { ProjectMetadata, ProjectWorkspace } from "./types.js";
 export async function resolveProjectWorkspace(projectRoot: string): Promise<ProjectWorkspace> {
   const rootPath = await realpath(projectRoot);
   const id = await createProjectId(rootPath);
-  const workspaceRoot = join(resolvePlanweaveHome(), "projects", id);
+  const planweaveHome = resolvePlanweaveHome();
+  const workspaceRoot = join(planweaveHome, "projects", id);
   return {
     id,
     rootPath,
+    planweaveHome,
     workspaceRoot,
     projectFile: join(workspaceRoot, "project.json"),
     packageDir: join(workspaceRoot, "package"),

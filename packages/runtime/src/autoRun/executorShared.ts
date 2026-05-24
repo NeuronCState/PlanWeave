@@ -6,11 +6,18 @@ import { dirname, join } from "node:path";
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import { writeJsonFile } from "../json.js";
 import { loadPackage } from "../package/loadPackage.js";
-import type { ClaimResult, ExecutorProfile, PackageWorkspaceRef } from "../types.js";
+import type { ClaimResult, ExecutorProfile, PackageWorkspaceRef, ProjectWorkspace } from "../types.js";
 import { runCommandInTmux, type TmuxSessionInfo } from "./tmuxExecutor.js";
 
 export type BlockClaim = Extract<ClaimResult, { kind: "block" }>;
 export type FeedbackClaim = Extract<ClaimResult, { kind: "feedback" }>;
+
+export function planweaveExecutorEnv(workspace: Pick<ProjectWorkspace, "planweaveHome">, env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...(env ?? {}),
+    PLANWEAVE_HOME: workspace.planweaveHome
+  };
+}
 
 export async function pathExists(path: string): Promise<boolean> {
   try {

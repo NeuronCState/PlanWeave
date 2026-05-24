@@ -4,7 +4,7 @@ import { writeJsonFile } from "../json.js";
 import { resolvePackageWorkspace } from "../package/loadPackage.js";
 import type { CodexExecExecutorProfile, ExecutorAdapterResult, PackageWorkspaceRef } from "../types.js";
 import { codexExecArgs, codexResumeArgs, extractCodexSessionId } from "./codexProtocol.js";
-import { finishRunMetadata, nextRunId, prepareBlockRun, type BlockClaim, type FeedbackClaim } from "./executorShared.js";
+import { finishRunMetadata, nextRunId, planweaveExecutorEnv, prepareBlockRun, type BlockClaim, type FeedbackClaim } from "./executorShared.js";
 import { runStreamingCommandWithSessionCapture, type StreamedCommandResult } from "./streamingExecutor.js";
 import { createTmuxSessionInfo, tmuxMetadataPatch, type TmuxSessionInfo } from "./tmuxExecutor.js";
 
@@ -13,6 +13,7 @@ async function runCodexStreamingCommand(options: {
   args: string[];
   cwd: string;
   stdin: string;
+  env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
   stdoutPath: string;
   stderrPath: string;
@@ -24,6 +25,7 @@ async function runCodexStreamingCommand(options: {
     args: options.args,
     cwd: options.cwd,
     stdin: options.stdin,
+    env: options.env,
     stdoutPath: options.stdoutPath,
     stderrPath: options.stderrPath,
     tmux: options.tmux,
@@ -69,6 +71,7 @@ export async function runCodexBlock(options: {
     args,
     cwd: workspace.rootPath,
     stdin: options.prompt,
+    env: planweaveExecutorEnv(workspace),
     timeoutMs: options.profile.timeoutMs,
     stdoutPath,
     stderrPath,
@@ -92,6 +95,7 @@ export async function runCodexBlock(options: {
       args: codexResumeArgs(options.profile, codexSessionId, "continue this block and produce the required report"),
       cwd: workspace.rootPath,
       stdin: "",
+      env: planweaveExecutorEnv(workspace),
       timeoutMs: options.profile.timeoutMs,
       stdoutPath: resumeStdoutPath,
       stderrPath: resumeStderrPath,
@@ -145,6 +149,7 @@ export async function runCodexBlock(options: {
 
 export async function runCodexFeedback(options: {
   projectRoot: string;
+  planweaveHome: string;
   workspaceResultsDir: string;
   claim: FeedbackClaim;
   executorName: string;
@@ -190,6 +195,7 @@ export async function runCodexFeedback(options: {
     args,
     cwd: options.projectRoot,
     stdin: options.claim.content,
+    env: planweaveExecutorEnv({ planweaveHome: options.planweaveHome }),
     timeoutMs: options.profile.timeoutMs,
     stdoutPath: join(runDir, "stdout.md"),
     stderrPath: join(runDir, "stderr.log"),

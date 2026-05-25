@@ -54,7 +54,14 @@ describe("getExecutionStatus", () => {
       readyReason: "Review gate is ready after required implementation/check blocks completed.",
       parallelSafe: false,
       sequentialOnly: true,
-      recommendedCommand: "planweave claim T-001#R-001"
+      recommendedCommand: "planweave claim T-001#R-001",
+      reviewGate: {
+        isGate: true,
+        required: true,
+        requiredReason: "Required review gate for task completion.",
+        executorRole: "reviewer",
+        needsChangesReturnsTo: ["T-001#B-001", "T-001#C-001"]
+      }
     });
   });
 });

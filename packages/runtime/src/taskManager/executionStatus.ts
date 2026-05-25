@@ -46,6 +46,17 @@ export async function getExecutionStatus(options: { projectRoot: PackageWorkspac
       taskDependenciesSatisfied(graph, state, taskId) &&
       (block?.type === "review" ? canClaimReviewBlock(graph, state, ref) : blockDependenciesCompleted(graph, state, ref));
     const parallelSafe = block?.type !== "review" && !!graph.parallelSafeByBlockRef.get(ref);
+    const reviewGate =
+      taskId && block?.type === "review"
+        ? {
+            isGate: true as const,
+            required: block.review.required,
+            requiredReason: block.review.required ? "Required review gate for task completion." : "Optional review gate.",
+            executorRole: "reviewer" as const,
+            unlocksTasks: graph.taskDependentsByTask.get(taskId) ?? [],
+            needsChangesReturnsTo: requiredImplementationRefs(graph, taskId)
+          }
+        : null;
     const readyReason = ready
       ? block?.type === "review"
         ? "Review gate is ready after required implementation/check blocks completed."
@@ -65,7 +76,8 @@ export async function getExecutionStatus(options: { projectRoot: PackageWorkspac
       blockedByTasks,
       parallelSafe,
       sequentialOnly: block?.type === "review" || !parallelSafe,
-      recommendedCommand: ready ? `planweave claim ${ref}` : null
+      recommendedCommand: ready ? `planweave claim ${ref}` : null,
+      reviewGate
     };
   });
   const nextClaimable = claimHints.filter((hint) => hint.ready).map((hint) => hint.ref);

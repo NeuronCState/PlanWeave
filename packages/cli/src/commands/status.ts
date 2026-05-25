@@ -26,9 +26,10 @@ export function registerStatusCommand(program: Command): void {
       for (const hint of status.claimHints) {
         const blockers = [...hint.blockedByTasks.map((taskId) => `task:${taskId}`), ...hint.blockedByBlocks.map((ref) => `block:${ref}`)];
         const reason = hint.ready ? hint.readyReason : blockers.length > 0 ? `blocked by ${blockers.join(", ")}` : `status ${hint.status}`;
+        const gate = hint.reviewGate ? "review gate, " : "";
         const mode = hint.sequentialOnly ? "sequential-only" : "parallel-safe";
         const command = hint.recommendedCommand ? `, run: ${hint.recommendedCommand}` : "";
-        console.log(`- ${hint.ref}: ${reason}, ${mode}${command}`);
+        console.log(`- ${hint.ref}: ${reason}, ${gate}${mode}${command}`);
       }
       console.log("Task counts:");
       for (const [key, value] of Object.entries(status.counts.tasks)) {

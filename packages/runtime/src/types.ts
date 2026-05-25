@@ -582,6 +582,16 @@ export type ClaimHint = {
   parallelSafe: boolean;
   sequentialOnly: boolean;
   recommendedCommand: string | null;
+  reviewGate: ReviewGateHint | null;
+};
+
+export type ReviewGateHint = {
+  isGate: true;
+  required: boolean;
+  requiredReason: string;
+  executorRole: "reviewer";
+  unlocksTasks: string[];
+  needsChangesReturnsTo: string[];
 };
 
 export type BlockExplanation = ClaimHint & {

@@ -141,4 +141,29 @@ describe("getExecutionStatus", () => {
       }
     });
   });
+
+  it("keeps explicit blocked and diverged reasons for optional review gates", async () => {
+    const manifest = basicManifest();
+    const task = manifest.nodes.find((node) => node.type === "task" && node.id === "T-001");
+    const reviewBlock = task?.type === "task" ? task.blocks.find((block) => block.id === "R-001") : null;
+    if (reviewBlock?.type !== "review") {
+      throw new Error("missing review block");
+    }
+    reviewBlock.review.required = false;
+    const { root } = await createTestWorkspace(manifest);
+
+    await markBlockBlocked({ projectRoot: root, ref: "T-001#R-001", reason: "Reviewer account is unavailable." });
+    let status = await getExecutionStatus({ projectRoot: root });
+    expect(status.claimHints.find((hint) => hint.ref === "T-001#R-001")).toMatchObject({
+      status: "blocked",
+      statusReason: "Reviewer account is unavailable."
+    });
+
+    await markBlockDiverged({ projectRoot: root, ref: "T-001#R-001", reason: "Review prompt drifted." });
+    status = await getExecutionStatus({ projectRoot: root });
+    expect(status.claimHints.find((hint) => hint.ref === "T-001#R-001")).toMatchObject({
+      status: "diverged",
+      statusReason: "Review prompt drifted."
+    });
+  });
 });

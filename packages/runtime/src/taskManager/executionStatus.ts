@@ -1,5 +1,5 @@
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
-import type { BlockStatus, CompiledExecutionGraph, ExecutionGraphSession, PackageWorkspaceRef, RuntimeState, ValidationIssue } from "../types.js";
+import type { BlockState, BlockStatus, CompiledExecutionGraph, ExecutionGraphSession, PackageWorkspaceRef, RuntimeState, ValidationIssue } from "../types.js";
 import { loadRuntime } from "./runtimeContext.js";
 import { blockDependenciesCompleted, canClaimReviewBlock, getBlock, requiredImplementationRefs, taskDependenciesSatisfied } from "./selectors.js";
 
@@ -7,6 +7,16 @@ function reviewGateUnlocksTasks(taskId: string, downstreamTasks: string[], state
   return downstreamTasks.filter((downstreamTaskId) =>
     (graph.taskDependenciesByTask.get(downstreamTaskId) ?? []).every((dependency) => dependency === taskId || state.tasks[dependency]?.status === "implemented")
   );
+}
+
+function statusReasonForBlock(blockState: BlockState | undefined): string | null {
+  if (blockState?.status === "blocked") {
+    return blockState.blockedReason ?? null;
+  }
+  if (blockState?.status === "diverged") {
+    return blockState.divergenceReason ?? null;
+  }
+  return blockState?.blockedReason ?? blockState?.divergenceReason ?? null;
 }
 
 export async function getExecutionStatus(options: { projectRoot: PackageWorkspaceRef; session?: ExecutionGraphSession }) {
@@ -74,10 +84,12 @@ export async function getExecutionStatus(options: { projectRoot: PackageWorkspac
           ? "Block is ready and parallel-safe."
           : "Block is ready for sequential claim."
       : null;
+    const explicitStatusReason = statusReasonForBlock(blockState);
     const statusReason =
-      block?.type === "review" && !block.review.required
+      explicitStatusReason ??
+      (block?.type === "review" && !block.review.required
         ? "Optional review gate is not required and is not claimable; task can complete without it."
-        : (blockState?.blockedReason ?? blockState?.divergenceReason ?? null);
+        : null);
     return {
       ref,
       taskId: taskId ?? "",
@@ -125,7 +137,7 @@ export async function getExecutionStatus(options: { projectRoot: PackageWorkspac
         blockId,
         type: block.type,
         status: blockState?.status ?? "planned",
-        reason: blockState?.blockedReason ?? blockState?.divergenceReason ?? null,
+        reason: statusReasonForBlock(blockState),
         completionReason: blockState?.completionReason ?? null,
         lastRunId: blockState?.lastRunId ?? null,
         latestReviewAttemptId: blockState?.latestReviewAttemptId ?? null,

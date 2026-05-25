@@ -1,4 +1,5 @@
 export { claimBlock, claimBlockType, claimNext, claimTask } from "./claimScheduler.js";
+export { explainBlock, getCurrentWork } from "./executorApi.js";
 export { renderPrompt } from "./promptRenderer.js";
 export { submitBlockResult } from "./blockSubmission.js";
 export { submitReviewResult } from "./reviewSubmission.js";

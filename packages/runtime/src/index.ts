@@ -51,6 +51,8 @@ export {
   claimBlock,
   claimBlockType,
   claimTask,
+  explainBlock,
+  getCurrentWork,
   renderPrompt,
   submitBlockResult,
   submitReviewResult,

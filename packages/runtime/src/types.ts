@@ -584,6 +584,28 @@ export type ClaimHint = {
   recommendedCommand: string | null;
 };
 
+export type BlockExplanation = ClaimHint & {
+  promptPath: string;
+  submitCommand: string;
+};
+
+export type CurrentWorkItem = {
+  ref: string;
+  taskId: string;
+  blockId: string;
+  blockType: BlockType;
+  promptPath: string;
+  submitCommand: string;
+};
+
+export type CurrentWork = {
+  currentRefs: string[];
+  currentFeedbackId: string | null;
+  currentReviewBlockRef: string | null;
+  items: CurrentWorkItem[];
+  blockingReason: string | null;
+};
+
 export type PlanStatus = {
   projectId: string;
   projectRoot: string;

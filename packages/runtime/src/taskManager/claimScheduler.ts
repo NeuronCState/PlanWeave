@@ -20,6 +20,7 @@ export async function claimNext(options: {
   projectRoot: PackageWorkspaceRef;
   parallel?: boolean;
   blockType?: BlockType;
+  dryRun?: boolean;
   scope?: ClaimScope;
   session?: ExecutionGraphSession;
 }): Promise<ClaimResult> {
@@ -28,6 +29,7 @@ export async function claimNext(options: {
   const { graph, manifest, workspace } = context;
   const scope = normalizeClaimScope(options.scope);
   const blockType = options.blockType;
+  const dryRun = options.dryRun === true;
   const invalidScope = validateClaimScope(scope, graph);
   if (invalidScope) {
     return invalidScope;
@@ -44,6 +46,9 @@ export async function claimNext(options: {
     const taskId = graph.blockTaskByRef.get(feedback.sourceReviewBlockRef);
     if (!taskId) {
       throw new Error(`Feedback '${feedbackId}' points to an unknown review block.`);
+    }
+    if (dryRun) {
+      return { kind: "feedback", content: feedback.content };
     }
     await patchFeedbackArtifact(workspace, taskId, feedbackId, { status: "in_progress" });
     await updateTaskIndex(workspace, taskId, (index) => ({
@@ -75,6 +80,9 @@ export async function claimNext(options: {
       if (!blockInScope(inProgressReview, graph, scope)) {
         return { kind: "blocked", ref: inProgressReview, reason: "A review block is in progress outside the selected Auto Run scope." };
       }
+      if (dryRun) {
+        return claimResultForBlock(inProgressReview, graph, "feedback_resolved");
+      }
       state.currentRefs = [inProgressReview];
       state.currentFeedbackId = null;
       state.currentReviewBlockRef = inProgressReview;
@@ -88,6 +96,9 @@ export async function claimNext(options: {
     }
     if (!blockInScope(inProgressReview, graph, scope)) {
       return { kind: "blocked", ref: inProgressReview, reason: "A review block is in progress outside the selected Auto Run scope." };
+    }
+    if (dryRun) {
+      return claimResultForBlock(inProgressReview, graph, "current");
     }
     state.currentRefs = [inProgressReview];
     state.currentReviewBlockRef = inProgressReview;
@@ -124,6 +135,9 @@ export async function claimNext(options: {
         continue;
       }
       if (taskDependenciesSatisfied(graph, state, taskId) && state.blocks[ref]?.status === "ready" && canClaimReviewBlock(graph, state, ref)) {
+        if (dryRun) {
+          return claimResultForBlock(ref, graph, "claimed");
+        }
         markClaimed(state, ref, graph);
         state = refreshDerivedState(manifest, state);
         await writeState(workspace.stateFile, state);
@@ -177,8 +191,13 @@ export async function claimNext(options: {
         return reviewClaim;
       }
       state.currentRefs = [];
-      await writeState(workspace.stateFile, refreshDerivedState(manifest, state));
+      if (!dryRun) {
+        await writeState(workspace.stateFile, refreshDerivedState(manifest, state));
+      }
       return { kind: "none", reason: "no_parallel_blocks" };
+    }
+    if (dryRun) {
+      return { kind: "batch", refs: selected };
     }
     for (const ref of selected) {
       state.blocks[ref] = { ...state.blocks[ref], status: "in_progress" };
@@ -201,6 +220,9 @@ export async function claimNext(options: {
       continue;
     }
     if (taskDependenciesSatisfied(graph, state, taskId) && blockDependenciesCompleted(graph, state, ref) && state.blocks[ref]?.status === "ready") {
+      if (dryRun) {
+        return claimResultForBlock(ref, graph, "claimed");
+      }
       markClaimed(state, ref, graph);
       await writeState(workspace.stateFile, refreshDerivedState(manifest, state));
       return claimResultForBlock(ref, graph, "claimed");
@@ -221,7 +243,9 @@ export async function claimNext(options: {
     };
   }
 
-  await writeState(workspace.stateFile, refreshDerivedState(manifest, state));
+  if (!dryRun) {
+    await writeState(workspace.stateFile, refreshDerivedState(manifest, state));
+  }
   return { kind: "none", reason: "no_claimable_blocks" };
 }
 

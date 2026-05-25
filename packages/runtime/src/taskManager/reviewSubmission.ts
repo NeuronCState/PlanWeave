@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
@@ -36,6 +37,10 @@ const reviewHookOutputSchema = z
     feedbackPrompt: z.string().min(1)
   })
   .strict();
+
+function reviewResultHash(result: ReviewResult): string {
+  return createHash("sha256").update(JSON.stringify(result)).digest("hex");
+}
 
 async function executeReviewHook(options: {
   projectRoot: string;
@@ -84,11 +89,44 @@ async function executeReviewHook(options: {
   return parsed.data;
 }
 
+async function recordReviewAttemptIndexes(options: {
+  workspace: ProjectWorkspace;
+  reviewBlockRef: string;
+  reviewResult: ReviewResult;
+  workRevision: string;
+  attemptId: string;
+  incrementCount: boolean;
+}): Promise<void> {
+  const { taskId, blockId } = parseBlockRef(options.reviewBlockRef);
+  await writeJsonFile(join(options.workspace.resultsDir, taskId, "reviews", blockId, "index.json"), {
+    latestReviewAttemptId: options.attemptId,
+    latestVerdict: options.reviewResult.verdict,
+    reviewedWorkRevision: options.workRevision
+  });
+  await updateTaskIndex(options.workspace, taskId, (index) => ({
+    ...index,
+    latestReviewAttemptByBlock: {
+      ...(index.latestReviewAttemptByBlock ?? {}),
+      [options.reviewBlockRef]: options.attemptId
+    },
+    latestReviewVerdictByBlock: {
+      ...(index.latestReviewVerdictByBlock ?? {}),
+      [options.reviewBlockRef]: options.reviewResult.verdict
+    },
+    latestReviewedWorkRevisionByBlock: {
+      ...(index.latestReviewedWorkRevisionByBlock ?? {}),
+      [options.reviewBlockRef]: options.workRevision
+    },
+    counts: options.incrementCount ? incrementTaskIndexCount(index, "reviewAttempts") : index.counts
+  }));
+}
+
 async function writeReviewAttempt(options: {
   workspace: ProjectWorkspace;
   reviewBlockRef: string;
   reviewResult: ReviewResult;
   workRevision: string;
+  resultHash: string;
 }): Promise<string> {
   const { taskId, blockId } = parseBlockRef(options.reviewBlockRef);
   const attemptRoot = join(options.workspace.resultsDir, taskId, "reviews", blockId, "attempts");
@@ -100,30 +138,64 @@ async function writeReviewAttempt(options: {
     reviewBlockRef: options.reviewBlockRef,
     attemptId,
     reviewedWorkRevision: options.workRevision,
+    resultHash: options.resultHash,
     reviewedAt: new Date().toISOString()
   });
-  await writeJsonFile(join(options.workspace.resultsDir, taskId, "reviews", blockId, "index.json"), {
-    latestReviewAttemptId: attemptId,
-    latestVerdict: options.reviewResult.verdict,
-    reviewedWorkRevision: options.workRevision
-  });
-  await updateTaskIndex(options.workspace, taskId, (index) => ({
-    ...index,
-    latestReviewAttemptByBlock: {
-      ...(index.latestReviewAttemptByBlock ?? {}),
-      [options.reviewBlockRef]: attemptId
-    },
-    latestReviewVerdictByBlock: {
-      ...(index.latestReviewVerdictByBlock ?? {}),
-      [options.reviewBlockRef]: options.reviewResult.verdict
-    },
-    latestReviewedWorkRevisionByBlock: {
-      ...(index.latestReviewedWorkRevisionByBlock ?? {}),
-      [options.reviewBlockRef]: options.workRevision
-    },
-    counts: incrementTaskIndexCount(index, "reviewAttempts")
-  }));
+  await recordReviewAttemptIndexes({ ...options, attemptId, incrementCount: true });
   return attemptId;
+}
+
+async function reviewAttemptMatches(options: {
+  attemptDir: string;
+  reviewBlockRef: string;
+  attemptId: string;
+  resultHash: string;
+}): Promise<boolean> {
+  try {
+    const metadata = await readJsonFile<Record<string, unknown>>(join(options.attemptDir, "metadata.json"));
+    if (metadata.reviewBlockRef !== options.reviewBlockRef || metadata.attemptId !== options.attemptId) {
+      return false;
+    }
+    return reviewResultHash(reviewResultSchema.parse(await readJsonFile<unknown>(join(options.attemptDir, "review-result.json")))) === options.resultHash;
+  } catch {
+    return false;
+  }
+}
+
+async function findPersistedReviewAttempt(options: {
+  workspace: ProjectWorkspace;
+  reviewBlockRef: string;
+  resultHash: string;
+}): Promise<string | null> {
+  const { taskId, blockId } = parseBlockRef(options.reviewBlockRef);
+  const attemptRoot = join(options.workspace.resultsDir, taskId, "reviews", blockId, "attempts");
+  let entries;
+  try {
+    entries = await readdir(attemptRoot, { withFileTypes: true });
+  } catch (error) {
+    if ((error as { code?: string }).code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+  const attemptIds = entries
+    .filter((entry) => entry.isDirectory() && /^REV-\d+$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort()
+    .reverse();
+  for (const attemptId of attemptIds) {
+    if (
+      await reviewAttemptMatches({
+        attemptDir: join(attemptRoot, attemptId),
+        reviewBlockRef: options.reviewBlockRef,
+        attemptId,
+        resultHash: options.resultHash
+      })
+    ) {
+      return attemptId;
+    }
+  }
+  return null;
 }
 
 async function recordReviewCompletionReason(options: {
@@ -171,6 +243,7 @@ export async function submitReviewResult(options: {
     throw new Error("submit-review only accepts review blocks.");
   }
   const parsed = reviewResultSchema.parse(await readJsonFile<unknown>(options.resultPath));
+  const resultHash = reviewResultHash(parsed);
   if (parsed.reviewBlockRef !== options.ref || parsed.taskId !== taskId) {
     throw new Error("review-result.json does not match the submitted review block ref.");
   }
@@ -178,12 +251,19 @@ export async function submitReviewResult(options: {
     throw new Error(`Review block '${options.ref}' must be in_progress before submit-review.`);
   }
   const workRevision = computeWorkRevision(graph, state, options.ref);
-  const attemptId = await writeReviewAttempt({
-    workspace,
-    reviewBlockRef: options.ref,
-    reviewResult: parsed,
-    workRevision
-  });
+  const persistedAttemptId = await findPersistedReviewAttempt({ workspace, reviewBlockRef: options.ref, resultHash });
+  const attemptId =
+    persistedAttemptId ??
+    (await writeReviewAttempt({
+      workspace,
+      reviewBlockRef: options.ref,
+      reviewResult: parsed,
+      workRevision,
+      resultHash
+    }));
+  if (persistedAttemptId) {
+    await recordReviewAttemptIndexes({ workspace, reviewBlockRef: options.ref, reviewResult: parsed, workRevision, attemptId, incrementCount: false });
+  }
   const task = getTask(graph, taskId);
   const previousFeedbackCount = Object.values(state.feedback).filter((feedback) => feedback.sourceReviewBlockRef === options.ref).length;
 

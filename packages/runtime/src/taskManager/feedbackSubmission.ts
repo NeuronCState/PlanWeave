@@ -1,11 +1,95 @@
-import { copyFile, mkdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { copyFile, mkdir, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { writeJsonFile } from "../json.js";
+import { readJsonFile, writeJsonFile } from "../json.js";
 import { writeState } from "../state.js";
-import type { ExecutionGraphSession, PackageWorkspaceRef, SubmitFeedbackResult } from "../types.js";
+import type { ExecutionGraphSession, PackageWorkspaceRef, ProjectWorkspace, SubmitFeedbackResult } from "../types.js";
 import { patchFeedbackArtifact } from "./feedbackArtifacts.js";
 import { loadRuntime, refreshDerivedState } from "./runtimeContext.js";
 import { incrementTaskIndexCount, listDirCount, nextId, updateTaskIndex } from "./resultIndex.js";
+
+async function fileHash(path: string): Promise<string> {
+  return createHash("sha256").update(await readFile(path)).digest("hex");
+}
+
+async function feedbackSubmissionMatches(options: {
+  submissionDir: string;
+  feedbackId: string;
+  submissionId: string;
+  sourceReviewBlockRef: string;
+  reportHash: string;
+}): Promise<boolean> {
+  try {
+    const metadata = await readJsonFile<Record<string, unknown>>(join(options.submissionDir, "metadata.json"));
+    if (
+      metadata.feedbackId !== options.feedbackId ||
+      metadata.submissionId !== options.submissionId ||
+      metadata.sourceReviewBlockRef !== options.sourceReviewBlockRef
+    ) {
+      return false;
+    }
+    return (await fileHash(join(options.submissionDir, "report.md"))) === options.reportHash;
+  } catch {
+    return false;
+  }
+}
+
+async function findPersistedFeedbackSubmission(options: {
+  submissionRoot: string;
+  feedbackId: string;
+  sourceReviewBlockRef: string;
+  reportHash: string;
+}): Promise<string | null> {
+  let entries;
+  try {
+    entries = await readdir(options.submissionRoot, { withFileTypes: true });
+  } catch (error) {
+    if ((error as { code?: string }).code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+  const submissionIds = entries
+    .filter((entry) => entry.isDirectory() && /^FS-\d+$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort()
+    .reverse();
+  for (const submissionId of submissionIds) {
+    if (
+      await feedbackSubmissionMatches({
+        submissionDir: join(options.submissionRoot, submissionId),
+        feedbackId: options.feedbackId,
+        submissionId,
+        sourceReviewBlockRef: options.sourceReviewBlockRef,
+        reportHash: options.reportHash
+      })
+    ) {
+      return submissionId;
+    }
+  }
+  return null;
+}
+
+async function recordFeedbackSubmissionIndexes(options: {
+  workspace: ProjectWorkspace;
+  taskId: string;
+  feedbackId: string;
+  submissionId: string;
+  incrementCount: boolean;
+}): Promise<void> {
+  await updateTaskIndex(options.workspace, options.taskId, (index) => ({
+    ...index,
+    latestFeedbackSubmissionByFeedback: {
+      ...(index.latestFeedbackSubmissionByFeedback ?? {}),
+      [options.feedbackId]: options.submissionId
+    },
+    feedbackStatusById: {
+      ...(index.feedbackStatusById ?? {}),
+      [options.feedbackId]: "resolved"
+    },
+    counts: options.incrementCount ? incrementTaskIndexCount(index, "feedbackSubmissions") : index.counts
+  }));
+}
 
 export async function submitFeedback(options: {
   projectRoot: PackageWorkspaceRef;
@@ -25,28 +109,27 @@ export async function submitFeedback(options: {
     throw new Error(`Feedback '${feedbackId}' points to an unknown review block.`);
   }
   const submissionRoot = join(workspace.resultsDir, taskId, "feedback", feedbackId, "submissions");
-  const submissionId = nextId("FS", await listDirCount(submissionRoot));
-  const submissionDir = join(submissionRoot, submissionId);
-  await mkdir(submissionDir, { recursive: true });
-  await copyFile(options.reportPath, join(submissionDir, "report.md"));
-  await writeJsonFile(join(submissionDir, "metadata.json"), {
+  const reportHash = await fileHash(options.reportPath);
+  const persistedSubmissionId = await findPersistedFeedbackSubmission({
+    submissionRoot,
     feedbackId,
-    submissionId,
     sourceReviewBlockRef: feedback.sourceReviewBlockRef,
-    submittedAt: new Date().toISOString()
+    reportHash
   });
-  await updateTaskIndex(workspace, taskId, (index) => ({
-    ...index,
-    latestFeedbackSubmissionByFeedback: {
-      ...(index.latestFeedbackSubmissionByFeedback ?? {}),
-      [feedbackId]: submissionId
-    },
-    feedbackStatusById: {
-      ...(index.feedbackStatusById ?? {}),
-      [feedbackId]: "resolved"
-    },
-    counts: incrementTaskIndexCount(index, "feedbackSubmissions")
-  }));
+  const submissionId = persistedSubmissionId ?? nextId("FS", await listDirCount(submissionRoot));
+  if (!persistedSubmissionId) {
+    const submissionDir = join(submissionRoot, submissionId);
+    await mkdir(submissionDir, { recursive: true });
+    await copyFile(options.reportPath, join(submissionDir, "report.md"));
+    await writeJsonFile(join(submissionDir, "metadata.json"), {
+      feedbackId,
+      submissionId,
+      sourceReviewBlockRef: feedback.sourceReviewBlockRef,
+      reportHash,
+      submittedAt: new Date().toISOString()
+    });
+  }
+  await recordFeedbackSubmissionIndexes({ workspace, taskId, feedbackId, submissionId, incrementCount: !persistedSubmissionId });
   await patchFeedbackArtifact(workspace, taskId, feedbackId, {
     status: "resolved",
     latestSubmissionId: submissionId,

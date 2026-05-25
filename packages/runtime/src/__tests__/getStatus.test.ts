@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { claimNext, getExecutionStatus, submitBlockResult } from "../taskManager/index.js";
+import { claimNext, getExecutionStatus, markBlockBlocked, markBlockDiverged, submitBlockResult } from "../taskManager/index.js";
 import { basicManifest, createTestWorkspace, writeReport } from "./promptTestHelpers.js";
 
 describe("getExecutionStatus", () => {
@@ -62,6 +62,23 @@ describe("getExecutionStatus", () => {
         executorRole: "reviewer",
         needsChangesReturnsTo: ["T-001#B-001", "T-001#C-001"]
       }
+    });
+  });
+
+  it("includes blocked and diverged reasons in claim hints", async () => {
+    const { root } = await createTestWorkspace();
+    await markBlockBlocked({ projectRoot: root, ref: "T-001#B-001", reason: "Waiting for external API access." });
+    await markBlockDiverged({ projectRoot: root, ref: "T-001#C-001", reason: "Prompt no longer matches the manifest." });
+
+    const status = await getExecutionStatus({ projectRoot: root });
+
+    expect(status.claimHints.find((hint) => hint.ref === "T-001#B-001")).toMatchObject({
+      status: "blocked",
+      statusReason: "Waiting for external API access."
+    });
+    expect(status.claimHints.find((hint) => hint.ref === "T-001#C-001")).toMatchObject({
+      status: "diverged",
+      statusReason: "Prompt no longer matches the manifest."
     });
   });
 });

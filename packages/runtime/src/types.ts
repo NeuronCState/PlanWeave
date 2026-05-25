@@ -576,6 +576,7 @@ export type ClaimHint = {
   blockId: string;
   blockType: BlockType;
   status: BlockStatus;
+  statusReason: string | null;
   ready: boolean;
   readyReason: string | null;
   blockedByBlocks: string[];

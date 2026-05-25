@@ -70,6 +70,7 @@ export async function getExecutionStatus(options: { projectRoot: PackageWorkspac
       blockId,
       blockType: block?.type ?? "implementation",
       status: blockState?.status ?? "planned",
+      statusReason: blockState?.blockedReason ?? blockState?.divergenceReason ?? null,
       ready,
       readyReason,
       blockedByBlocks,

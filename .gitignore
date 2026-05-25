@@ -1,4 +1,5 @@
 node_modules/
+.DS_Store
 packages/*/dist/
 packages/*/release/
 packages/desktop/build/icon.iconset/

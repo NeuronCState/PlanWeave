@@ -6,6 +6,7 @@ import {
   getGraphViewModel,
   getTaskDetail,
   getTaskExecutionOrder,
+  getTodoGroups,
   updateBlockPrompt,
   updateTaskPrompt
 } from "../desktop/index.js";
@@ -142,5 +143,26 @@ describe("desktop graph read API", () => {
     expect(graph.tasks[0].blocks[0]).toMatchObject({ ref: "T-001#B-001", promptMissing: true });
     expect(taskDetail).toMatchObject({ promptMarkdown: "", promptMissing: true });
     expect(blockDetail).toMatchObject({ promptMarkdown: "", promptMissing: true });
+  });
+
+  it("exposes review gate metadata in block detail and todo items", async () => {
+    const { root } = await createTestWorkspace();
+
+    await expect(getBlockDetail(root, "T-001#R-001")).resolves.toMatchObject({
+      ref: "T-001#R-001",
+      reviewGate: {
+        required: true,
+        executorRole: "reviewer",
+        needsChangesReturnsTo: ["T-001#B-001", "T-001#C-001"]
+      }
+    });
+    const todo = await getTodoGroups(root);
+    expect(Object.values(todo).flat().find((item) => item.ref === "T-001#R-001")).toMatchObject({
+      reviewGate: {
+        required: true,
+        executorRole: "reviewer",
+        needsChangesReturnsTo: ["T-001#B-001", "T-001#C-001"]
+      }
+    });
   });
 });

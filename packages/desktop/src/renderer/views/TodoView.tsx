@@ -27,7 +27,12 @@ export function TodoView({ handleBlockSelect, t, todoGroups }: TodoViewProps) {
                     noLocks: t("noLocks"),
                     parallelBlocked: t("parallelBlocked"),
                     parallelSafe: t("parallelSafe"),
-                    parallelSafety: t("parallelSafety")
+                    parallelSafety: t("parallelSafety"),
+                    reviewExecutor: t("reviewExecutor"),
+                    reviewGate: t("reviewGate"),
+                    reviewNeedsChangesReturnsTo: t("reviewNeedsChangesReturnsTo"),
+                    reviewRequired: t("reviewRequired"),
+                    reviewUnlocks: t("reviewUnlocks")
                   }}
                   onSelect={(item) => void handleBlockSelect(item.ref, item.canvasId)}
                   status={status}

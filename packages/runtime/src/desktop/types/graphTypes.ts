@@ -4,6 +4,7 @@ import type {
   EdgeType,
   GraphEditResult,
   NodeType,
+  ReviewGateHint,
   TaskStatus,
   ValidationIssue
 } from "../../types.js";
@@ -97,6 +98,7 @@ export type DesktopBlockDetail = {
   latestReviewAttemptId: string | null;
   activeFeedbackId: string | null;
   exceptionReason: string | null;
+  reviewGate: ReviewGateHint | null;
 };
 
 export type DesktopLayoutNode = {
@@ -125,6 +127,7 @@ export type DesktopTodoItem = {
   dependencyBlockers: string[];
   parallelSafe: boolean;
   locks: string[];
+  reviewGate: ReviewGateHint | null;
 };
 
 export type DesktopTodoGroups = Record<DesktopTodoGroupName, DesktopTodoItem[]>;

@@ -142,6 +142,7 @@ export async function getBlockDetail(projectRoot: PackageWorkspaceRef, ref: stri
   const block = getBlock(graph, ref);
   const status = await getExecutionStatus({ projectRoot });
   const blockStatus = status.blocks.find((item) => item.ref === ref);
+  const claimHint = status.claimHints.find((item) => item.ref === ref);
   const prompt = await readOptionalFile(await resolvePackagePath(workspace.packageDir, block.prompt), block.prompt);
   return {
     ref,
@@ -158,6 +159,7 @@ export async function getBlockDetail(projectRoot: PackageWorkspaceRef, ref: stri
     latestRunId: blockStatus?.lastRunId ?? null,
     latestReviewAttemptId: blockStatus?.latestReviewAttemptId ?? null,
     activeFeedbackId: blockStatus?.activeFeedbackId ?? null,
-    exceptionReason: blockStatus?.reason ?? null
+    exceptionReason: blockStatus?.reason ?? null,
+    reviewGate: claimHint?.reviewGate ?? null
   };
 }

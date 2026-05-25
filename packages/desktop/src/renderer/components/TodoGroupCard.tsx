@@ -9,6 +9,11 @@ type TodoGroupCardLabels = {
   parallelBlocked: string;
   parallelSafe: string;
   parallelSafety: string;
+  reviewExecutor: string;
+  reviewGate: string;
+  reviewNeedsChangesReturnsTo: string;
+  reviewRequired: string;
+  reviewUnlocks: string;
 };
 
 export function TodoGroupCard({
@@ -46,6 +51,18 @@ export function TodoGroupCard({
             <span>{item.parallelSafe ? labels.parallelSafe : labels.parallelBlocked}</span>
             <span>{labels.locks}</span>
             <span className="truncate">{item.locks.length ? item.locks.join(", ") : labels.noLocks}</span>
+            {item.reviewGate ? (
+              <>
+                <span>{labels.reviewGate}</span>
+                <span>{item.reviewGate.required ? labels.reviewRequired : item.reviewGate.requiredReason}</span>
+                <span>{labels.reviewExecutor}</span>
+                <span>{item.reviewGate.executorRole}</span>
+                <span>{labels.reviewUnlocks}</span>
+                <span className="truncate">{item.reviewGate.unlocksTasks.length ? item.reviewGate.unlocksTasks.join(", ") : labels.noBlockers}</span>
+                <span>{labels.reviewNeedsChangesReturnsTo}</span>
+                <span className="truncate">{item.reviewGate.needsChangesReturnsTo.join(", ")}</span>
+              </>
+            ) : null}
           </div>
         </button>
       ))}

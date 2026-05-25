@@ -28,7 +28,8 @@ const selectedBlock: DesktopBlockDetail = {
   latestRunId: null,
   latestReviewAttemptId: null,
   activeFeedbackId: null,
-  exceptionReason: null
+  exceptionReason: null,
+  reviewGate: null
 };
 
 function autoRunState(patch: Partial<DesktopAutoRunState> = {}): DesktopAutoRunState {

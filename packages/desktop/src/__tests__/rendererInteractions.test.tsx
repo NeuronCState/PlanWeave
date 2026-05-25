@@ -177,7 +177,15 @@ describe("desktop renderer component interactions", () => {
       status: "ready",
       dependencyBlockers: ["T-002"],
       parallelSafe: false,
-      locks: ["package/manifest.json"]
+      locks: ["package/manifest.json"],
+      reviewGate: {
+        isGate: true,
+        required: true,
+        requiredReason: "Required review gate for task completion.",
+        executorRole: "reviewer",
+        unlocksTasks: ["T-003"],
+        needsChangesReturnsTo: ["T-001#B-001"]
+      }
     };
     const onSelect = vi.fn();
 
@@ -191,7 +199,12 @@ describe("desktop renderer component interactions", () => {
           noLocks: "No locks",
           parallelBlocked: "Not safe",
           parallelSafe: "Safe",
-          parallelSafety: "Parallel safety"
+          parallelSafety: "Parallel safety",
+          reviewExecutor: "Review executor",
+          reviewGate: "Review gate",
+          reviewNeedsChangesReturnsTo: "Needs changes returns to",
+          reviewRequired: "Required review",
+          reviewUnlocks: "Unlocks"
         }}
         onSelect={onSelect}
         status="ready"
@@ -203,9 +216,71 @@ describe("desktop renderer component interactions", () => {
     expect(screen.getByText("Parallel safety")).toBeInTheDocument();
     expect(screen.getAllByText("Not safe")).toHaveLength(2);
     expect(screen.getByText("package/manifest.json")).toBeInTheDocument();
+    expect(screen.getByText("Review gate")).toBeInTheDocument();
+    expect(screen.getByText("Required review")).toBeInTheDocument();
+    expect(screen.getByText("Needs changes returns to")).toBeInTheDocument();
+    expect(screen.getByText("T-001#B-001")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /Implement dependency-aware Todo/ }));
     expect(onSelect).toHaveBeenCalledWith(item);
+  });
+
+  it("renders review gate metadata in the block inspector", () => {
+    const selectedBlock: DesktopBlockDetail = {
+      ref: "T-001#R-001",
+      taskId: "T-001",
+      blockId: "R-001",
+      type: "review",
+      title: "Review task",
+      status: "ready",
+      executor: null,
+      effectiveExecutor: "codex-reviewer",
+      promptMarkdown: "# Review",
+      dependencies: ["T-001#C-001"],
+      latestRunId: null,
+      latestReviewAttemptId: null,
+      activeFeedbackId: null,
+      exceptionReason: null,
+      reviewGate: {
+        isGate: true,
+        required: true,
+        requiredReason: "Required review gate for task completion.",
+        executorRole: "reviewer",
+        unlocksTasks: ["T-002"],
+        needsChangesReturnsTo: ["T-001#B-001", "T-001#C-001"]
+      }
+    };
+
+    render(
+      <BlockInspector
+        blockFeedbackRecords={[]}
+        blockReviewAttempts={[]}
+        blockRunRecords={[]}
+        error={null}
+        executorOptions={["codex-reviewer"]}
+        graph={null}
+        handleOpenRunRecord={vi.fn()}
+        onBlockSelect={vi.fn()}
+        onClose={vi.fn()}
+        saveSelectedBlockExecutor={vi.fn()}
+        saveSelectedBlockPrompt={vi.fn()}
+        saveSelectedBlockTitle={vi.fn()}
+        selectedBlock={selectedBlock}
+        selectedRunRecord={null}
+        setSelectedBlock={vi.fn()}
+        setSelectedRunRecord={vi.fn()}
+        t={createTranslator("en")}
+      />
+    );
+
+    expect(screen.getByText("Review gate")).toBeInTheDocument();
+    expect(screen.getByText("Required review")).toBeInTheDocument();
+    expect(screen.getByText("Review executor")).toBeInTheDocument();
+    expect(screen.getByText("reviewer")).toBeInTheDocument();
+    expect(screen.getByText("Unlocks")).toBeInTheDocument();
+    expect(screen.getByText("T-002")).toBeInTheDocument();
+    expect(screen.getByText("Needs changes returns to")).toBeInTheDocument();
+    expect(screen.getByText("T-001#B-001, T-001#C-001")).toBeInTheDocument();
   });
 
   it("routes every searchable result kind to a canvas node or record target", async () => {
@@ -301,7 +376,8 @@ describe("desktop renderer component interactions", () => {
       latestRunId: null,
       latestReviewAttemptId: null,
       activeFeedbackId: null,
-      exceptionReason: null
+      exceptionReason: null,
+      reviewGate: null
     };
     const graph: DesktopGraphViewModel = {
       projectId: "P-001",

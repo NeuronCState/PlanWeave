@@ -195,6 +195,26 @@ export function BlockInspector({
                     <div className="max-h-40 overflow-auto whitespace-pre-wrap text-muted-foreground">{feedbackRecord.content}</div>
                   </div>
                 ))}
+                {selectedBlock.reviewGate ? (
+                  <div className="rounded-md border p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">{t("reviewGate")}</span>
+                      <Badge variant={selectedBlock.reviewGate.required ? "secondary" : "outline"}>
+                        {selectedBlock.reviewGate.required ? t("reviewRequired") : selectedBlock.reviewGate.requiredReason}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 grid grid-cols-[112px_minmax(0,1fr)] gap-x-2 gap-y-1 text-muted-foreground">
+                      <span>{t("reviewExecutor")}</span>
+                      <span>{selectedBlock.reviewGate.executorRole}</span>
+                      <span>{t("reviewUnlocks")}</span>
+                      <span className="truncate">
+                        {selectedBlock.reviewGate.unlocksTasks.length ? selectedBlock.reviewGate.unlocksTasks.join(", ") : t("noBlockers")}
+                      </span>
+                      <span>{t("reviewNeedsChangesReturnsTo")}</span>
+                      <span className="truncate">{selectedBlock.reviewGate.needsChangesReturnsTo.join(", ")}</span>
+                    </div>
+                  </div>
+                ) : null}
                 {selectedBlock.exceptionReason ? <div className="rounded-md border border-destructive p-2 text-destructive">{selectedBlock.exceptionReason}</div> : null}
               </div>
             </div>

@@ -27,6 +27,7 @@ async function getTodoGroupsForWorkspace(
   const graph = compileTaskGraph(manifest);
   const status = await getExecutionStatus({ projectRoot });
   const taskStatusById = new Map(status.tasks.map((task) => [task.taskId, task.status]));
+  const claimHintByRef = new Map(status.claimHints.map((hint) => [hint.ref, hint]));
   const groups = emptyTodoGroups();
   for (const blockStatus of status.blocks) {
     const block = getBlock(graph, blockStatus.ref);
@@ -48,7 +49,8 @@ async function getTodoGroupsForWorkspace(
       status: displayStatus,
       dependencyBlockers,
       parallelSafe: graph.parallelSafeByBlockRef.get(blockStatus.ref) ?? false,
-      locks: graph.locksByBlockRef.get(blockStatus.ref) ?? []
+      locks: graph.locksByBlockRef.get(blockStatus.ref) ?? [],
+      reviewGate: claimHintByRef.get(blockStatus.ref)?.reviewGate ?? null
     };
     groups[groupName].push(item);
   }

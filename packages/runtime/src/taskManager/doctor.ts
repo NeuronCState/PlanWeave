@@ -7,7 +7,7 @@ import { findOrphanResults } from "../package/orphans.js";
 import { loadPackage } from "../package/loadPackage.js";
 import { ensureStateForManifest, readState, writeState } from "../state.js";
 import type { DoctorIssue, DoctorReport, PackageWorkspaceRef, ProjectWorkspace, RuntimeState } from "../types.js";
-import { readTaskIndex } from "./resultIndex.js";
+import { readTaskIndex, updateTaskIndex } from "./resultIndex.js";
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -60,6 +60,20 @@ async function repairStateRunMismatch(options: {
   return true;
 }
 
+async function repairIndexRunMismatch(options: { workspace: ProjectWorkspace; ref: string; taskId: string; stateRunId: string }): Promise<boolean> {
+  if (!(await resultRunMatchesIndex(options.workspace, options.ref, options.taskId, options.stateRunId))) {
+    return false;
+  }
+  await updateTaskIndex(options.workspace, options.taskId, (index) => ({
+    ...index,
+    latestRunByBlock: {
+      ...(index.latestRunByBlock ?? {}),
+      [options.ref]: options.stateRunId
+    }
+  }));
+  return true;
+}
+
 export async function runDoctor(options: { projectRoot: PackageWorkspaceRef; repair?: boolean }): Promise<DoctorReport> {
   const { workspace, manifest } = await loadPackage(options.projectRoot);
   const graph = compileTaskGraph(manifest);
@@ -91,7 +105,9 @@ export async function runDoctor(options: { projectRoot: PackageWorkspaceRef; rep
 
   for (const taskId of graph.taskNodesInManifestOrder) {
     const index = await readTaskIndex(workspace, taskId);
+    const checkedRefs = new Set<string>();
     for (const [ref, indexRunId] of Object.entries(index.latestRunByBlock ?? {})) {
+      checkedRefs.add(ref);
       const stateRunId = state.blocks?.[ref]?.lastRunId ?? null;
       if (stateRunId !== indexRunId) {
         const repaired = options.repair
@@ -109,6 +125,26 @@ export async function runDoctor(options: { projectRoot: PackageWorkspaceRef; rep
           message: `Task index points '${ref}' to '${indexRunId}', but state has '${stateRunId ?? "none"}'.`
         });
       }
+    }
+    for (const ref of graph.blocksByTask.get(taskId) ?? []) {
+      if (checkedRefs.has(ref)) {
+        continue;
+      }
+      const stateRunId = state.blocks?.[ref]?.lastRunId ?? null;
+      if (!stateRunId) {
+        continue;
+      }
+      const repaired = options.repair ? await repairIndexRunMismatch({ workspace, ref, taskId, stateRunId }) : false;
+      issues.push({
+        code: "index_state_mismatch",
+        ref,
+        taskId,
+        path: join(workspace.resultsDir, taskId, "index.json"),
+        stateRunId,
+        indexRunId: null,
+        repaired,
+        message: `State points '${ref}' to '${stateRunId}', but task index has no latest run for it.`
+      });
     }
   }
 

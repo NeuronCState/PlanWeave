@@ -21,7 +21,7 @@ function taskIndexPath(workspace: ProjectWorkspace, taskId: string): string {
   return join(workspace.resultsDir, taskId, "index.json");
 }
 
-async function readTaskIndex(workspace: ProjectWorkspace, taskId: string): Promise<TaskResultIndex> {
+export async function readTaskIndex(workspace: ProjectWorkspace, taskId: string): Promise<TaskResultIndex> {
   const path = taskIndexPath(workspace, taskId);
   return (await exists(path)) ? readJsonFile<TaskResultIndex>(path) : {};
 }

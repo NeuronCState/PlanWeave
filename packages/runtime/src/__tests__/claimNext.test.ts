@@ -78,6 +78,26 @@ describe("claimNext", () => {
     expect(status.nextClaimable).not.toContain("T-001#R-001");
   });
 
+  it("falls back to a sequential review claim when no parallel implementation or check block is available", async () => {
+    const { root } = await createTestWorkspace(basicManifest({ parallel: true }));
+    await claimNext({ projectRoot: root, parallel: true });
+    await submitBlockResult({ projectRoot: root, ref: "T-001#B-001", reportPath: await writeReport(root, "b.md") });
+    await claimNext({ projectRoot: root, parallel: true });
+    await submitBlockResult({ projectRoot: root, ref: "T-001#C-001", reportPath: await writeReport(root, "c.md") });
+
+    const status = await getExecutionStatus({ projectRoot: root });
+    expect(status.nextClaimable).toEqual(["T-001#R-001"]);
+
+    expect(await claimNext({ projectRoot: root, parallel: true })).toEqual({
+      kind: "block",
+      ref: "T-001#R-001",
+      taskId: "T-001",
+      blockId: "R-001",
+      blockType: "review",
+      reason: "claimed"
+    });
+  });
+
   it("implements a task after required non-review blocks complete when no review block exists", async () => {
     const manifest = basicManifest();
     const task = manifest.nodes.find((node) => node.type === "task" && node.id === "T-001");

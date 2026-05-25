@@ -98,6 +98,26 @@ export async function claimNext(options: {
     return claimResultForBlock(current, graph, "current");
   }
 
+  const claimSequentialReviewBlock = async (): Promise<ClaimResult | null> => {
+    for (const ref of graph.blockRefsInManifestOrder) {
+      if (!blockInScope(ref, graph, scope)) {
+        continue;
+      }
+      const taskId = graph.blockTaskByRef.get(ref);
+      const block = graph.blocksByRef.get(ref);
+      if (!taskId || block?.type !== "review") {
+        continue;
+      }
+      if (taskDependenciesSatisfied(graph, state, taskId) && state.blocks[ref]?.status === "ready" && canClaimReviewBlock(graph, state, ref)) {
+        markClaimed(state, ref, graph);
+        state = refreshDerivedState(manifest, state);
+        await writeState(workspace.stateFile, state);
+        return claimResultForBlock(ref, graph, "claimed");
+      }
+    }
+    return null;
+  };
+
   if (options.parallel) {
     if (!manifest.execution.parallel.enabled) {
       return { kind: "blocked", reason: "Parallel execution is disabled by the Plan Package." };
@@ -133,12 +153,21 @@ export async function claimNext(options: {
         selected.push(ref);
       }
     }
+    if (selected.length === 0) {
+      const reviewClaim = await claimSequentialReviewBlock();
+      if (reviewClaim) {
+        return reviewClaim;
+      }
+      state.currentRefs = [];
+      await writeState(workspace.stateFile, refreshDerivedState(manifest, state));
+      return { kind: "none", reason: "no_parallel_blocks" };
+    }
     for (const ref of selected) {
       state.blocks[ref] = { ...state.blocks[ref], status: "in_progress" };
     }
     state.currentRefs = selected;
     await writeState(workspace.stateFile, refreshDerivedState(manifest, state));
-    return selected.length > 0 ? { kind: "batch", refs: selected } : { kind: "none", reason: "no_parallel_blocks" };
+    return { kind: "batch", refs: selected };
   }
 
   for (const ref of graph.blockRefsInManifestOrder) {
@@ -157,20 +186,9 @@ export async function claimNext(options: {
     }
   }
 
-  for (const ref of graph.blockRefsInManifestOrder) {
-    if (!blockInScope(ref, graph, scope)) {
-      continue;
-    }
-    const taskId = graph.blockTaskByRef.get(ref);
-    const block = graph.blocksByRef.get(ref);
-    if (!taskId || block?.type !== "review") {
-      continue;
-    }
-    if (taskDependenciesSatisfied(graph, state, taskId) && state.blocks[ref]?.status === "ready" && canClaimReviewBlock(graph, state, ref)) {
-      markClaimed(state, ref, graph);
-      await writeState(workspace.stateFile, refreshDerivedState(manifest, state));
-      return claimResultForBlock(ref, graph, "claimed");
-    }
+  const reviewClaim = await claimSequentialReviewBlock();
+  if (reviewClaim) {
+    return reviewClaim;
   }
 
   const blockedRef = graph.blockRefsInManifestOrder.find((ref) => blockInScope(ref, graph, scope) && state.blocks[ref]?.status === "blocked");

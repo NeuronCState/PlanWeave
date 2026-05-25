@@ -108,6 +108,28 @@ describe("claimNext", () => {
     });
   });
 
+  it("reports sequential-only work when a parallel claim has no safe blocks", async () => {
+    const manifest = basicManifest({ parallel: true });
+    const task = manifest.nodes.find((node) => node.type === "task" && node.id === "T-001");
+    const implementationBlock = task?.type === "task" ? task.blocks.find((block) => block.id === "B-001") : null;
+    if (implementationBlock?.type !== "implementation") {
+      throw new Error("missing implementation block");
+    }
+    implementationBlock.parallel.safe = false;
+
+    const { root } = await createTestWorkspace(manifest);
+    const status = await getExecutionStatus({ projectRoot: root });
+
+    expect(status.nextClaimable).toEqual(["T-001#B-001"]);
+    expect(status.nextParallelClaimable).toEqual([]);
+    expect(status.nextSequentialClaimable).toEqual(["T-001#B-001"]);
+    expect(await claimNext({ projectRoot: root, parallel: true })).toEqual({
+      kind: "none",
+      reason: "no_parallel_blocks",
+      nextSequentialClaimable: ["T-001#B-001"]
+    });
+  });
+
   it("claims an explicit ready block by ref", async () => {
     const { root } = await createTestWorkspace();
 

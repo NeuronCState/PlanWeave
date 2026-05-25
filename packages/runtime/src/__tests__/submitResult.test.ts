@@ -61,6 +61,31 @@ describe("submitBlockResult", () => {
     });
   });
 
+  it("recovers a persisted run without creating a duplicate when the task index was not updated", async () => {
+    const { root, init } = await createTestWorkspace();
+    await claimNext({ projectRoot: root });
+    const runRoot = join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs");
+    const runDir = join(runRoot, "RUN-001");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(join(runDir, "report.md"), "persisted report\n", "utf8");
+    await writeJsonFile(join(runDir, "metadata.json"), {
+      ref: "T-001#B-001",
+      taskId: "T-001",
+      blockId: "B-001",
+      runId: "RUN-001",
+      submittedAt: "2026-05-25T00:00:00.000Z",
+      sourceReportPath: "/tmp/original-report.md"
+    });
+
+    const result = await submitBlockResult({ projectRoot: root, ref: "T-001#B-001", reportPath: await writeReport(root, "retry.md") });
+
+    expect(result).toEqual({ ref: "T-001#B-001", runId: "RUN-001", status: "completed" });
+    await expect(access(join(runRoot, "RUN-002"))).rejects.toThrow();
+    await expect(readJsonFile<TaskResultIndex>(join(init.workspace.resultsDir, "T-001", "index.json"))).resolves.toMatchObject({
+      latestRunByBlock: { "T-001#B-001": "RUN-001" }
+    });
+  });
+
   it("returns the same run id when the same report is submitted again", async () => {
     const { root } = await createTestWorkspace();
     await claimNext({ projectRoot: root });

@@ -147,6 +147,24 @@ export async function claimNext(options: {
     return null;
   };
 
+  const nextSequentialClaimableRefs = (): string[] =>
+    graph.blockRefsInManifestOrder.filter((ref) => {
+      if (!blockInScope(ref, graph, scope)) {
+        return false;
+      }
+      const taskId = graph.blockTaskByRef.get(ref);
+      const block = graph.blocksByRef.get(ref);
+      if (blockType && block?.type !== blockType) {
+        return false;
+      }
+      if (!taskId || !block || state.blocks[ref]?.status !== "ready" || !taskDependenciesSatisfied(graph, state, taskId)) {
+        return false;
+      }
+      const ready =
+        block.type === "review" ? canClaimReviewBlock(graph, state, ref) : blockDependenciesCompleted(graph, state, ref);
+      return ready && (block.type === "review" || !graph.parallelSafeByBlockRef.get(ref));
+    });
+
   if (options.parallel) {
     if (!manifest.execution.parallel.enabled) {
       return { kind: "blocked", reason: "Parallel execution is disabled by the Plan Package." };
@@ -194,7 +212,7 @@ export async function claimNext(options: {
       if (!dryRun) {
         await writeState(workspace.stateFile, refreshDerivedState(manifest, state));
       }
-      return { kind: "none", reason: "no_parallel_blocks" };
+      return { kind: "none", reason: "no_parallel_blocks", nextSequentialClaimable: nextSequentialClaimableRefs() };
     }
     if (dryRun) {
       return { kind: "batch", refs: selected };

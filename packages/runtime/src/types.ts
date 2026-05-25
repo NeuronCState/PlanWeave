@@ -377,6 +377,7 @@ export type ClaimResult =
   | {
       kind: "none";
       reason?: string;
+      nextSequentialClaimable?: string[];
     }
   | {
       kind: "blocked";

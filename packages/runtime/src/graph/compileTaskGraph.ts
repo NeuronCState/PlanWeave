@@ -323,9 +323,6 @@ export function compileTaskGraph(manifest: PlanPackageManifest): CompiledExecuti
     if (!blocks.some((ref) => blocksByRef.get(ref)?.type === "implementation")) {
       errors.push(issue("task_without_implementation_block", `Task '${taskId}' must contain an implementation block.`, taskId));
     }
-    if (!blocks.some((ref) => blocksByRef.get(ref)?.type === "review")) {
-      errors.push(issue("task_without_review_block", `Task '${taskId}' must contain a review block.`, taskId));
-    }
   }
 
   function relatedContext(taskId: string): GraphContext {

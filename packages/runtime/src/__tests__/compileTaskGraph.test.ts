@@ -13,6 +13,21 @@ describe("compileTaskGraph", () => {
     expect(graph.diagnostics.errors).toEqual([]);
   });
 
+  it("accepts tasks without review blocks", () => {
+    const manifest = basicManifest();
+    const task = manifest.nodes.find((node) => node.type === "task" && node.id === "T-001");
+    if (task?.type !== "task") {
+      throw new Error("missing task");
+    }
+    task.blocks = task.blocks.filter((block) => block.type !== "review");
+
+    const graph = compileTaskGraph(manifest);
+
+    expect(graph.blockRefsInManifestOrder).toEqual(["T-001#B-001", "T-001#C-001"]);
+    expect(graph.reviewBlocksByTask.get("T-001")).toEqual([]);
+    expect(graph.diagnostics.errors).toEqual([]);
+  });
+
   it("keeps block dependencies scoped to the same task", () => {
     const manifest = basicManifest({ includeSecondTask: true });
     const task = manifest.nodes.find((node) => node.type === "task" && node.id === "T-001");

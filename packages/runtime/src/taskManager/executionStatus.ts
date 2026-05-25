@@ -1,7 +1,7 @@
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import type { BlockStatus, ExecutionGraphSession, PackageWorkspaceRef, ValidationIssue } from "../types.js";
 import { loadRuntime } from "./runtimeContext.js";
-import { blockDependenciesCompleted, getBlock, taskDependenciesSatisfied } from "./selectors.js";
+import { blockDependenciesCompleted, canClaimReviewBlock, getBlock, taskDependenciesSatisfied } from "./selectors.js";
 
 export async function getExecutionStatus(options: { projectRoot: PackageWorkspaceRef; session?: ExecutionGraphSession }) {
   const context = await loadRuntime(options);
@@ -28,11 +28,12 @@ export async function getExecutionStatus(options: { projectRoot: PackageWorkspac
   }
   const nextClaimable = graph.blockRefsInManifestOrder.filter((ref) => {
     const taskId = graph.blockTaskByRef.get(ref);
+    const block = graph.blocksByRef.get(ref);
     return (
       !!taskId &&
       state.blocks[ref]?.status === "ready" &&
       taskDependenciesSatisfied(graph, state, taskId) &&
-      blockDependenciesCompleted(graph, state, ref)
+      (block?.type === "review" ? canClaimReviewBlock(graph, state, ref) : blockDependenciesCompleted(graph, state, ref))
     );
   });
   const warnings: ValidationIssue[] = graph.blockRefsInManifestOrder

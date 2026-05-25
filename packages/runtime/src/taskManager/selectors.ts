@@ -100,6 +100,10 @@ export function computeWorkRevision(graph: CompiledExecutionGraph, state: Runtim
 }
 
 export function canClaimReviewBlock(graph: CompiledExecutionGraph, state: RuntimeState, ref: string): boolean {
+  const block = graph.blocksByRef.get(ref);
+  if (block?.type !== "review" || !block.review.required) {
+    return false;
+  }
   const taskId = graph.blockTaskByRef.get(ref);
   if (!taskId) {
     return false;

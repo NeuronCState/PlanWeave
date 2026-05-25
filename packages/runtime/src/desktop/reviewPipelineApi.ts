@@ -177,9 +177,6 @@ export async function updateReviewPipeline(
   if (!task) {
     throw new Error(`Task '${taskId}' does not exist.`);
   }
-  if (input.steps.length === 0) {
-    throw new Error("Review pipeline must contain at least one review step.");
-  }
 
   const existingReviews = new Map(reviewBlocks(task).map((block) => [block.id, block]));
   const usedBlockIds = new Set(task.blocks.map((block) => block.id));

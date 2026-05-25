@@ -106,4 +106,29 @@ describe("desktop review pipeline API", () => {
       "# Security review\n"
     );
   });
+
+  it("allows clearing all review steps from a task", async () => {
+    const { root, init } = await createTestWorkspace();
+
+    await expect(
+      updateReviewPipeline(root, "T-001", {
+        packageDefaults: {
+          maxFeedbackCycles: 1,
+          completionPolicy: "strict"
+        },
+        steps: []
+      })
+    ).resolves.toMatchObject({ ok: true, affectedTasks: ["T-001"] });
+
+    await expect(getReviewPipeline(root, "T-001")).resolves.toMatchObject({ taskId: "T-001", steps: [] });
+    const manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    const task = manifest.nodes.find((node) => node.type === "task" && node.id === "T-001");
+    if (task?.type !== "task") {
+      throw new Error("Fixture task missing.");
+    }
+    expect(task.blocks.map((block) => block.type)).toEqual(["implementation", "check"]);
+    await expect(readFile(join(init.workspace.packageDir, "nodes", "T-001", "blocks", "R-001.prompt.md"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT"
+    });
+  });
 });

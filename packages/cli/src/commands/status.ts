@@ -20,6 +20,16 @@ export function registerStatusCommand(program: Command): void {
       console.log(`Current refs: ${status.currentRefs.join(", ") || "none"}`);
       console.log(`Current feedback: ${status.currentFeedbackId ?? "none"}`);
       console.log(`Next claimable: ${status.nextClaimable.join(", ") || "none"}`);
+      console.log(`Next parallel claimable: ${status.nextParallelClaimable.join(", ") || "none"}`);
+      console.log(`Next sequential claimable: ${status.nextSequentialClaimable.join(", ") || "none"}`);
+      console.log("Claim hints:");
+      for (const hint of status.claimHints) {
+        const blockers = [...hint.blockedByTasks.map((taskId) => `task:${taskId}`), ...hint.blockedByBlocks.map((ref) => `block:${ref}`)];
+        const reason = hint.ready ? hint.readyReason : blockers.length > 0 ? `blocked by ${blockers.join(", ")}` : `status ${hint.status}`;
+        const mode = hint.sequentialOnly ? "sequential-only" : "parallel-safe";
+        const command = hint.recommendedCommand ? `, run: ${hint.recommendedCommand}` : "";
+        console.log(`- ${hint.ref}: ${reason}, ${mode}${command}`);
+      }
       console.log("Task counts:");
       for (const [key, value] of Object.entries(status.counts.tasks)) {
         console.log(`- ${key}: ${value}`);

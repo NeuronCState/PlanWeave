@@ -569,6 +569,21 @@ export type BlockStatusSummary = {
   activeFeedbackId?: string | null;
 };
 
+export type ClaimHint = {
+  ref: string;
+  taskId: string;
+  blockId: string;
+  blockType: BlockType;
+  status: BlockStatus;
+  ready: boolean;
+  readyReason: string | null;
+  blockedByBlocks: string[];
+  blockedByTasks: string[];
+  parallelSafe: boolean;
+  sequentialOnly: boolean;
+  recommendedCommand: string | null;
+};
+
 export type PlanStatus = {
   projectId: string;
   projectRoot: string;
@@ -581,6 +596,9 @@ export type PlanStatus = {
   currentReviewBlockRef: string | null;
   openFeedback: Array<{ feedbackId: string; sourceReviewBlockRef: string; status: FeedbackStatus }>;
   nextClaimable: string[];
+  nextParallelClaimable: string[];
+  nextSequentialClaimable: string[];
+  claimHints: ClaimHint[];
   warnings: ValidationIssue[];
   counts: {
     tasks: Record<TaskStatus, number>;

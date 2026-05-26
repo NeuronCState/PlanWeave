@@ -63,4 +63,15 @@ describe("agent skill contract docs", () => {
     expect(skill).toContain("Controller duties");
     expect(skill).toContain("Review blocks are sequential gate work");
   });
+
+  it("documents plan-auditor as a focused PlanWeave plan review skill", async () => {
+    const skill = await readFile(join(repoRoot, "skills/plan-auditor/SKILL.md"), "utf8");
+
+    expect(skill).toContain("Use when auditing, reviewing, checking, or challenging a PlanWeave plan before execution.");
+    expect(skill).toContain("Do not import a new plan, execute blocks, repair state, or rewrite the package");
+    expect(skill).toContain("Core Object Lifecycle");
+    expect(skill).toContain("schema without runtime use");
+    expect(skill).toContain("Separate plan design defects from PlanWeave toolchain defects.");
+    expect(skill).toContain("End with the recommended revision order.");
+  });
 });

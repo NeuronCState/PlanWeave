@@ -304,7 +304,7 @@ describe("desktop auto run API", () => {
         command: process.execPath,
         args: [
           "-e",
-          "let input=''; process.stdin.on('data', c => input += c); process.stdin.on('end', () => { console.log(JSON.stringify({ reviewBlockRef: 'T-001#R-001', taskId: 'T-001', verdict: 'needs_changes', content: 'changes required' })); });"
+          "const fs = require('node:fs'); const counterPath = '.review-counter'; let count = 0; try { count = Number(fs.readFileSync(counterPath, 'utf8')) || 0; } catch {} count += 1; fs.writeFileSync(counterPath, String(count)); let input=''; process.stdin.on('data', c => input += c); process.stdin.on('end', () => { console.log(JSON.stringify({ reviewBlockRef: 'T-001#R-001', taskId: 'T-001', verdict: 'needs_changes', content: 'changes required ' + count })); });"
         ]
       }
     };

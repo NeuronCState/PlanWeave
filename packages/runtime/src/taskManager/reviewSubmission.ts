@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readdir, stat } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
@@ -16,6 +16,7 @@ import type {
   ReviewHookOutput,
   ReviewResult,
   SubmitReviewResult,
+  TaskResultIndex,
   ValidationIssue
 } from "../types.js";
 import { writeFeedbackArtifact, type FeedbackArtifact } from "./feedbackArtifacts.js";
@@ -285,18 +286,23 @@ async function findFeedbackForReviewAttempt(options: {
   return null;
 }
 
-async function resultFilePredatesFeedbackResolution(resultPath: string, feedback: FeedbackArtifact): Promise<boolean> {
-  if (!feedback.resolvedAt) {
-    return false;
-  }
-  const resolvedAtMs = Date.parse(feedback.resolvedAt);
-  if (!Number.isFinite(resolvedAtMs)) {
-    return false;
-  }
+async function reviewCompletionReasonForAttempt(options: {
+  workspace: ProjectWorkspace;
+  taskId: string;
+  reviewBlockRef: string;
+  attemptId: string;
+}): Promise<"passed" | "max_cycles_reached" | null> {
   try {
-    return (await stat(resultPath)).mtimeMs <= resolvedAtMs;
-  } catch {
-    return false;
+    const index = await readJsonFile<TaskResultIndex>(join(options.workspace.resultsDir, options.taskId, "index.json"));
+    if (index.latestReviewAttemptByBlock?.[options.reviewBlockRef] !== options.attemptId) {
+      return null;
+    }
+    return index.reviewCompletionReasonByBlock?.[options.reviewBlockRef] ?? null;
+  } catch (error) {
+    if ((error as { code?: string }).code === "ENOENT") {
+      return null;
+    }
+    throw error;
   }
 }
 
@@ -342,20 +348,12 @@ export async function submitReviewResult(options: {
     persistedAttemptId && parsed.verdict === "needs_changes"
       ? await findFeedbackForReviewAttempt({ workspace, taskId, reviewBlockRef: options.ref, attemptId: persistedAttemptId })
       : null;
+  const persistedCompletionReason =
+    persistedAttemptId && parsed.verdict === "needs_changes" && persistedFeedback === null
+      ? await reviewCompletionReasonForAttempt({ workspace, taskId, reviewBlockRef: options.ref, attemptId: persistedAttemptId })
+      : null;
   const persistedFeedbackIsActive = persistedFeedback ? isActiveFeedbackStatus(persistedFeedback.status) : false;
-  const staleResolvedFeedbackRetry =
-    persistedFeedback !== null &&
-    !persistedFeedbackIsActive &&
-    persistedAttempt?.reviewedWorkRevision !== null &&
-    persistedAttempt?.reviewedWorkRevision !== workRevision &&
-    (await resultFilePredatesFeedbackResolution(options.resultPath, persistedFeedback));
-  const shouldReusePersistedAttempt =
-    persistedAttemptId !== null &&
-    (parsed.verdict !== "needs_changes" ||
-      persistedFeedback === null ||
-      persistedFeedbackIsActive ||
-      state.currentFeedbackId === persistedFeedback.feedbackId ||
-      staleResolvedFeedbackRetry);
+  const shouldReusePersistedAttempt = persistedAttemptId !== null;
   const attemptId =
     shouldReusePersistedAttempt && persistedAttemptId
       ? persistedAttemptId
@@ -413,6 +411,21 @@ export async function submitReviewResult(options: {
         feedbackId: persistedFeedback.feedbackId,
         status: "in_progress"
       };
+    }
+    if (parsed.verdict === "needs_changes" && persistedCompletionReason === "max_cycles_reached") {
+      state.blocks[options.ref] = {
+        ...state.blocks[options.ref],
+        status: "completed",
+        latestReviewAttemptId: attemptId,
+        activeFeedbackId: null,
+        blockedReason: null,
+        completionReason: "max_cycles_reached"
+      };
+      state.currentReviewBlockRef = state.currentReviewBlockRef === options.ref ? null : state.currentReviewBlockRef;
+      state.currentRefs = state.currentRefs.filter((ref) => ref !== options.ref);
+      state = refreshDerivedState(manifest, state);
+      await writeState(workspace.stateFile, state);
+      return { ref: options.ref, reviewAttemptId: attemptId, verdict: "needs_changes", status: "completed" };
     }
   }
   const task = getTask(graph, taskId);

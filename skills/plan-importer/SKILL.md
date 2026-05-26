@@ -35,10 +35,23 @@ Write examples as `<pw> ...`, where `<pw>` is the resolved command.
 2. Record the scanned source list before writing.
 3. Extract executable Task Nodes and Blocks; default to task-only graph nodes.
 4. Do not create context nodes by default. Put goals, requirements, constraints, risks, references, and architecture gates into project/global prompt, task acceptance, task prompt, or block prompt. Create context nodes only when the user explicitly asks for them.
-5. Build a coverage map: each task has concrete acceptance, each block has verifiable done criteria, and key requirements have an explicit prompt placement.
+5. Run the Plan Quality Gate below before writing. Build a coverage map: each task has concrete acceptance, each block has verifiable done criteria, and key requirements have an explicit prompt placement.
 6. Run `<pw> init --json`, then write `manifest.json`, task prompts, and block prompts under the returned package directory.
 7. Run `<pw> validate --json`; fix validation errors and weak importer-created coverage.
 8. Output a Plan Import Report listing source docs, command entry, package path, prompt placement, canvas strategy, review strategy, and validation result.
+
+## Plan Quality Gate
+
+- Map every authoritative goal to a task, block, acceptance item, or prompt; flag omitted, weakened, or incorrectly deferred requirements.
+- Do not accept a demo subset as complete delivery unless the user explicitly scoped it that way.
+- Identify core objects and trace create, structure, validation, transform, state, storage, consumer, side effects, final output, failure, retry, rollback, and manual intervention.
+- Keep schema, types, APIs, CLI flags, events, files, and prompt inputs/outputs consistent across producers and consumers.
+- Contract-changing tasks must cover callers, tests, fixtures, docs, and migrations when relevant; do not hide missing contracts with fallback, default values, `any`, or mock-only paths.
+- Model the real execution order: parallel tasks must be independent, sequential gates must be explicit, and each canvas must map to a phase, capability area, or parallel work group.
+- Reject fake completion such as schema with no runtime use, API with no caller, UI with no behavior, config never read, provider abstraction without live client, queue without consumer, file path without file, dry-run without live path, or fixture-only testing.
+- Cover errors, retry, cancellation, timeout, permission failure, partial success, external outage, failed human review, and recovery when the domain needs reliable execution.
+- Every block must name concrete validation: commands, tests, output artifacts, observable state changes, or end-to-end flows.
+- Separate plan defects from PlanWeave toolchain defects in the report.
 
 ## Prompt Placement
 
@@ -68,12 +81,7 @@ Write examples as `<pw> ...`, where `<pw>` is the resolved command.
 
 ```json
 {
-  "id": "B-001",
-  "type": "implementation",
-  "title": "Implement focused task slice",
-  "prompt": "nodes/T-001/blocks/B-001.prompt.md",
-  "depends_on": [],
-  "parallel": { "safe": false, "locks": [] }
+  "id": "B-001", "type": "implementation", "title": "Implement focused task slice", "prompt": "nodes/T-001/blocks/B-001.prompt.md", "depends_on": [], "parallel": { "safe": false, "locks": [] }
 }
 ```
 

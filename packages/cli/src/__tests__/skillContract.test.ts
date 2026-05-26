@@ -30,6 +30,16 @@ describe("agent skill contract docs", () => {
     expect(skill).toContain("Do not split for the sake of splitting.");
   });
 
+  it("documents importer plan quality checks before writing the package", async () => {
+    const skill = await readFile(join(repoRoot, "skills/plan-importer/SKILL.md"), "utf8");
+
+    expect(skill).toContain("Run the Plan Quality Gate below before writing.");
+    expect(skill).toContain("Identify core objects and trace create");
+    expect(skill).toContain("Keep schema, types, APIs, CLI flags, events, files, and prompt inputs/outputs consistent");
+    expect(skill).toContain("Reject fake completion");
+    expect(skill).toContain("Separate plan defects from PlanWeave toolchain defects in the report.");
+  });
+
   it("documents JSON Claim Result branches and block-ref recovery commands in plan-runner", async () => {
     const skill = await readFile(join(repoRoot, "skills/plan-runner/SKILL.md"), "utf8");
 

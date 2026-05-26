@@ -26,9 +26,19 @@ export const planweaveHelpTopics: HelpTopic[] = [
   },
   {
     name: "plan",
-    summary: "Inspect and refresh plan prompt surfaces without changing source prompts.",
-    commands: ["refresh-prompt <block-ref>", "refresh-prompts", "prompt <block-ref>"],
-    notes: ["Rendered prompts are derived output.", "Edit global/project/task/block source prompts, not rendered prompt output."]
+    summary: "Inspect and edit plan source surfaces.",
+    commands: [
+      "refresh-prompt <block-ref>",
+      "refresh-prompts",
+      "prompt <block-ref>",
+      "edit-task <task-id> --title <title>",
+      "edit-block <block-ref> --review-required false",
+      "edit-block <block-ref> --parallel-safe true --parallel-locks api,db"
+    ],
+    notes: [
+      "Rendered prompts are derived output.",
+      "Use edit-task/edit-block for narrow source edits by exact id/ref instead of hand-editing large manifest sections."
+    ]
   },
   {
     name: "work",
@@ -39,10 +49,15 @@ export const planweaveHelpTopics: HelpTopic[] = [
       "claim-next --dry-run",
       "claim-next --parallel --dry-run",
       "claim <ref>",
+      "claim <ref> --dispatch",
       "claim-task <taskId>",
       "claim --type review"
     ],
-    notes: ["Use dry-run before automatic scheduling when the next step is unclear.", "Review gates are sequential work, not parallel implementation blocks."]
+    notes: [
+      "Use dry-run before automatic scheduling when the next step is unclear.",
+      "Review gates are sequential work, not parallel implementation blocks.",
+      "Use --dispatch only for graph-ready, parallel-safe implementation blocks assigned to another agent."
+    ]
   },
   {
     name: "submit",
@@ -69,12 +84,14 @@ export const planweaveHelpTopics: HelpTopic[] = [
       "mark-blocked <ref> --reason <reason>",
       "unblock <ref> --reason <reason>",
       "mark-diverged <ref> --reason <reason>",
-      "resolve-divergence <ref> --reason <reason>"
+      "resolve-divergence <ref> --reason <reason>",
+      "retry-review <review-block-ref> --max-feedback-cycles 3"
     ],
     notes: [
       "Doctor checks state/results consistency; it is not a general Plan Package repair tool.",
       "Use doctor --repair only for narrow, evidence-backed runtime drift.",
-      "Fix bad dependencies, unsafe parallelization, missing prompts, or review-gate design by manually updating the Plan Package."
+      "retry-review edits one exact review block and resets max-cycle completion state for another attempt.",
+      "Fix bad dependencies, unsafe parallelization, missing prompts, or review-gate design through exact Plan Package edits."
     ]
   },
   {

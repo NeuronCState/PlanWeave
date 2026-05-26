@@ -42,7 +42,9 @@ export function formatSchemaHelp(topicName?: string): string {
     "Recommended flow:",
     "- planweave paths --json",
     "- planweave schema manifest",
-    "- edit package/manifest.json and prompt sources only",
+    "- planweave edit-task <task-id> --title <title>",
+    "- planweave edit-block <block-ref> --review-required false",
+    "- use schema manifest to verify fields before structural Plan Package changes",
     "- planweave validate --json"
   ];
   if (topicName) {

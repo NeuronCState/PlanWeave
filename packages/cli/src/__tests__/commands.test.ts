@@ -22,6 +22,9 @@ describe("planweave CLI contract", () => {
         "resolve-divergence",
         "mark-blocked",
         "unblock",
+        "retry-review",
+        "edit-task",
+        "edit-block",
         "claim",
         "claim-task",
         "claim-next",
@@ -46,8 +49,23 @@ describe("planweave CLI contract", () => {
     expect(commandOptionLongs("validate")).toContain("--json");
     expect(commandOptionLongs("status")).toContain("--json");
     expect(commandOptionLongs("claim")).toContain("--type");
+    expect(commandOptionLongs("claim")).toContain("--dispatch");
     expect(commandOptionLongs("claim-next")).toContain("--dry-run");
     expect(commandOptionLongs("doctor")).toContain("--repair");
+    expect(commandOptionLongs("retry-review")).toContain("--max-feedback-cycles");
+    expect(commandOptionLongs("edit-task")).toEqual(expect.arrayContaining(["--title", "--prompt-file", "--executor", "--clear-executor"]));
+    expect(commandOptionLongs("edit-block")).toEqual(
+      expect.arrayContaining([
+        "--title",
+        "--prompt-file",
+        "--parallel-safe",
+        "--parallel-locks",
+        "--review-required",
+        "--max-feedback-cycles",
+        "--review-hook-json",
+        "--clear-review-hook"
+      ])
+    );
     expect(commandOptionLongs("resolve-divergence")).toContain("--reason");
     expect(commandOptionLongs("unblock")).toContain("--reason");
     expect(commandOptionLongs("run")).toEqual(expect.arrayContaining(["--once", "--parallel", "--executor", "--json"]));
@@ -64,6 +82,8 @@ describe("planweave CLI contract", () => {
     expect(formatPlanweaveHelp("work")).toContain("planweave claim-next --parallel --dry-run");
     expect(formatPlanweaveHelp("submit")).toContain("planweave submit-review <review-block-ref> --result <review-result.json>");
     expect(formatPlanweaveHelp("recovery")).toContain("planweave doctor --repair");
+    expect(formatPlanweaveHelp("recovery")).toContain("planweave retry-review <review-block-ref> --max-feedback-cycles 3");
+    expect(formatPlanweaveHelp("plan")).toContain("planweave edit-block <block-ref> --review-required false");
     expect(formatPlanweaveHelp("recovery")).toContain("Doctor checks state/results consistency; it is not a general Plan Package repair tool.");
     expect(formatPlanweaveHelp("recovery")).toContain("Fix bad dependencies, unsafe parallelization, missing prompts, or review-gate design");
   });
@@ -71,6 +91,9 @@ describe("planweave CLI contract", () => {
   it("prints focused schema navigation and full schema topics", () => {
     expect(formatSchemaHelp()).toContain("Use `planweave schema <topic>`");
     expect(formatSchemaHelp()).toContain("planweave schema manifest");
+    expect(formatSchemaHelp()).toContain("planweave edit-task <task-id>");
+    expect(formatSchemaHelp()).toContain("planweave edit-block <block-ref>");
+    expect(formatSchemaHelp()).not.toContain("edit package/manifest.json");
     expect(formatSchemaHelp("manifest")).toContain('"plan-package/v1"');
     expect(formatSchemaHelp("manifest")).toContain("Only task nodes are supported");
     expect(formatSchemaHelp("manifest")).toContain("Only implementation and review block types are supported.");
@@ -97,6 +120,8 @@ describe("planweave CLI contract", () => {
         parallelSafe: true,
         sequentialOnly: false,
         recommendedCommand: null,
+        dispatchable: false,
+        dispatchCommand: null,
         reviewGate: null
       })
     ).toContain("blocked: Waiting for external API access.");
@@ -118,6 +143,8 @@ describe("planweave CLI contract", () => {
         parallelSafe: false,
         sequentialOnly: true,
         recommendedCommand: null,
+        dispatchable: false,
+        dispatchCommand: null,
         reviewGate: {
           isGate: true,
           required: false,

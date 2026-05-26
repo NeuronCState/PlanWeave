@@ -706,3 +706,37 @@ export type RetryReviewResult = BlockRecoveryResult & {
   maxFeedbackCycles: number;
   reset: boolean;
 };
+
+export type EditTaskInput = {
+  projectRoot: PackageWorkspaceRef;
+  taskId: string;
+  title?: string;
+  promptMarkdown?: string;
+  executor?: string | null;
+};
+
+export type EditTaskResult = GraphEditResult & {
+  taskId: string;
+  updatedFields: string[];
+};
+
+export type EditBlockInput = {
+  projectRoot: PackageWorkspaceRef;
+  ref: string;
+  title?: string;
+  promptMarkdown?: string;
+  executor?: string | null;
+  parallelSafe?: boolean;
+  parallelLocks?: string[];
+  reviewRequired?: boolean;
+  maxFeedbackCycles?: number;
+  reviewHook?: ReviewHookDefinition | null;
+};
+
+export type EditBlockResult = GraphEditResult & {
+  ref: string;
+  taskId: string;
+  blockId: string;
+  blockType: BlockType;
+  updatedFields: string[];
+};

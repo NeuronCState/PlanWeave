@@ -11,6 +11,8 @@ import { registerClaimTaskCommand } from "./commands/claimTask.js";
 import { registerClaimNextCommand } from "./commands/claimNext.js";
 import { registerCurrentCommand } from "./commands/current.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
+import { registerEditBlockCommand } from "./commands/editBlock.js";
+import { registerEditTaskCommand } from "./commands/editTask.js";
 import { registerExplainCommand, registerWhyNotCommand } from "./commands/explain.js";
 import { registerSubmitResultCommand } from "./commands/submitResult.js";
 import { registerSubmitReviewCommand } from "./commands/submitReview.js";
@@ -57,6 +59,8 @@ export function createProgram(): Command {
   registerMarkDivergedCommand(program);
   registerMarkBlockedCommand(program);
   registerRetryReviewCommand(program);
+  registerEditTaskCommand(program);
+  registerEditBlockCommand(program);
   registerResolveDivergenceCommand(program);
   registerUnblockCommand(program);
   registerStatusCommand(program);

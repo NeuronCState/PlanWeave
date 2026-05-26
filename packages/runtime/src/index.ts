@@ -4,6 +4,7 @@ export { readProject, resolveProjectWorkspace } from "./project.js";
 export { initWorkspace } from "./initWorkspace.js";
 export { manifestNodeSchema, manifestSchema } from "./schema/manifest.js";
 export { loadPackage } from "./package/loadPackage.js";
+export { editBlock, editTask } from "./package/manifestEdit.js";
 export { readMarkdown } from "./package/readMarkdown.js";
 export { resolvePackagePath, PackagePathError } from "./package/resolvePackagePath.js";
 export { parsePromptSections, getPromptSection, hasUserSection, replacePromptSection } from "./prompt/sections.js";

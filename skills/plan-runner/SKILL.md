@@ -19,20 +19,22 @@ For command syntax and topic help, run `<pw> help work` and `<pw> help submit`. 
 
 ## Block Loop
 
-1. Accept a specific implementation/check ref from the coordinator, or claim one only when explicitly told to.
-2. Render the prompt for that ref.
-3. Read the prompt, referenced files, related producers/consumers, schemas, tests, fixtures, and docs.
-4. Make scoped changes for the assigned block only.
-5. Run relevant validation.
-6. Write a Markdown report with changes, validation, and risks.
-7. Submit through the CLI or return the report path to the coordinator.
+1. Accept a specific implementation/check ref and claim ownership from the coordinator.
+2. If ownership is `already claimed`, do not run `claim` or `claim-next`; render the prompt for the assigned ref.
+3. If ownership is `claim required`, claim only the exact assigned ref or task; stop if the CLI returns a different ref.
+4. Read the prompt, referenced files, related producers/consumers, schemas, tests, fixtures, and docs.
+5. Make scoped changes for the assigned block only.
+6. Run relevant validation.
+7. Write a Markdown report with changes, validation, and risks.
+8. Submit through the CLI or return the report path to the coordinator.
 
 ## Manual Fallback
 
 The CLI is preferred but not assumed perfect.
 
-- If CLI status/claim fails or contradicts visible files, read `package/manifest.json`, source prompts, and `state.json` directly.
-- Manually assign only block refs that are dependency-ready, in scope, and not already claimed.
+- If CLI prompt/status is usable, keep using CLI for prompt and submit.
+- If CLI status/claim contradicts visible files, treat CLI as a reference only and ask the coordinator to inspect package/state.
+- Manually execute only the assigned ref; do not discover or claim new work from fallback.
 - Execute from rendered prompt when available; if prompt rendering fails, assemble context from global/project/task/block prompt sources and report the fallback.
 - Try to write back through CLI submit commands. If write-back fails, preserve reports/results and tell the user exactly what could not be reconciled.
 - Do not repair state/results drift here; hand off to `plan-recovery`.
@@ -41,6 +43,7 @@ The CLI is preferred but not assumed perfect.
 
 - Check that rendered prompt is non-empty and names the current ref, submit command, and relevant context.
 - Check source prompt placement: global/project prompt for cross-cutting rules, task prompt for task context, block prompt for execution details.
+- Confirm package path and prompt source files from the coordinator packet or `<pw> paths --json`.
 - If a prompt is empty or missing, inspect package source files before executing; do not assume the task is trivial.
 - Do not write rendered prompt output back into source prompt files.
 - PlanWeave Global Prompt, Project Prompt, Task Node Prompt, and Block Prompt are editable source prompts when prompt maintenance is part of the task.

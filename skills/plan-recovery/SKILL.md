@@ -39,6 +39,8 @@ Check:
 ## Recovery Actions
 
 - Use doctor before state/results repair; use repair only when the reported fix is narrow and evidence-backed.
+- Continue using CLI when status/current/explain agree with package files; treat CLI as a reference only when they conflict.
+- If CLI cannot safely claim/submit, have the coordinator read package/state/results and manually assign exact refs until write-back is safe.
 - Use blocked/unblocked commands for external prerequisites or temporary stops.
 - Use diverged/resolve-divergence when implementation reality no longer matches the Plan Package.
 - For submit partial success, look for persisted report/result artifacts before creating new runs or attempts.

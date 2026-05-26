@@ -37,6 +37,8 @@ describe("agent skill contract docs", () => {
     expect(skill).toContain("Identify core objects and trace create");
     expect(skill).toContain("Keep schema, types, APIs, CLI flags, events, files, and prompt inputs/outputs consistent");
     expect(skill).toContain("Reject fake completion");
+    expect(skill).toContain("Complex blocks must encode architecture boundaries");
+    expect(skill).toContain("Do not copy other projects' skills");
     expect(skill).toContain("Separate plan defects from PlanWeave toolchain defects in the report.");
   });
 
@@ -47,6 +49,8 @@ describe("agent skill contract docs", () => {
     expect(skill).toContain("Do not execute work, audit an existing package, or write a Plan Package unless the user explicitly asks.");
     expect(skill).toContain("If strong source docs exist, prefer `plan-importer` instead of this skill.");
     expect(skill).toContain("Design around core object lifecycles");
+    expect(skill).toContain("Do not import other projects' skills");
+    expect(skill).toContain("complex blocks must include architecture boundaries");
     expect(skill).toContain("## Task Graph");
     expect(skill).toContain("This skill produces a plan draft, not runtime state.");
   });
@@ -57,11 +61,15 @@ describe("agent skill contract docs", () => {
     const recovery = await readFile(join(repoRoot, "skills/plan-recovery/SKILL.md"), "utf8");
 
     expect(coordinator).toContain("Use when orchestrating a full PlanWeave plan");
+    expect(coordinator).toContain("Run preflight: confirm `PLANWEAVE_HOME`, project id, package/canvas paths");
     expect(coordinator).toContain("Treat PlanWeave skills as execution roles.");
     expect(coordinator).toContain("Use skill: plan-runner");
     expect(coordinator).toContain("Use `plan-runner` for one implementation/check block.");
     expect(coordinator).toContain("Use `plan-reviewer` for one review gate.");
     expect(coordinator).toContain("Use `plan-recovery` for doctor findings");
+    expect(coordinator).toContain("claim ownership: `already claimed` or `claim required`");
+    expect(coordinator).toContain("Different canvases are not automatically parallel");
+    expect(coordinator).toContain("Do not inject other projects' skills");
     expect(coordinator).toContain("Treat `doctor` as a state/results consistency probe, not a general plan repair tool.");
     expect(reviewer).toContain("Do not implement fixes, coordinate the whole plan, or repair runtime state.");
     expect(reviewer).toContain("Do not encode blocked, diverged, or tool failure as a review verdict");
@@ -94,9 +102,12 @@ describe("agent skill contract docs", () => {
 
     expect(skill).toContain("<pw> help work");
     expect(skill).toContain("<pw> help submit");
-    expect(skill).toContain("Accept a specific implementation/check ref from the coordinator");
+    expect(skill).toContain("Accept a specific implementation/check ref and claim ownership from the coordinator");
+    expect(skill).toContain("If ownership is `already claimed`, do not run `claim` or `claim-next`");
+    expect(skill).toContain("If ownership is `claim required`, claim only the exact assigned ref or task");
     expect(skill).toContain("Run relevant validation.");
     expect(skill).toContain("Manual Fallback");
+    expect(skill).toContain("Manually execute only the assigned ref; do not discover or claim new work from fallback.");
     expect(skill).toContain("Check source prompt placement");
     expect(skill).toContain("Do not coordinate multiple subagents or canvases; use `plan-coordinator`.");
   });
@@ -108,6 +119,8 @@ describe("agent skill contract docs", () => {
     expect(skill).toContain("Do not import a new plan, execute blocks, repair state, or rewrite the package");
     expect(skill).toContain("Core Object Lifecycle");
     expect(skill).toContain("schema without runtime use");
+    expect(skill).toContain("Check that prompt placement summary identifies global/project/task/block source of truth.");
+    expect(skill).toContain("Flag copied skills");
     expect(skill).toContain("Separate plan design defects from PlanWeave toolchain defects.");
     expect(skill).toContain("End with the recommended revision order.");
   });

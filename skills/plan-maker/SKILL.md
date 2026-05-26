@@ -33,6 +33,7 @@ Use this skill to design a PlanWeave plan draft from incomplete input. Do not ex
 - Model real execution order with explicit dependencies and gates.
 - Parallel tasks must be genuinely independent in data, locks, and contract timing.
 - Do not schedule broad UI/package polish before foundation contracts and runtime behavior are stable.
+- Do not import other projects' skills, bootstrap rules, or prompt conventions unless this target repository explicitly requires them.
 
 ## Plan Shape
 
@@ -55,6 +56,7 @@ For each task include:
 - task id, title, owner canvas, objective, acceptance, dependencies, and likely files.
 - blocks with type, purpose, parallel safety, done criteria, validation, and report expectations.
 - review only when risk justifies it.
+- complex blocks must include architecture boundaries, test location, config/env handling, README or `.env.example` updates when applicable, and real provider vs mock/dry-run expectations.
 
 ## Prompt Placement
 

@@ -51,6 +51,8 @@ Write examples as `<pw> ...`, where `<pw>` is the resolved command.
 - Reject fake completion such as schema with no runtime use, API with no caller, UI with no behavior, config never read, provider abstraction without live client, queue without consumer, file path without file, dry-run without live path, or fixture-only testing.
 - Cover errors, retry, cancellation, timeout, permission failure, partial success, external outage, failed human review, and recovery when the domain needs reliable execution.
 - Every block must name concrete validation: commands, tests, output artifacts, observable state changes, or end-to-end flows.
+- Complex blocks must encode architecture boundaries, test location, config/env handling, README or `.env.example` updates when applicable, and real provider vs mock/dry-run expectations in done criteria.
+- Do not copy other projects' skills, bootstrap rules, or prompt conventions into this plan unless the target repository explicitly requires them.
 - Separate plan defects from PlanWeave toolchain defects in the report.
 
 ## Prompt Placement
@@ -73,19 +75,13 @@ Write examples as `<pw> ...`, where `<pw>` is the resolved command.
 
 - For small plans, use one package canvas.
 - For large plans, especially 100+ tasks/nodes, split by phase, subsystem, workflow, or owner into task canvases.
-- Keep each canvas small enough for an agent to scan and execute; prefer roughly 10-30 tasks per canvas when the source plan allows it.
-- Express cross-canvas dependencies through task dependency edges in the package and explain canvas order in project/global prompt.
-- Independent canvases may run in parallel only when dependencies and locks make that safe.
+- Keep each canvas scannable, usually 10-30 tasks when the source plan allows it.
+- Express cross-canvas dependencies through task dependency edges and explain canvas order in project/global prompt.
+- Different canvases are not automatically parallel; run them in parallel only when dependency edges and locks make that safe.
 
-## Minimal Block Shape
+## Block Shape
 
-```json
-{
-  "id": "B-001", "type": "implementation", "title": "Implement focused task slice", "prompt": "nodes/T-001/blocks/B-001.prompt.md", "depends_on": [], "parallel": { "safe": false, "locks": [] }
-}
-```
-
-If review is justified, add `R-001` after implementation/check blocks with `review.required: true` and a clear review prompt.
+Each block needs `id`, `type`, `title`, `prompt`, `depends_on`, parallel safety/locks, done criteria, validation, and report expectations. If review is justified, add `R-001` after implementation/check blocks with `review.required: true` and a clear review prompt.
 
 ## Rules
 

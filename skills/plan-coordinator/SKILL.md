@@ -10,11 +10,19 @@ Use this skill as the main agent/controller for a PlanWeave package. Do not impl
 ## Quick Start
 
 1. Resolve the CLI entry. Use `<pw> help work`, `<pw> help submit`, and `<pw> help recovery` for command syntax.
-2. Inspect current work, status, claim hints, warnings, and any active feedback.
+2. Run preflight: confirm `PLANWEAVE_HOME`, project id, package/canvas paths, source prompt paths, current refs, and active feedback.
 3. Decide whether to assign implementation/check work, review work, feedback work, or recovery work.
-4. Give each subagent exactly one work item, its rendered prompt path or content, expected artifact, submit command, and validation expectations.
+4. Give each subagent exactly one work item, claim ownership, rendered prompt path/content, expected artifact, submit command, and validation expectations.
 5. Collect reports/results, submit or verify submission, then re-check status.
 6. Continue until the plan is complete, genuinely blocked, or diverged and needs user/plan reconciliation.
+
+## Preflight
+
+- Read `<pw> paths --json` before dispatching and record project id, package dir, state path, and results dir.
+- Identify the active canvas/package scope and where cross-canvas dependencies are expressed.
+- Confirm source of truth for global, project, task, and block prompts; rendered prompts are derived output.
+- Produce a prompt source summary when prompts look empty, inherited, or surprising.
+- Do not inject other projects' skills, bootstrap rules, or agent instructions into prompts unless the target repository explicitly requires them.
 
 ## Routing
 
@@ -37,12 +45,25 @@ Use this skill as the main agent/controller for a PlanWeave package. Do not impl
 7. If `none`, compare parallel and sequential claimability before declaring the plan idle.
 8. If `blocked`, `diverged`, stale, or inconsistent, stop dispatching dependent work and route to recovery.
 
+## Claim Ownership
+
+- If the coordinator already claimed a ref, mark the handoff `already claimed`; the subagent must not run `claim` or `claim-next`.
+- If the subagent must claim first, mark the handoff `claim required` and name the exact ref or task.
+- If a subagent claims a different ref than assigned, stop and reconcile before execution.
+
+## Parallel Dispatch
+
+- Within one canvas, dispatch only ready blocks whose dependency edges are satisfied and whose locks/parallel safety do not conflict.
+- Different canvases are not automatically parallel; cross-canvas dependencies must be task/package dependencies or explicitly documented canvas order.
+- Use dry-run/status to build the next batch, then assign refs explicitly.
+- Review gates are sequential control points unless the plan explicitly models otherwise.
+
 ## Subagent Packet
 
 Every subagent handoff should include:
 
 - explicit instruction: `Use skill: plan-runner`, `Use skill: plan-reviewer`, or `Use skill: plan-recovery`.
-- block ref or feedback id.
+- block ref or feedback id, plus claim ownership: `already claimed` or `claim required`.
 - block type and expected skill: `plan-runner`, `plan-reviewer`, or `plan-recovery`.
 - rendered prompt path/content and source prompt paths when relevant.
 - exact report/result artifact expected.

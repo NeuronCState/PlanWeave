@@ -71,45 +71,35 @@ describe("agent skill contract docs", () => {
     expect(coordinator).toContain("Different canvases are not automatically parallel");
     expect(coordinator).toContain("Do not inject other projects' skills");
     expect(coordinator).toContain("Treat `doctor` as a state/results consistency probe, not a general plan repair tool.");
-    expect(reviewer).toContain("Do not implement fixes, coordinate the whole plan, or repair runtime state.");
-    expect(reviewer).toContain("Do not encode blocked, diverged, or tool failure as a review verdict");
+    expect(reviewer).toContain("do not implement fixes, claim new work, coordinate the plan, or repair runtime state");
+    expect(reviewer).toContain("Do not run `claim-next`");
+    expect(reviewer).toContain("submit only if the coordinator explicitly asked you to submit");
+    expect(reviewer).toContain("Do not encode blocked, diverged, missing evidence, or tool failure as a review verdict");
     expect(recovery).toContain("Do not perform normal implementation or review work.");
     expect(recovery).toContain("`doctor --repair` is not a general plan repair tool.");
     expect(recovery).toContain("For plan defects, report `NEEDS_PLAN_UPDATE`");
     expect(recovery).toContain("verdict: `RECOVERED`, `NEEDS_PLAN_UPDATE`, or `BLOCKED`.");
   });
 
-  it("documents runner as single implementation/check block execution without duplicating CLI help", async () => {
+  it("documents runner as assigned implementation/check block execution", async () => {
     const skill = await readFile(join(repoRoot, "skills/plan-runner/SKILL.md"), "utf8");
 
-    expect(skill).toContain("Use this skill to execute one implementation/check block");
-    expect(skill).toContain("For command syntax and topic help");
-    expect(skill).toContain("<pw> help work");
-    expect(skill).toContain("Do not repair state/results drift here; hand off to `plan-recovery`.");
-    expect(skill).toContain("Do not execute review blocks; use `plan-reviewer`.");
+    expect(skill).toContain("Use this skill after the coordinator assigns one implementation/check block.");
+    expect(skill).toContain("Focus on completing that block precisely");
+    expect(skill).toContain("If any required item is missing, ask the coordinator for it instead of claiming other work.");
+    expect(skill).toContain("Do not execute review gates; use `plan-reviewer`.");
     expect(skill).toContain("Do not create feedback blocks");
   });
 
-  it("documents that plan-runner may maintain editable source prompts", async () => {
+  it("documents runner claim boundaries, quality gate, and reporting", async () => {
     const skill = await readFile(join(repoRoot, "skills/plan-runner/SKILL.md"), "utf8");
 
-    expect(skill).toContain("PlanWeave Global Prompt, Project Prompt, Task Node Prompt, and Block Prompt are editable source prompts");
-    expect(skill).toContain("Do not write rendered prompt output back into source prompt files.");
-  });
-
-  it("documents runner assigned block execution, fallback, and prompt diagnostics", async () => {
-    const skill = await readFile(join(repoRoot, "skills/plan-runner/SKILL.md"), "utf8");
-
-    expect(skill).toContain("<pw> help work");
-    expect(skill).toContain("<pw> help submit");
-    expect(skill).toContain("Accept a specific implementation/check ref and claim ownership from the coordinator");
+    expect(skill).toContain("claim ownership: usually `already claimed`");
     expect(skill).toContain("If ownership is `already claimed`, do not run `claim` or `claim-next`");
-    expect(skill).toContain("If ownership is `claim required`, claim only the exact assigned ref or task");
-    expect(skill).toContain("Run relevant validation.");
-    expect(skill).toContain("Manual Fallback");
-    expect(skill).toContain("Manually execute only the assigned ref; do not discover or claim new work from fallback.");
-    expect(skill).toContain("Check source prompt placement");
-    expect(skill).toContain("Do not coordinate multiple subagents or canvases; use `plan-coordinator`.");
+    expect(skill).toContain("submit only if the coordinator explicitly asked you to submit");
+    expect(skill).toContain("Do not treat mock, dry-run, fixture-only tests, or uncalled APIs as live completion");
+    expect(skill).toContain("return `NEEDS_COORDINATOR`");
+    expect(skill).toContain("Do not coordinate multiple blocks, canvases, or subagents; use `plan-coordinator`.");
   });
 
   it("documents plan-auditor as a focused PlanWeave plan review skill", async () => {

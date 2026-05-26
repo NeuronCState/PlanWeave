@@ -1,34 +1,47 @@
 ---
 name: plan-reviewer
-description: Execute a single PlanWeave review gate and produce a structured pass or needs_changes review result. Use when assigned a review block, asked to review implementation output, or asked to create review-result.json for PlanWeave.
+description: Review one assigned PlanWeave review gate and produce a pass or needs_changes result. Use when a coordinator assigns a specific review ref, implementation evidence, and review-result expectation.
 ---
 
 # Plan Reviewer
 
-Use this skill for one review block. Do not implement fixes, coordinate the whole plan, or repair runtime state.
+Use this skill after the coordinator assigns one review gate. Judge the assigned work; do not implement fixes, claim new work, coordinate the plan, or repair runtime state.
 
-## Quick Start
+## Required Packet
 
-1. Resolve the CLI entry and use `<pw> help submit` for exact submit syntax.
-2. Claim or accept the assigned review ref; render the review prompt.
-3. Read the review prompt, implementation reports, changed files, referenced source files, tests, and acceptance criteria.
-4. Decide `passed` or `needs_changes`.
-5. Write `review-result.json` and submit it, or return it to the coordinator.
+The handoff should include:
 
-## Review Scope
+- assigned review ref.
+- rendered review prompt or prompt path.
+- upstream implementation/check reports.
+- changed files or diff summary.
+- acceptance criteria and validation evidence.
+- expected `review-result.json` path or instruction to return the JSON.
 
-- Review only the assigned gate and its upstream implementation/check blocks.
-- Verify the work against task acceptance, prompt instructions, contract changes, and validation evidence.
-- Search producers and consumers when reviewing schema, API, CLI, events, prompt I/O, file formats, storage, or state semantics.
-- Treat missing runtime use, missing caller, mock-only behavior, dry-run-only paths, and fixture-only tests as real findings.
-- Do not require review for unrelated cleanup outside the assigned scope.
+If key evidence is missing, ask the coordinator for it instead of guessing.
 
-## Verdict Rules
+## Review Loop
 
-- Use `passed` only when acceptance is met and validation evidence is adequate for the block risk.
-- Use `needs_changes` when implementation is incomplete, unsafe, unverifiable, out of scope, or contract-breaking.
-- Do not encode blocked, diverged, or tool failure as a review verdict; send those to `plan-recovery`.
-- Do not make code changes in a review block unless the prompt explicitly asks for review+fix.
+1. Confirm the assigned ref is a review block.
+2. Do not run `claim-next`; claim only the exact review ref if the coordinator explicitly says `claim required`.
+3. Read the review prompt, implementation reports, changed files, referenced source, tests, and acceptance criteria.
+4. Check only the assigned gate and its upstream implementation/check work.
+5. Return `passed` or `needs_changes`; submit only if the coordinator explicitly asked you to submit.
+
+## Review Checks
+
+- Goal and acceptance are satisfied.
+- Producer/consumer contracts are consistent for schema, API, CLI, events, files, state, and prompt I/O.
+- Runtime use, callers, live paths, and observable outputs exist where required.
+- Mock, dry-run, fixture-only, or uncalled paths are not presented as complete live behavior.
+- Validation evidence matches the risk of the block.
+- Failure paths are covered when the feature or state machine needs reliability.
+
+## Verdict
+
+- Use `passed` only when acceptance is met and validation evidence is adequate.
+- Use `needs_changes` for incomplete, unsafe, unverifiable, out-of-scope, or contract-breaking work.
+- Do not encode blocked, diverged, missing evidence, or tool failure as a review verdict; return `NEEDS_COORDINATOR`.
 
 ## Result Shape
 
@@ -41,24 +54,4 @@ Use this skill for one review block. Do not implement fixes, coordinate the whol
 }
 ```
 
-For `passed`, explain the evidence. For `needs_changes`, make feedback actionable and scoped to the implementation/check blocks that must change.
-
-## Review Checklist
-
-- Goal and acceptance covered.
-- Core object lifecycle complete.
-- Producer/consumer contracts consistent.
-- Failure paths handled when relevant.
-- Prompt requirements respected.
-- Validation commands or observable evidence exist.
-- No mock, dry-run, fixture-only, or uncalled path is presented as live completion.
-
-## Report To Coordinator
-
-Return:
-
-- review ref and verdict.
-- review-result path or submitted result.
-- key evidence checked.
-- findings or pass rationale.
-- any recovery issue that should stop the loop.
+For `passed`, cite evidence. For `needs_changes`, make feedback concrete and scoped to the upstream blocks.

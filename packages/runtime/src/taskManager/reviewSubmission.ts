@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { z } from "zod";
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
@@ -47,6 +47,7 @@ function reviewResultHash(result: ReviewResult): string {
 type PersistedReviewAttempt = {
   attemptId: string;
   reviewedWorkRevision: string | null;
+  sourceResultPath: string | null;
 };
 
 async function executeReviewHook(options: {
@@ -134,6 +135,7 @@ async function writeReviewAttempt(options: {
   reviewResult: ReviewResult;
   workRevision: string;
   resultHash: string;
+  resultPath: string;
 }): Promise<string> {
   const { taskId, blockId } = parseBlockRef(options.reviewBlockRef);
   const attemptRoot = join(options.workspace.resultsDir, taskId, "reviews", blockId, "attempts");
@@ -146,6 +148,7 @@ async function writeReviewAttempt(options: {
     attemptId,
     reviewedWorkRevision: options.workRevision,
     resultHash: options.resultHash,
+    sourceResultPath: resolve(options.resultPath),
     reviewedAt: new Date().toISOString()
   });
   await recordReviewAttemptIndexes({ ...options, attemptId, incrementCount: true });
@@ -168,7 +171,8 @@ async function readMatchingReviewAttempt(options: {
     }
     return {
       attemptId: options.attemptId,
-      reviewedWorkRevision: typeof metadata.reviewedWorkRevision === "string" ? metadata.reviewedWorkRevision : null
+      reviewedWorkRevision: typeof metadata.reviewedWorkRevision === "string" ? metadata.reviewedWorkRevision : null,
+      sourceResultPath: typeof metadata.sourceResultPath === "string" ? metadata.sourceResultPath : null
     };
   } catch {
     return null;
@@ -342,6 +346,7 @@ export async function submitReviewResult(options: {
     throw new Error(`Review block '${options.ref}' must be in_progress before submit-review.`);
   }
   const workRevision = computeWorkRevision(graph, state, options.ref);
+  const sourceResultPath = resolve(options.resultPath);
   const persistedAttempt = await findPersistedReviewAttempt({ workspace, reviewBlockRef: options.ref, resultHash });
   const persistedAttemptId = persistedAttempt?.attemptId ?? null;
   const persistedFeedback =
@@ -353,7 +358,9 @@ export async function submitReviewResult(options: {
       ? await reviewCompletionReasonForAttempt({ workspace, taskId, reviewBlockRef: options.ref, attemptId: persistedAttemptId })
       : null;
   const persistedFeedbackIsActive = persistedFeedback ? isActiveFeedbackStatus(persistedFeedback.status) : false;
-  const shouldReusePersistedAttempt = persistedAttemptId !== null;
+  const shouldReusePersistedAttempt =
+    persistedAttemptId !== null &&
+    (persistedAttempt?.reviewedWorkRevision === workRevision || persistedAttempt?.sourceResultPath === sourceResultPath);
   const attemptId =
     shouldReusePersistedAttempt && persistedAttemptId
       ? persistedAttemptId
@@ -362,7 +369,8 @@ export async function submitReviewResult(options: {
           reviewBlockRef: options.ref,
           reviewResult: parsed,
           workRevision,
-          resultHash
+          resultHash,
+          resultPath: options.resultPath
         });
   if (shouldReusePersistedAttempt && persistedAttemptId) {
     await recordReviewAttemptIndexes({

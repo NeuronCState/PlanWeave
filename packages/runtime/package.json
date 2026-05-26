@@ -1,18 +1,45 @@
 {
   "name": "@planweave/runtime",
   "version": "0.0.0",
+  "description": "Runtime library for PlanWeave plan packages, task graphs, prompts, and execution state.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
   },
+  "homepage": "https://github.com/GaosCode/PlanWeave#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GaosCode/PlanWeave.git",
+    "directory": "packages/runtime"
+  },
+  "bugs": {
+    "url": "https://github.com/GaosCode/PlanWeave/issues"
+  },
+  "keywords": [
+    "planweave",
+    "ai-agents",
+    "task-graph",
+    "workflow"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json"
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
+    "prepack": "pnpm build"
   },
   "dependencies": {
     "zod": "^4.1.12"

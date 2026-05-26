@@ -1,14 +1,49 @@
 {
   "name": "@planweave/cli",
   "version": "0.0.0",
+  "description": "Command-line interface for PlanWeave plan packages and agent workflows.",
   "license": "MIT",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
     "planweave": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "homepage": "https://github.com/GaosCode/PlanWeave#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GaosCode/PlanWeave.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/GaosCode/PlanWeave/issues"
+  },
+  "keywords": [
+    "planweave",
+    "cli",
+    "ai-agents",
+    "task-graph",
+    "workflow"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
-    "planweave": "tsx src/index.ts"
+    "planweave": "tsx src/index.ts",
+    "prepack": "pnpm build"
   },
   "dependencies": {
     "@planweave/runtime": "workspace:*",

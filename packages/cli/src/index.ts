@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { createRequire } from "node:module";
 import { registerInitCommand } from "./commands/init.js";
 import { registerValidateCommand } from "./commands/validate.js";
 import { registerRefreshPromptCommand } from "./commands/refreshPrompt.js";
@@ -25,12 +26,15 @@ import { registerExecutorsCommand } from "./commands/executors.js";
 import { registerRunStatusCommand } from "./commands/runStatus.js";
 import { registerHelpCommand } from "./commands/help.js";
 
+const require = createRequire(import.meta.url);
+const packageJson = require("../package.json") as { version: string };
+
 export function createProgram(): Command {
   const program = new Command();
   program
     .name("planweave")
     .description("PlanWeave CLI")
-    .version("0.0.0");
+    .version(packageJson.version);
   program.addHelpCommand(false);
 
   registerInitCommand(program);

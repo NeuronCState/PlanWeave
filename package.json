@@ -8,6 +8,8 @@
   "scripts": {
     "build": "pnpm -r build",
     "check:dom-boundaries": "node scripts/check-renderer-dom-boundaries.mjs",
+    "pack:npm": "pnpm -r --filter @planweave/runtime --filter @planweave/cli pack",
+    "publish:npm": "pnpm -r --filter @planweave/runtime --filter @planweave/cli publish --access public",
     "test": "pnpm check:dom-boundaries && vitest run"
   },
   "devDependencies": {

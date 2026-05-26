@@ -21,7 +21,7 @@ describe("plan-package/v1 manifest schema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects review blocks because review blocks own verification gates", () => {
+  it("rejects check blocks because review blocks own verification gates", () => {
     const manifest = basicManifest();
     const task = manifest.nodes.find((node) => node.type === "task");
     if (task?.type !== "task") {

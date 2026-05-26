@@ -16,6 +16,12 @@ export async function mapProjectTaskCanvases<T>(
   const canvases = await listTaskCanvases(projectRoot);
   const results: T[] = [];
   for (const canvas of canvases) {
+    const hasPackageDiagnostics = canvas.diagnostics.some(
+      (diagnostic) => diagnostic.code === "manifest_schema" || diagnostic.code === "manifest_read_failed"
+    );
+    if (hasPackageDiagnostics) {
+      continue;
+    }
     results.push(
       await mapper({
         canvas,

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createTaskCanvas, getGraphViewModel, getStatistics, getTodoGroups, searchProject } from "../desktop/index.js";
+import { createTaskCanvas, getGraphViewModel, getStatistics, getTodoGroups, resolveTaskCanvasWorkspace, searchProject } from "../desktop/index.js";
 import { mapProjectTaskCanvases } from "../desktop/graph/projectCanvasAggregation.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { claimNext, submitBlockResult, submitReviewResult } from "../taskManager/index.js";
@@ -85,5 +85,25 @@ describe("desktop search and statistics API", () => {
     const todo = await getTodoGroups(root);
     expect(todo.implemented.map((item) => item.ref)).toEqual(["T-001#B-001", "T-001#R-001"]);
     expect(todo.completed).toEqual([]);
+  });
+
+  it("keeps project aggregations available when one canvas contains a removed check block", async () => {
+    const { root } = await createTestWorkspace();
+    const brokenCanvas = await createTaskCanvas(root, { name: "Broken imported canvas" });
+    const brokenWorkspace = await resolveTaskCanvasWorkspace(root, brokenCanvas.canvasId);
+    const invalidManifest = basicManifest() as unknown as { nodes: Array<{ blocks: Array<Record<string, unknown>> }> };
+    invalidManifest.nodes[0].blocks[0].type = "check";
+    await writeJsonFile(brokenWorkspace.manifestFile, invalidManifest);
+
+    await expect(getStatistics(root)).resolves.toMatchObject({
+      taskTotal: 1,
+      blockTotal: 2
+    });
+    await expect(getTodoGroups(root)).resolves.toMatchObject({
+      ready: [expect.objectContaining({ canvasId: "default", ref: "T-001#B-001" })]
+    });
+    await expect(searchProject(root, "T-001 task prompt", { kinds: ["prompt"] })).resolves.toEqual([
+      expect.objectContaining({ canvasId: "default", ref: "T-001" })
+    ]);
   });
 });

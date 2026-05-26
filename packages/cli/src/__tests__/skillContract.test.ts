@@ -51,14 +51,29 @@ describe("agent skill contract docs", () => {
     expect(skill).toContain("This skill produces a plan draft, not runtime state.");
   });
 
-  it("documents runner work kinds and recovery protocol without duplicating CLI help", async () => {
+  it("documents execution-stage skill split for coordinator, reviewer, and recovery", async () => {
+    const coordinator = await readFile(join(repoRoot, "skills/plan-coordinator/SKILL.md"), "utf8");
+    const reviewer = await readFile(join(repoRoot, "skills/plan-reviewer/SKILL.md"), "utf8");
+    const recovery = await readFile(join(repoRoot, "skills/plan-recovery/SKILL.md"), "utf8");
+
+    expect(coordinator).toContain("Use when orchestrating a full PlanWeave plan");
+    expect(coordinator).toContain("Use `plan-runner` for one implementation/check block.");
+    expect(coordinator).toContain("Use `plan-reviewer` for one review gate.");
+    expect(coordinator).toContain("Use `plan-recovery` for doctor findings");
+    expect(reviewer).toContain("Do not implement fixes, coordinate the whole plan, or repair runtime state.");
+    expect(reviewer).toContain("Do not encode blocked, diverged, or tool failure as a review verdict");
+    expect(recovery).toContain("Do not perform normal implementation or review work.");
+    expect(recovery).toContain("verdict: `RECOVERED`, `NEEDS_PLAN_UPDATE`, or `BLOCKED`.");
+  });
+
+  it("documents runner as single implementation/check block execution without duplicating CLI help", async () => {
     const skill = await readFile(join(repoRoot, "skills/plan-runner/SKILL.md"), "utf8");
 
-    expect(skill).toContain("This is an execution protocol, not a CLI reference.");
+    expect(skill).toContain("Use this skill to execute one implementation/check block");
     expect(skill).toContain("For command syntax and topic help");
-    expect(skill).toContain("<pw> help recovery");
-    expect(skill).toContain("Treat claim results by kind: block work, feedback work, batch work, no work, or blocked work.");
-    expect(skill).toContain("Resolved feedback usually returns to review");
+    expect(skill).toContain("<pw> help work");
+    expect(skill).toContain("Do not repair state/results drift here; hand off to `plan-recovery`.");
+    expect(skill).toContain("Do not execute review blocks; use `plan-reviewer`.");
     expect(skill).toContain("Do not create feedback blocks");
   });
 
@@ -69,17 +84,16 @@ describe("agent skill contract docs", () => {
     expect(skill).toContain("Do not write rendered prompt output back into source prompt files.");
   });
 
-  it("documents runner explicit claims, fallback, prompt diagnostics, and subagent control", async () => {
+  it("documents runner assigned block execution, fallback, and prompt diagnostics", async () => {
     const skill = await readFile(join(repoRoot, "skills/plan-runner/SKILL.md"), "utf8");
 
     expect(skill).toContain("<pw> help work");
     expect(skill).toContain("<pw> help submit");
-    expect(skill).toContain("Prefer explicit refs when a controller assigns work");
-    expect(skill).toContain("Preview scheduling before parallel or ambiguous claims.");
+    expect(skill).toContain("Accept a specific implementation/check ref from the coordinator");
+    expect(skill).toContain("Run relevant validation.");
     expect(skill).toContain("Manual Fallback");
     expect(skill).toContain("Check source prompt placement");
-    expect(skill).toContain("Controller duties");
-    expect(skill).toContain("Review blocks are sequential gate work");
+    expect(skill).toContain("Do not coordinate multiple subagents or canvases; use `plan-coordinator`.");
   });
 
   it("documents plan-auditor as a focused PlanWeave plan review skill", async () => {

@@ -170,7 +170,12 @@ The repository includes focused agent skills under `skills/`:
 - `plan-maker`: design a PlanWeave plan draft from a fuzzy goal or sparse codebase context before a formal package exists.
 - `plan-importer`: create a PlanWeave Plan Package from project docs, with plan-quality checks before writing.
 - `plan-auditor`: review an already-authored PlanWeave plan for coverage, lifecycle gaps, contract drift, weak prompts, and unverifiable completion criteria.
-- `plan-runner`: execute already-authored PlanWeave work items. For command syntax, use `planweave help` instead of copying CLI reference into the skill.
+- `plan-coordinator`: keep a full PlanWeave execution loop moving as the main agent, dispatching implementation, review, and recovery work.
+- `plan-runner`: execute one implementation/check block and produce a completion report.
+- `plan-reviewer`: execute one review gate and produce a structured `passed` or `needs_changes` result.
+- `plan-recovery`: diagnose and recover stale current refs, state/results drift, blocked/diverged work, and submit retry confusion.
+
+For simple tasks, one agent can use `plan-runner` directly. For larger plans, use `plan-coordinator` as the main agent and route subagent work to `plan-runner`, `plan-reviewer`, or `plan-recovery`. For command syntax, use `planweave help`.
 
 ## Development
 

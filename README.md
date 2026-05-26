@@ -41,61 +41,62 @@ Your project is represented as a graph of task nodes and block documents. Each f
 - **Statistics, search, and todo views**: inspect development efficiency and project state without leaving the workflow.
 - **Local-first and file-backed**: plans, prompts, run records, and artifacts remain inspectable in your workspace.
 
-## Repository Layout
-
-```text
-packages/runtime   Core graph, package, executor, auto-run, and desktop bridge logic
-packages/cli       planweave command-line interface
-packages/desktop   Electron desktop canvas
-examples           Example PlanWeave packages
-scripts            Repository checks
-```
-
 ## Quick Start
 
-Install dependencies and build all packages:
+PlanWeave is currently CLI-first. The desktop app is available for testing, but it is experimental and unsigned.
+
+Install the CLI with npm:
 
 ```bash
-pnpm install
-pnpm -r build
+npm install -g @planweave/cli
 ```
 
-Run the desktop app:
+After the Homebrew formula is published, install it with Homebrew:
 
 ```bash
+brew install GaosCode/tap/planweave
+```
+
+Then run:
+
+```bash
+planweave --help
+planweave help
+```
+
+## Experimental Desktop App
+
+The desktop app is an experimental build. It is useful for trying the visual task canvas, but the CLI remains the recommended interface for serious work.
+
+There are two ways to try it:
+
+1. Install a packaged build from GitHub Releases.
+
+   Current desktop installers are unsigned. macOS may show an unidentified developer warning, and Windows may show an unknown publisher or SmartScreen warning. For early testing on macOS, open the app with **Right Click -> Open** and confirm the prompt.
+
+2. Clone the source and run the app locally.
+
+```bash
+git clone https://github.com/GaosCode/PlanWeave.git
+cd PlanWeave
+pnpm install
+pnpm -r build
 pnpm --dir packages/desktop start
 ```
 
-## Early Test Builds
-
-PlanWeave is currently distributed as an early test build. macOS packages are not Developer ID signed or Apple-notarized yet. If you download a DMG from GitHub Releases, macOS may show an unidentified developer warning on first launch.
-
-For early testing, open the app with **Right Click -> Open** and confirm the prompt. Formal signed and notarized builds can be added after the project is ready for broader distribution.
-
-Build a local unsigned macOS DMG and ZIP:
-
-```bash
-CSC_IDENTITY_AUTO_DISCOVERY=false pnpm --dir packages/desktop dist:mac
-```
-
-Run the CLI from this workspace:
-
-```bash
-pnpm --filter @planweave/cli planweave --help
-pnpm --filter @planweave/cli planweave help
-```
+For repository layout, source setup, tests, and packaging commands, see [Development](DEVELOPMENT.md).
 
 Initialize or open a project workspace:
 
 ```bash
-pnpm --filter @planweave/cli planweave init --json
-pnpm --filter @planweave/cli planweave validate --json
+planweave init --json
+planweave validate --json
 ```
 
 Run one automatic step:
 
 ```bash
-pnpm --filter @planweave/cli planweave run --once
+planweave run --once
 ```
 
 Auto Run is experimental. It can run the current plan with one command, but the scheduling, executor integration, and recovery behavior may still be unstable; inspect `planweave run-status` and generated run artifacts before relying on it for unattended work.
@@ -103,8 +104,8 @@ Auto Run is experimental. It can run the current plan with one command, but the 
 Inspect execution state:
 
 ```bash
-pnpm --filter @planweave/cli planweave status
-pnpm --filter @planweave/cli planweave run-status
+planweave status
+planweave run-status
 ```
 
 ## CLI Help
@@ -112,10 +113,10 @@ pnpm --filter @planweave/cli planweave run-status
 PlanWeave includes a product-level help command for agent workflows:
 
 ```bash
-pnpm --filter @planweave/cli planweave help
-pnpm --filter @planweave/cli planweave help work
-pnpm --filter @planweave/cli planweave help submit
-pnpm --filter @planweave/cli planweave help recovery
+planweave help
+planweave help work
+planweave help submit
+planweave help recovery
 ```
 
 Use `planweave --help` for the raw command list, and `planweave help <command>` for command-specific options. Use `planweave help <topic>` for workflow guidance:
@@ -133,22 +134,22 @@ Use `planweave --help` for the raw command list, and `planweave help <command>` 
 A typical manual agent loop is:
 
 ```bash
-pnpm --filter @planweave/cli planweave current
-pnpm --filter @planweave/cli planweave claim-next --dry-run
-pnpm --filter @planweave/cli planweave prompt T-001#B-001
-pnpm --filter @planweave/cli planweave submit-result T-001#B-001 --report report.md
+planweave current
+planweave claim-next --dry-run
+planweave prompt T-001#B-001
+planweave submit-result T-001#B-001 --report report.md
 ```
 
 For review gates, submit a structured review result:
 
 ```bash
-pnpm --filter @planweave/cli planweave submit-review T-001#R-001 --result review-result.json
+planweave submit-review T-001#R-001 --result review-result.json
 ```
 
 If a review returns `needs_changes`, PlanWeave creates runtime feedback work. Handle it with:
 
 ```bash
-pnpm --filter @planweave/cli planweave submit-feedback --report feedback-report.md
+planweave submit-feedback --report feedback-report.md
 ```
 
 When scheduling is unclear, prefer `planweave explain <ref>`, `planweave why-not <ref>`, and `planweave doctor` before editing package or state files.
@@ -197,23 +198,7 @@ For simple tasks, one agent can use `plan-runner` directly. For larger plans, us
 
 ## Development
 
-Run tests:
-
-```bash
-pnpm test
-```
-
-Build the workspace:
-
-```bash
-pnpm -r build
-```
-
-Run the desktop smoke test after building:
-
-```bash
-pnpm --filter @planweave/desktop smoke
-```
+Contributor setup, repository layout, test commands, and local packaging notes live in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## License
 

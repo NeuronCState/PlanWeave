@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { claimNext, getExecutionStatus, markBlockBlocked, markBlockDiverged, submitBlockResult } from "../taskManager/index.js";
+import { claimBlock, claimNext, getExecutionStatus, markBlockBlocked, markBlockDiverged, submitBlockResult } from "../taskManager/index.js";
 import { basicManifest, createTestWorkspace, writeReport } from "./promptTestHelpers.js";
 
 describe("getExecutionStatus", () => {
@@ -60,6 +60,27 @@ describe("getExecutionStatus", () => {
         executorRole: "reviewer",
         needsChangesReturnsTo: ["T-001#B-001"]
       }
+    });
+  });
+
+  it("does not advertise default parallel claims while another review is current", async () => {
+    const { root } = await createTestWorkspace(basicManifest({ includeSecondTask: true, parallel: true, maxConcurrent: 2 }));
+    await claimNext({ projectRoot: root });
+    await submitBlockResult({ projectRoot: root, ref: "T-001#B-001", reportPath: await writeReport(root, "b.md") });
+    await claimBlock({ projectRoot: root, ref: "T-001#R-001" });
+
+    const status = await getExecutionStatus({ projectRoot: root });
+    const secondTaskHint = status.claimHints.find((hint) => hint.ref === "T-002#B-001");
+
+    expect(status.currentRefs).toEqual(["T-001#R-001"]);
+    expect(status.nextClaimable).toEqual([]);
+    expect(status.nextParallelClaimable).toEqual([]);
+    expect(status.nextParallelDispatchable).toEqual(["T-002#B-001"]);
+    expect(secondTaskHint).toMatchObject({
+      ready: false,
+      statusReason: "Default claims are locked by current review block 'T-001#R-001'.",
+      dispatchable: true,
+      dispatchCommand: "planweave claim T-002#B-001 --dispatch"
     });
   });
 

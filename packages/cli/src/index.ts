@@ -17,6 +17,7 @@ import { registerSubmitReviewCommand } from "./commands/submitReview.js";
 import { registerSubmitFeedbackCommand } from "./commands/submitFeedback.js";
 import { registerMarkDivergedCommand } from "./commands/markDiverged.js";
 import { registerMarkBlockedCommand } from "./commands/markBlocked.js";
+import { registerRetryReviewCommand } from "./commands/retryReview.js";
 import { registerResolveDivergenceCommand } from "./commands/resolveDivergence.js";
 import { registerUnblockCommand } from "./commands/unblock.js";
 import { registerStatusCommand } from "./commands/status.js";
@@ -55,6 +56,7 @@ export function createProgram(): Command {
   registerSubmitFeedbackCommand(program);
   registerMarkDivergedCommand(program);
   registerMarkBlockedCommand(program);
+  registerRetryReviewCommand(program);
   registerResolveDivergenceCommand(program);
   registerUnblockCommand(program);
   registerStatusCommand(program);

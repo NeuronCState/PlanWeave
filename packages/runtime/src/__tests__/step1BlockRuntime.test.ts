@@ -151,6 +151,19 @@ describe("STEP-1 block runtime", () => {
     await writeReview(secondReview, "needs_changes", "Still not enough.");
     expect(await submitReviewResult({ projectRoot: root, ref: "T-001#R-001", resultPath: secondReview })).toMatchObject({
       verdict: "needs_changes",
+      feedbackId: "FE-002",
+      status: "in_progress"
+    });
+    await claimNext({ projectRoot: root });
+    const secondFeedbackReport = join(home, "feedback-2.md");
+    await writeFile(secondFeedbackReport, "Handled second feedback.\n", "utf8");
+    await submitFeedback({ projectRoot: root, reportPath: secondFeedbackReport });
+    await claimNext({ projectRoot: root });
+
+    const thirdReview = join(home, "review-3.json");
+    await writeReview(thirdReview, "needs_changes", "Still not enough.");
+    expect(await submitReviewResult({ projectRoot: root, ref: "T-001#R-001", resultPath: thirdReview })).toMatchObject({
+      verdict: "needs_changes",
       status: "completed"
     });
 

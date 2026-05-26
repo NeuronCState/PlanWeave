@@ -143,6 +143,24 @@ describe("claimNext", () => {
     });
   });
 
+  it("dispatches a parallel-safe implementation block without replacing the current review claim", async () => {
+    const { root } = await createTestWorkspace(basicManifest({ includeSecondTask: true, parallel: true, maxConcurrent: 2 }));
+    await claimNext({ projectRoot: root });
+    await submitBlockResult({ projectRoot: root, ref: "T-001#B-001", reportPath: await writeReport(root, "b.md") });
+    await claimBlock({ projectRoot: root, ref: "T-001#R-001" });
+
+    const dispatch = await claimBlock({ projectRoot: root, ref: "T-002#B-001", dispatch: true });
+    const status = await getExecutionStatus({ projectRoot: root });
+
+    expect(dispatch).toMatchObject({
+      kind: "block",
+      ref: "T-002#B-001",
+      reason: "dispatched"
+    });
+    expect(status.currentRefs).toEqual(["T-001#R-001", "T-002#B-001"]);
+    expect(status.blocks.find((block) => block.ref === "T-002#B-001")?.status).toBe("in_progress");
+  });
+
   it("claims the next executable block inside an explicit task", async () => {
     const { root } = await createTestWorkspace(basicManifest({ includeSecondTask: true }));
 

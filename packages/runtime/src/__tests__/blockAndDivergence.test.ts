@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { claimNext, markBlockBlocked, markBlockDiverged, resolveBlockDivergence, unblockBlock } from "../taskManager/index.js";
-import { createTestWorkspace } from "./promptTestHelpers.js";
+import {
+  claimNext,
+  getExecutionStatus,
+  markBlockBlocked,
+  markBlockDiverged,
+  resolveBlockDivergence,
+  submitBlockResult,
+  submitReviewResult,
+  unblockBlock
+} from "../taskManager/index.js";
+import { basicManifest, createTestWorkspace, writeReport, writeReviewResult } from "./promptTestHelpers.js";
 
 describe("block recovery commands", () => {
   it("blocks and unblocks block refs with explicit reasons", async () => {
@@ -41,5 +50,27 @@ describe("block recovery commands", () => {
       status: "ready",
       reason: "rebased"
     });
+  });
+
+  it("clears max-cycle completion state when resolving a diverged review block", async () => {
+    const { root } = await createTestWorkspace(basicManifest({ reviewMaxFeedbackCycles: 0 }));
+    await claimNext({ projectRoot: root });
+    await submitBlockResult({ projectRoot: root, ref: "T-001#B-001", reportPath: await writeReport(root, "b.md") });
+    await claimNext({ projectRoot: root });
+    await submitReviewResult({
+      projectRoot: root,
+      ref: "T-001#R-001",
+      resultPath: await writeReviewResult(root, "needs_changes", "Still failing.")
+    });
+
+    await markBlockDiverged({ projectRoot: root, ref: "T-001#R-001", reason: "review cycle config changed" });
+    await resolveBlockDivergence({ projectRoot: root, ref: "T-001#R-001", reason: "max cycles increased" });
+    const status = await getExecutionStatus({ projectRoot: root });
+
+    expect(status.blocks.find((block) => block.ref === "T-001#R-001")).toMatchObject({
+      status: "ready",
+      completionReason: null
+    });
+    expect(status.warnings.map((warning) => warning.code)).not.toContain("review_max_cycles_reached");
   });
 });

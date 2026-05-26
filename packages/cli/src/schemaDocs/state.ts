@@ -22,6 +22,7 @@ export const stateSchemaDocument: SchemaDocument = {
         lastRunId: "string | null, optional",
         latestReviewAttemptId: "string | null, optional",
         activeFeedbackId: "string | null, optional",
+        pendingFeedbackId: "string | null, optional",
         blockedReason: "string | null, optional",
         divergenceReason: "string | null, optional",
         completionReason: ["passed", "max_cycles_reached", null],

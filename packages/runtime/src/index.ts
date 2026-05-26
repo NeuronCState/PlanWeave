@@ -60,6 +60,7 @@ export {
   submitFeedback,
   markBlockBlocked,
   markBlockDiverged,
+  retryReview,
   unblockBlock,
   resolveBlockDivergence,
   getExecutionStatus

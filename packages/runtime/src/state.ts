@@ -99,9 +99,13 @@ export function ensureStateForManifest(manifest: PlanPackageManifest, state: Run
   const validBlockRefs = new Set(graph.blockRefsInManifestOrder);
   const currentRefs = Array.isArray(state.currentRefs) ? state.currentRefs.filter((ref) => typeof ref === "string") : [];
   const feedback = state.feedback ?? {};
+  const currentFeedback = state.currentFeedbackId ? feedback[state.currentFeedbackId] : null;
   const next: RuntimeState = {
     currentRefs: currentRefs.filter((ref) => validBlockRefs.has(ref)),
-    currentFeedbackId: state.currentFeedbackId && feedback[state.currentFeedbackId] ? state.currentFeedbackId : null,
+    currentFeedbackId:
+      state.currentFeedbackId && currentFeedback && (currentFeedback.status === "open" || currentFeedback.status === "in_progress")
+        ? state.currentFeedbackId
+        : null,
     currentReviewBlockRef:
       state.currentReviewBlockRef && validBlockRefs.has(state.currentReviewBlockRef) ? state.currentReviewBlockRef : null,
     tasks: {},

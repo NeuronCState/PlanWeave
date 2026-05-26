@@ -344,7 +344,7 @@ describe("desktop auto run API", () => {
     await expect(readFile(retryState.eventLogPath, "utf8")).resolves.toContain('"resetMaxCycleReviewRefs":["T-001#R-001"]');
     await expect(readState(init.workspace.stateFile)).resolves.toMatchObject({
       feedback: {
-        "FE-002": {
+        "FE-003": {
           sourceReviewBlockRef: "T-001#R-001",
           status: "open"
         }

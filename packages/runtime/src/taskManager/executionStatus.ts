@@ -11,6 +11,7 @@ import type {
 import { loadRuntime } from "./runtimeContext.js";
 import {
   blockDependenciesCompleted,
+  canDispatchImplementationBlock,
   canClaimReviewBlock,
   getBlock,
   isActiveFeedbackStatus,
@@ -32,6 +33,25 @@ function statusReasonForBlock(blockState: BlockState | undefined): string | null
     return blockState.divergenceReason ?? null;
   }
   return blockState?.blockedReason ?? blockState?.divergenceReason ?? null;
+}
+
+function currentClaimLockReason(graph: CompiledExecutionGraph, state: RuntimeState): string | null {
+  const activeFeedback = Object.entries(state.feedback).find(([, feedback]) => feedback.status === "open" || feedback.status === "in_progress");
+  if (activeFeedback) {
+    return `Default claims are locked by current feedback '${activeFeedback[0]}'.`;
+  }
+  const inProgressReview = graph.blockRefsInManifestOrder.find((ref) => {
+    const block = graph.blocksByRef.get(ref);
+    return block?.type === "review" && state.blocks[ref]?.status === "in_progress";
+  });
+  if (inProgressReview) {
+    return `Default claims are locked by current review block '${inProgressReview}'.`;
+  }
+  const inProgressBlock = graph.blockRefsInManifestOrder.find((ref) => {
+    const block = graph.blocksByRef.get(ref);
+    return block?.type !== "review" && state.blocks[ref]?.status === "in_progress";
+  });
+  return inProgressBlock ? `Default claims are locked by current block '${inProgressBlock}'.` : null;
 }
 
 export async function getExecutionStatus(options: { projectRoot: PackageWorkspaceRef; session?: ExecutionGraphSession }) {
@@ -59,6 +79,7 @@ export async function getExecutionStatus(options: { projectRoot: PackageWorkspac
   }
   const currentFeedbackId =
     state.currentFeedbackId && isActiveFeedbackStatus(state.feedback[state.currentFeedbackId]?.status) ? state.currentFeedbackId : null;
+  const defaultClaimLockReason = currentClaimLockReason(graph, state);
   const claimHints = graph.blockRefsInManifestOrder.map((ref) => {
     const taskId = graph.blockTaskByRef.get(ref);
     const block = graph.blocksByRef.get(ref);
@@ -73,12 +94,14 @@ export async function getExecutionStatus(options: { projectRoot: PackageWorkspac
         ? requiredImplementationRefs(graph, taskId).filter((dependency) => state.blocks[dependency]?.status !== "completed")
         : [];
     const blockedByBlocks = Array.from(new Set([...directBlockBlockers, ...reviewWorkBlockers]));
-    const ready =
+    const baseReady =
       !!taskId &&
       state.blocks[ref]?.status === "ready" &&
       taskDependenciesSatisfied(graph, state, taskId) &&
       (block?.type === "review" ? canClaimReviewBlock(graph, state, ref) : blockDependenciesCompleted(graph, state, ref));
+    const ready = baseReady && defaultClaimLockReason === null;
     const parallelSafe = block?.type !== "review" && !!graph.parallelSafeByBlockRef.get(ref);
+    const dispatchable = canDispatchImplementationBlock(graph, state, ref);
     const downstreamTasks = taskId && block?.type === "review" ? (graph.taskDependentsByTask.get(taskId) ?? []) : [];
     const reviewGate =
       taskId && block?.type === "review"
@@ -104,6 +127,7 @@ export async function getExecutionStatus(options: { projectRoot: PackageWorkspac
     const explicitStatusReason = statusReasonForBlock(blockState);
     const statusReason =
       explicitStatusReason ??
+      (baseReady && defaultClaimLockReason ? defaultClaimLockReason : null) ??
       (block?.type === "review" && !block.review.required
         ? "Optional review gate is not required and is not claimable; task can complete without it."
         : null);
@@ -121,12 +145,15 @@ export async function getExecutionStatus(options: { projectRoot: PackageWorkspac
       parallelSafe,
       sequentialOnly: block?.type === "review" || !parallelSafe,
       recommendedCommand: ready ? `planweave claim ${ref}` : null,
+      dispatchable,
+      dispatchCommand: dispatchable ? `planweave claim ${ref} --dispatch` : null,
       reviewGate
     };
   });
   const nextClaimable = claimHints.filter((hint) => hint.ready).map((hint) => hint.ref);
   const nextParallelClaimable = claimHints.filter((hint) => hint.ready && hint.parallelSafe).map((hint) => hint.ref);
   const nextSequentialClaimable = claimHints.filter((hint) => hint.ready && !hint.parallelSafe).map((hint) => hint.ref);
+  const nextParallelDispatchable = claimHints.filter((hint) => hint.dispatchable).map((hint) => hint.ref);
   const warnings: ValidationIssue[] = graph.blockRefsInManifestOrder
     .filter((ref) => state.blocks[ref]?.completionReason === "max_cycles_reached")
     .map((ref) => ({
@@ -174,6 +201,7 @@ export async function getExecutionStatus(options: { projectRoot: PackageWorkspac
     nextClaimable,
     nextParallelClaimable,
     nextSequentialClaimable,
+    nextParallelDispatchable,
     claimHints,
     warnings,
     counts: {

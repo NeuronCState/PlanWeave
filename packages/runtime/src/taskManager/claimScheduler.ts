@@ -7,6 +7,7 @@ import {
   activeOpenFeedback,
   blockDependenciesCompleted,
   blockInScope,
+  canDispatchImplementationBlock,
   canClaimReviewBlock,
   claimResultForBlock,
   feedbackInScope,
@@ -15,6 +16,14 @@ import {
   taskDependenciesSatisfied,
   validateClaimScope
 } from "./selectors.js";
+
+function withCurrentRef(currentRefs: string[], ref: string): string[] {
+  return currentRefs.includes(ref) ? currentRefs : [...currentRefs, ref];
+}
+
+function withoutCurrentRef(currentRefs: string[], ref: string): string[] {
+  return currentRefs.filter((currentRef) => currentRef !== ref);
+}
 
 export async function claimNext(options: {
   projectRoot: PackageWorkspaceRef;
@@ -61,7 +70,7 @@ export async function claimNext(options: {
     feedback.status = "in_progress";
     state.currentFeedbackId = feedbackId;
     state.currentReviewBlockRef = feedback.sourceReviewBlockRef;
-    state.currentRefs = [];
+    state.currentRefs = withoutCurrentRef(state.currentRefs, feedback.sourceReviewBlockRef);
     state = refreshDerivedState(manifest, state);
     await writeState(workspace.stateFile, state);
     return { kind: "feedback", content: feedback.content };
@@ -83,7 +92,8 @@ export async function claimNext(options: {
       if (dryRun) {
         return claimResultForBlock(inProgressReview, graph, "feedback_resolved");
       }
-      state.currentRefs = [inProgressReview];
+      state.blocks[inProgressReview] = { ...state.blocks[inProgressReview], pendingFeedbackId: null };
+      state.currentRefs = withCurrentRef(state.currentRefs, inProgressReview);
       state.currentFeedbackId = null;
       state.currentReviewBlockRef = inProgressReview;
       await writeState(workspace.stateFile, refreshDerivedState(manifest, state));
@@ -97,13 +107,15 @@ export async function claimNext(options: {
     if (!blockInScope(inProgressReview, graph, scope)) {
       return { kind: "blocked", ref: inProgressReview, reason: "A review block is in progress outside the selected Auto Run scope." };
     }
+    const reason = state.blocks[inProgressReview]?.pendingFeedbackId ? "feedback_resolved" : "current";
     if (dryRun) {
-      return claimResultForBlock(inProgressReview, graph, "current");
+      return claimResultForBlock(inProgressReview, graph, reason);
     }
-    state.currentRefs = [inProgressReview];
+    state.blocks[inProgressReview] = { ...state.blocks[inProgressReview], pendingFeedbackId: null };
+    state.currentRefs = withCurrentRef(state.currentRefs, inProgressReview);
     state.currentReviewBlockRef = inProgressReview;
     await writeState(workspace.stateFile, refreshDerivedState(manifest, state));
-    return claimResultForBlock(inProgressReview, graph, "current");
+    return claimResultForBlock(inProgressReview, graph, reason);
   }
 
   const current = graph.blockRefsInManifestOrder.find((ref) => {
@@ -278,8 +290,31 @@ export async function claimNext(options: {
 export async function claimBlock(options: {
   projectRoot: PackageWorkspaceRef;
   ref: string;
+  dispatch?: boolean;
   session?: ExecutionGraphSession;
 }): Promise<ClaimResult> {
+  if (options.dispatch) {
+    const context = await loadRuntime(options);
+    const { workspace, manifest, graph, state } = context;
+    const invalidScope = validateClaimScope({ kind: "block", blockRef: options.ref }, graph);
+    if (invalidScope) {
+      return invalidScope;
+    }
+    const block = graph.blocksByRef.get(options.ref);
+    if (block?.type !== "implementation") {
+      return { kind: "blocked", ref: options.ref, reason: "dispatch claims only support implementation blocks." };
+    }
+    if (!graph.parallelSafeByBlockRef.get(options.ref)) {
+      return { kind: "blocked", ref: options.ref, reason: `Block '${options.ref}' is not parallel-safe.` };
+    }
+    if (!canDispatchImplementationBlock(graph, state, options.ref)) {
+      return { kind: "blocked", ref: options.ref, reason: `Block '${options.ref}' is not dispatchable right now.` };
+    }
+    state.blocks[options.ref] = { ...state.blocks[options.ref], status: "in_progress" };
+    state.currentRefs = withCurrentRef(state.currentRefs, options.ref);
+    await writeState(workspace.stateFile, refreshDerivedState(manifest, state));
+    return claimResultForBlock(options.ref, graph, "dispatched");
+  }
   return claimNext({ projectRoot: options.projectRoot, scope: { kind: "block", blockRef: options.ref }, session: options.session });
 }
 

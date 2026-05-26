@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -9,19 +8,17 @@ import { writeState } from "../state.js";
 import type {
   ExecutionGraphSession,
   FeedbackStatus,
-  ManifestReviewBlock,
-  ManifestTaskNode,
   PackageWorkspaceRef,
   ProjectWorkspace,
-  ReviewHookOutput,
   ReviewResult,
   SubmitReviewResult,
   TaskResultIndex,
   ValidationIssue
 } from "../types.js";
 import { writeFeedbackArtifact, type FeedbackArtifact } from "./feedbackArtifacts.js";
+import { executeReviewHook } from "./reviewHook.js";
 import { loadRuntime, refreshDerivedState } from "./runtimeContext.js";
-import { incrementTaskIndexCount, listDirCount, nextId, updateTaskIndex } from "./resultIndex.js";
+import { incrementTaskIndexCount, listDirCount, nextId, recordReviewCompletionReason, updateTaskIndex } from "./resultIndex.js";
 import { computeWorkRevision, getBlock, getTask, isActiveFeedbackStatus } from "./selectors.js";
 
 const reviewResultSchema = z
@@ -30,13 +27,6 @@ const reviewResultSchema = z
     taskId: z.string().min(1),
     verdict: z.enum(["passed", "needs_changes"]),
     content: z.string()
-  })
-  .strict();
-
-const reviewHookOutputSchema = z
-  .object({
-    action: z.literal("use_feedback"),
-    feedbackPrompt: z.string().min(1)
   })
   .strict();
 
@@ -49,53 +39,6 @@ type PersistedReviewAttempt = {
   reviewedWorkRevision: string | null;
   sourceResultPath: string | null;
 };
-
-async function executeReviewHook(options: {
-  projectRoot: string;
-  reviewBlock: ManifestReviewBlock;
-  reviewResult: ReviewResult;
-  task: ManifestTaskNode;
-  reviewBlockRef: string;
-  feedbackCycleCount: number;
-}): Promise<ReviewHookOutput> {
-  const hook = options.reviewBlock.review.hook;
-  if (!hook) {
-    return { action: "use_feedback", feedbackPrompt: options.reviewResult.content };
-  }
-  const input = JSON.stringify({
-    reviewResult: options.reviewResult,
-    task: { taskId: options.task.id, title: options.task.title },
-    reviewBlockRef: options.reviewBlockRef,
-    feedbackCycleCount: options.feedbackCycleCount
-  });
-  const output = await new Promise<string>((resolve, reject) => {
-    const child = spawn(hook.command, hook.args, { cwd: options.projectRoot, stdio: ["pipe", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
-      stdout += chunk;
-    });
-    child.stderr.on("data", (chunk: string) => {
-      stderr += chunk;
-    });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve(stdout);
-      } else {
-        reject(new Error(stderr.trim() || `hook exited with code ${code}`));
-      }
-    });
-    child.stdin.end(input);
-  });
-  const parsed = reviewHookOutputSchema.safeParse(JSON.parse(output));
-  if (!parsed.success) {
-    throw new Error(parsed.error.issues.map((issue) => issue.message).join("; "));
-  }
-  return parsed.data;
-}
 
 async function recordReviewAttemptIndexes(options: {
   workspace: ProjectWorkspace;
@@ -214,23 +157,6 @@ async function findPersistedReviewAttempt(options: {
   return null;
 }
 
-async function recordReviewCompletionReason(options: {
-  workspace: ProjectWorkspace;
-  taskId: string;
-  reviewBlockRef: string;
-  completionReason: "passed" | "max_cycles_reached";
-  warning?: ValidationIssue;
-}): Promise<void> {
-  await updateTaskIndex(options.workspace, options.taskId, (index) => ({
-    ...index,
-    reviewCompletionReasonByBlock: {
-      ...(index.reviewCompletionReasonByBlock ?? {}),
-      [options.reviewBlockRef]: options.completionReason
-    },
-    warnings: options.warning ? [...(index.warnings ?? []), options.warning] : index.warnings
-  }));
-}
-
 async function recordFeedbackEnvelopeIndexes(options: {
   workspace: ProjectWorkspace;
   taskId: string;
@@ -323,6 +249,15 @@ async function nextFeedbackId(options: { workspace: ProjectWorkspace; taskId: st
   return feedbackId;
 }
 
+function maxFeedbackCyclesReached(previousFeedbackCount: number, maxFeedbackCycles: number): boolean {
+  // maxFeedbackCycles counts re-review feedback cycles after the initial needs_changes envelope.
+  return maxFeedbackCycles === 0 || previousFeedbackCount > maxFeedbackCycles;
+}
+
+function withoutCurrentRef(currentRefs: string[], ref: string): string[] {
+  return currentRefs.filter((currentRef) => currentRef !== ref);
+}
+
 export async function submitReviewResult(options: {
   projectRoot: PackageWorkspaceRef;
   ref: string;
@@ -363,7 +298,12 @@ export async function submitReviewResult(options: {
     persistedFeedback !== null &&
     state.currentFeedbackId === persistedFeedback.feedbackId &&
     state.currentReviewBlockRef === options.ref;
-  const shouldReusePersistedAttempt = persistedAttemptId !== null && (isSameWorkRevision || isCurrentFeedbackRetry);
+  const isPendingResolvedFeedbackRetry =
+    parsed.verdict === "needs_changes" &&
+    persistedFeedback !== null &&
+    persistedFeedback.status === "resolved" &&
+    state.blocks[options.ref]?.pendingFeedbackId === persistedFeedback.feedbackId;
+  const shouldReusePersistedAttempt = persistedAttemptId !== null && (isSameWorkRevision || isCurrentFeedbackRetry || isPendingResolvedFeedbackRetry);
   const attemptId =
     shouldReusePersistedAttempt && persistedAttemptId
       ? persistedAttemptId
@@ -404,14 +344,15 @@ export async function submitReviewResult(options: {
         status: "in_progress",
         latestReviewAttemptId: attemptId,
         activeFeedbackId: persistedFeedbackIsActive ? persistedFeedback.feedbackId : null,
+        pendingFeedbackId: persistedFeedback.status === "resolved" ? persistedFeedback.feedbackId : null,
         completionReason: null
       };
       state.currentReviewBlockRef = options.ref;
       if (persistedFeedbackIsActive) {
         state.currentFeedbackId = persistedFeedback.feedbackId;
-        state.currentRefs = [];
+        state.currentRefs = withoutCurrentRef(state.currentRefs, options.ref);
       } else {
-        state.currentRefs = state.currentRefs.includes(options.ref) ? state.currentRefs : [options.ref];
+        state.currentRefs = state.currentRefs.includes(options.ref) ? state.currentRefs : [...state.currentRefs, options.ref];
       }
       state = refreshDerivedState(manifest, state);
       await writeState(workspace.stateFile, state);
@@ -420,7 +361,8 @@ export async function submitReviewResult(options: {
         reviewAttemptId: attemptId,
         verdict: "needs_changes",
         feedbackId: persistedFeedback.feedbackId,
-        status: "in_progress"
+        status: "in_progress",
+        feedbackCreated: true
       };
     }
     if (parsed.verdict === "needs_changes" && persistedCompletionReason === "max_cycles_reached") {
@@ -429,6 +371,7 @@ export async function submitReviewResult(options: {
         status: "completed",
         latestReviewAttemptId: attemptId,
         activeFeedbackId: null,
+        pendingFeedbackId: null,
         blockedReason: null,
         completionReason: "max_cycles_reached"
       };
@@ -436,7 +379,15 @@ export async function submitReviewResult(options: {
       state.currentRefs = state.currentRefs.filter((ref) => ref !== options.ref);
       state = refreshDerivedState(manifest, state);
       await writeState(workspace.stateFile, state);
-      return { ref: options.ref, reviewAttemptId: attemptId, verdict: "needs_changes", status: "completed" };
+      return {
+        ref: options.ref,
+        reviewAttemptId: attemptId,
+        verdict: "needs_changes",
+        status: "completed",
+        completionReason: "max_cycles_reached",
+        feedbackCreated: false,
+        message: "No feedback envelope was created because max feedback cycles were reached."
+      };
     }
   }
   const task = getTask(graph, taskId);
@@ -448,6 +399,7 @@ export async function submitReviewResult(options: {
       status: "completed",
       latestReviewAttemptId: attemptId,
       activeFeedbackId: null,
+      pendingFeedbackId: null,
       completionReason: "passed",
       passedWorkRevision: workRevision
     };
@@ -461,10 +413,17 @@ export async function submitReviewResult(options: {
     state.currentRefs = state.currentRefs.filter((ref) => ref !== options.ref);
     state = refreshDerivedState(manifest, state);
     await writeState(workspace.stateFile, state);
-    return { ref: options.ref, reviewAttemptId: attemptId, verdict: "passed", status: "completed" };
+    return {
+      ref: options.ref,
+      reviewAttemptId: attemptId,
+      verdict: "passed",
+      status: "completed",
+      completionReason: "passed",
+      feedbackCreated: false
+    };
   }
 
-  if (previousFeedbackCount >= block.review.maxFeedbackCycles) {
+  if (maxFeedbackCyclesReached(previousFeedbackCount, block.review.maxFeedbackCycles)) {
     const warning: ValidationIssue = {
       code: "review_max_cycles_reached",
       message: `Review block '${options.ref}' reached max feedback cycles without passing.`,
@@ -474,6 +433,8 @@ export async function submitReviewResult(options: {
       ...state.blocks[options.ref],
       status: "completed",
       latestReviewAttemptId: attemptId,
+      activeFeedbackId: null,
+      pendingFeedbackId: null,
       completionReason: "max_cycles_reached"
     };
     await recordReviewCompletionReason({
@@ -487,7 +448,15 @@ export async function submitReviewResult(options: {
     state.currentRefs = state.currentRefs.filter((ref) => ref !== options.ref);
     state = refreshDerivedState(manifest, state);
     await writeState(workspace.stateFile, state);
-    return { ref: options.ref, reviewAttemptId: attemptId, verdict: "needs_changes", status: "completed" };
+    return {
+      ref: options.ref,
+      reviewAttemptId: attemptId,
+      verdict: "needs_changes",
+      status: "completed",
+      completionReason: "max_cycles_reached",
+      feedbackCreated: false,
+      message: "No feedback envelope was created because max feedback cycles were reached."
+    };
   }
 
   let feedbackContent: string;
@@ -506,6 +475,8 @@ export async function submitReviewResult(options: {
       ...state.blocks[options.ref],
       status: "blocked",
       latestReviewAttemptId: attemptId,
+      activeFeedbackId: null,
+      pendingFeedbackId: null,
       blockedReason: `Review hook failed: ${error instanceof Error ? error.message : String(error)}`
     };
     state.currentRefs = state.currentRefs.filter((ref) => ref !== options.ref);
@@ -541,12 +512,13 @@ export async function submitReviewResult(options: {
     ...state.blocks[options.ref],
     status: "in_progress",
     latestReviewAttemptId: attemptId,
-    activeFeedbackId: feedbackId
+    activeFeedbackId: feedbackId,
+    pendingFeedbackId: null
   };
   state.currentFeedbackId = feedbackId;
   state.currentReviewBlockRef = options.ref;
-  state.currentRefs = [];
+  state.currentRefs = withoutCurrentRef(state.currentRefs, options.ref);
   state = refreshDerivedState(manifest, state);
   await writeState(workspace.stateFile, state);
-  return { ref: options.ref, reviewAttemptId: attemptId, verdict: "needs_changes", feedbackId, status: "in_progress" };
+  return { ref: options.ref, reviewAttemptId: attemptId, verdict: "needs_changes", feedbackId, status: "in_progress", feedbackCreated: true };
 }

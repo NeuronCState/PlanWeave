@@ -8,6 +8,10 @@ import { patchFeedbackArtifact } from "./feedbackArtifacts.js";
 import { loadRuntime, refreshDerivedState } from "./runtimeContext.js";
 import { incrementTaskIndexCount, listDirCount, nextId, updateTaskIndex } from "./resultIndex.js";
 
+function withCurrentRef(currentRefs: string[], ref: string): string[] {
+  return currentRefs.includes(ref) ? currentRefs : [...currentRefs, ref];
+}
+
 async function fileHash(path: string): Promise<string> {
   return createHash("sha256").update(await readFile(path)).digest("hex");
 }
@@ -143,11 +147,12 @@ export async function submitFeedback(options: {
   state.blocks[feedback.sourceReviewBlockRef] = {
     ...state.blocks[feedback.sourceReviewBlockRef],
     status: "in_progress",
-    activeFeedbackId: null
+    activeFeedbackId: null,
+    pendingFeedbackId: feedbackId
   };
-  state.currentFeedbackId = feedbackId;
+  state.currentFeedbackId = null;
   state.currentReviewBlockRef = feedback.sourceReviewBlockRef;
-  state.currentRefs = [feedback.sourceReviewBlockRef];
+  state.currentRefs = withCurrentRef(state.currentRefs, feedback.sourceReviewBlockRef);
   state = refreshDerivedState(manifest, state);
   await writeState(workspace.stateFile, state);
   return {

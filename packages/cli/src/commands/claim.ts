@@ -14,9 +14,14 @@ export function registerClaimCommand(program: Command): void {
     .command("claim [ref]")
     .description("Claim a specific block by ref, or the next executable block matching a type")
     .option("--type <type>", "claim the next executable block of a type: implementation or review")
-    .action(async (ref: string | undefined, options: { type?: string }) => {
+    .option("--dispatch", "formally dispatch a parallel-safe implementation block without replacing current work")
+    .action(async (ref: string | undefined, options: { type?: string; dispatch?: boolean }) => {
       if (ref) {
-        console.log(JSON.stringify(await claimBlock({ projectRoot: resolveCliProjectRoot(), ref }), null, 2));
+        console.log(JSON.stringify(await claimBlock({ projectRoot: resolveCliProjectRoot(), ref, dispatch: options.dispatch }), null, 2));
+        return;
+      }
+      if (options.dispatch) {
+        console.log(JSON.stringify({ kind: "blocked", reason: "claim --dispatch requires a block ref." }, null, 2));
         return;
       }
       if (options.type) {

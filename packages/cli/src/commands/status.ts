@@ -13,7 +13,7 @@ export function formatClaimHint(hint: ClaimHint): string {
         : `status ${hint.status}`;
   const gate = hint.reviewGate ? "review gate, " : "";
   const mode = hint.sequentialOnly ? "sequential-only" : "parallel-safe";
-  const command = hint.recommendedCommand ? `, run: ${hint.recommendedCommand}` : "";
+  const command = hint.recommendedCommand ? `, run: ${hint.recommendedCommand}` : hint.dispatchCommand ? `, dispatch: ${hint.dispatchCommand}` : "";
   return `- ${hint.ref}: ${reason}, ${gate}${mode}${command}`;
 }
 
@@ -37,6 +37,7 @@ export function registerStatusCommand(program: Command): void {
       console.log(`Next claimable: ${status.nextClaimable.join(", ") || "none"}`);
       console.log(`Next parallel claimable: ${status.nextParallelClaimable.join(", ") || "none"}`);
       console.log(`Next sequential claimable: ${status.nextSequentialClaimable.join(", ") || "none"}`);
+      console.log(`Next parallel dispatchable: ${status.nextParallelDispatchable.join(", ") || "none"}`);
       console.log("Claim hints:");
       for (const hint of status.claimHints) {
         console.log(formatClaimHint(hint));

@@ -1,6 +1,8 @@
 import { writeState } from "../state.js";
-import type { ClaimScope, PackageWorkspaceRef } from "../types.js";
+import { writeJsonFile } from "../json.js";
+import type { ClaimScope, ManifestReviewBlock, PackageWorkspaceRef, PlanPackageManifest, RetryReviewResult } from "../types.js";
 import { loadRuntime, refreshDerivedState } from "./runtimeContext.js";
+import { clearReviewCompletionReason } from "./resultIndex.js";
 import { blockDependenciesCompleted, blockInScope } from "./selectors.js";
 
 export async function resetMaxCycleReviewsForRetry(options: {
@@ -18,13 +20,19 @@ export async function resetMaxCycleReviewsForRetry(options: {
       continue;
     }
     refs.push(ref);
+    const taskId = graph.blockTaskByRef.get(ref);
     state.blocks[ref] = {
       ...blockState,
       status: blockDependenciesCompleted(graph, state, ref) ? "ready" : "planned",
       activeFeedbackId: null,
+      pendingFeedbackId: null,
       blockedReason: null,
-      completionReason: null
+      completionReason: null,
+      passedWorkRevision: null
     };
+    if (taskId) {
+      await clearReviewCompletionReason(workspace, taskId, ref);
+    }
   }
 
   if (refs.length > 0) {
@@ -45,4 +53,75 @@ export async function resetMaxCycleReviewsForRetry(options: {
   }
 
   return { refs };
+}
+
+function requireMaxFeedbackCycles(value: number): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error("retry-review --max-feedback-cycles must be a non-negative integer.");
+  }
+  return value;
+}
+
+function updateReviewBlockMaxCycles(manifest: PlanPackageManifest, ref: string, maxFeedbackCycles: number): PlanPackageManifest {
+  const [taskId, blockId] = ref.split("#");
+  let found = false;
+  const nodes = manifest.nodes.map((node) => {
+    if (node.type !== "task" || node.id !== taskId) {
+      return node;
+    }
+    return {
+      ...node,
+      blocks: node.blocks.map((block) => {
+        if (block.id !== blockId) {
+          return block;
+        }
+        if (block.type !== "review") {
+          throw new Error(`Block '${ref}' is not a review block.`);
+        }
+        found = true;
+        return {
+          ...block,
+          review: {
+            ...block.review,
+            maxFeedbackCycles
+          }
+        } satisfies ManifestReviewBlock;
+      })
+    };
+  });
+  if (!found) {
+    throw new Error(`Review block '${ref}' does not exist.`);
+  }
+  return { ...manifest, nodes };
+}
+
+export async function retryReview(options: {
+  projectRoot: PackageWorkspaceRef;
+  ref: string;
+  maxFeedbackCycles: number;
+}): Promise<RetryReviewResult> {
+  const maxFeedbackCycles = requireMaxFeedbackCycles(options.maxFeedbackCycles);
+  const context = await loadRuntime({ projectRoot: options.projectRoot });
+  const { workspace, manifest, graph } = context;
+  const block = graph.blocksByRef.get(options.ref);
+  if (!block) {
+    throw new Error(`Block '${options.ref}' does not exist.`);
+  }
+  if (block.type !== "review") {
+    throw new Error(`Block '${options.ref}' is not a review block.`);
+  }
+
+  await writeJsonFile(workspace.manifestFile, updateReviewBlockMaxCycles(manifest, options.ref, maxFeedbackCycles));
+  const reset = await resetMaxCycleReviewsForRetry({
+    projectRoot: workspace,
+    scope: { kind: "block", blockRef: options.ref }
+  });
+  const updated = await loadRuntime({ projectRoot: workspace });
+  const status = updated.state.blocks[options.ref]?.status ?? "planned";
+  return {
+    ref: options.ref,
+    status,
+    maxFeedbackCycles,
+    reset: reset.refs.includes(options.ref)
+  };
 }

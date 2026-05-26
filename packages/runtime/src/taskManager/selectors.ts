@@ -43,7 +43,11 @@ export function activeOpenFeedback(state: RuntimeState): Array<[string, Feedback
   return Object.entries(state.feedback).filter(([, feedback]) => isActiveFeedbackStatus(feedback.status));
 }
 
-export function claimResultForBlock(ref: string, graph: CompiledExecutionGraph, reason: "claimed" | "current" | "feedback_resolved"): ClaimResult {
+export function claimResultForBlock(
+  ref: string,
+  graph: CompiledExecutionGraph,
+  reason: "claimed" | "current" | "feedback_resolved" | "dispatched"
+): ClaimResult {
   const { taskId, blockId } = parseBlockRef(ref);
   const block = getBlock(graph, ref);
   return {
@@ -129,6 +133,37 @@ export function canClaimReviewBlock(graph: CompiledExecutionGraph, state: Runtim
   }
   const workRevision = computeWorkRevision(graph, state, ref);
   return state.blocks[ref]?.passedWorkRevision !== workRevision;
+}
+
+function refsConflict(graph: CompiledExecutionGraph, leftRef: string, rightRef: string): boolean {
+  if (leftRef === rightRef) {
+    return false;
+  }
+  const leftTaskId = graph.blockTaskByRef.get(leftRef);
+  const rightTaskId = graph.blockTaskByRef.get(rightRef);
+  if (!leftTaskId || !rightTaskId) {
+    return true;
+  }
+  if (leftTaskId === rightTaskId || graph.taskReachable(leftTaskId, rightTaskId) || graph.taskReachable(rightTaskId, leftTaskId)) {
+    return true;
+  }
+  const leftLocks = new Set(graph.locksByBlockRef.get(leftRef) ?? []);
+  return (graph.locksByBlockRef.get(rightRef) ?? []).some((lock) => leftLocks.has(lock));
+}
+
+export function canDispatchImplementationBlock(graph: CompiledExecutionGraph, state: RuntimeState, ref: string): boolean {
+  const taskId = graph.blockTaskByRef.get(ref);
+  const block = graph.blocksByRef.get(ref);
+  if (!taskId || block?.type !== "implementation") {
+    return false;
+  }
+  if (!graph.parallelSafeByBlockRef.get(ref) || state.blocks[ref]?.status !== "ready") {
+    return false;
+  }
+  if (!taskDependenciesSatisfied(graph, state, taskId) || !blockDependenciesCompleted(graph, state, ref)) {
+    return false;
+  }
+  return state.currentRefs.every((currentRef) => state.blocks[currentRef]?.status !== "in_progress" || !refsConflict(graph, ref, currentRef));
 }
 
 export function markClaimed(state: RuntimeState, ref: string, graph: CompiledExecutionGraph): void {

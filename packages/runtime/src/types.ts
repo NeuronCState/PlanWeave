@@ -172,6 +172,7 @@ export type BlockState = {
   lastRunId?: string | null;
   latestReviewAttemptId?: string | null;
   activeFeedbackId?: string | null;
+  pendingFeedbackId?: string | null;
   blockedReason?: string | null;
   divergenceReason?: string | null;
   completionReason?: "passed" | "max_cycles_reached" | null;
@@ -329,7 +330,7 @@ export type ClaimResult =
       taskId: string;
       blockId: string;
       blockType: BlockType;
-      reason?: "claimed" | "current" | "feedback_resolved";
+      reason?: "claimed" | "current" | "feedback_resolved" | "dispatched";
       requestedMode?: "parallel";
       parallelFallbackReason?: "review_requires_sequential_claim";
       nextParallelClaimable?: string[];
@@ -503,6 +504,9 @@ export type SubmitReviewResult = {
   verdict: ReviewVerdict;
   feedbackId?: string;
   status: BlockStatus;
+  completionReason?: "passed" | "max_cycles_reached" | null;
+  feedbackCreated?: boolean;
+  message?: string;
 };
 
 export type SubmitFeedbackResult = {
@@ -552,6 +556,8 @@ export type ClaimHint = {
   parallelSafe: boolean;
   sequentialOnly: boolean;
   recommendedCommand: string | null;
+  dispatchable: boolean;
+  dispatchCommand: string | null;
   reviewGate: ReviewGateHint | null;
 };
 
@@ -639,6 +645,7 @@ export type PlanStatus = {
   nextClaimable: string[];
   nextParallelClaimable: string[];
   nextSequentialClaimable: string[];
+  nextParallelDispatchable: string[];
   claimHints: ClaimHint[];
   warnings: ValidationIssue[];
   counts: {
@@ -695,3 +702,7 @@ export type MarkBlockedResult = BlockRecoveryResult;
 export type MarkDivergedResult = BlockRecoveryResult;
 export type ResolveDivergenceResult = BlockRecoveryResult;
 export type UnblockResult = BlockRecoveryResult;
+export type RetryReviewResult = BlockRecoveryResult & {
+  maxFeedbackCycles: number;
+  reset: boolean;
+};

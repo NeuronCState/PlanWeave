@@ -40,16 +40,14 @@ describe("agent skill contract docs", () => {
     expect(skill).toContain("Separate plan defects from PlanWeave toolchain defects in the report.");
   });
 
-  it("documents JSON Claim Result branches and block-ref recovery commands in plan-runner", async () => {
+  it("documents runner work kinds and recovery protocol without duplicating CLI help", async () => {
     const skill = await readFile(join(repoRoot, "skills/plan-runner/SKILL.md"), "utf8");
 
-    expect(skill).toContain('kind: "block"');
-    expect(skill).toContain('kind: "feedback"');
-    expect(skill).toContain('kind: "batch"');
-    expect(skill).toContain('kind: "blocked"');
-    expect(skill).toContain("<pw> submit-feedback --report");
-    expect(skill).toContain("<pw> unblock <block-ref>");
-    expect(skill).toContain("<pw> resolve-divergence <block-ref> --reason");
+    expect(skill).toContain("This is an execution protocol, not a CLI reference.");
+    expect(skill).toContain("For command syntax and topic help");
+    expect(skill).toContain("<pw> help recovery");
+    expect(skill).toContain("Treat claim results by kind: block work, feedback work, batch work, no work, or blocked work.");
+    expect(skill).toContain("Resolved feedback usually returns to review");
     expect(skill).toContain("Do not create feedback blocks");
   });
 
@@ -63,11 +61,10 @@ describe("agent skill contract docs", () => {
   it("documents runner explicit claims, fallback, prompt diagnostics, and subagent control", async () => {
     const skill = await readFile(join(repoRoot, "skills/plan-runner/SKILL.md"), "utf8");
 
-    expect(skill).toContain("<pw> current");
-    expect(skill).toContain("<pw> claim <ref>");
-    expect(skill).toContain("<pw> claim-task <taskId>");
-    expect(skill).toContain("<pw> claim --type review");
-    expect(skill).toContain("<pw> claim-next --parallel --dry-run");
+    expect(skill).toContain("<pw> help work");
+    expect(skill).toContain("<pw> help submit");
+    expect(skill).toContain("Prefer explicit refs when a controller assigns work");
+    expect(skill).toContain("Preview scheduling before parallel or ambiguous claims.");
     expect(skill).toContain("Manual Fallback");
     expect(skill).toContain("Check source prompt placement");
     expect(skill).toContain("Controller duties");

@@ -1,32 +1,32 @@
 ---
 name: plan-runner
-description: Claim, execute, review, and recover PlanWeave blocks through the CLI with manual fallback when runtime state is unreliable. Use when an agent is asked to run PlanWeave work, coordinate subagents, process feedback, or continue a Plan Package.
+description: Execute already-authored PlanWeave work items with scoped engineering changes, review handling, feedback handling, and state-aware fallback. Use when an agent is asked to run PlanWeave work, coordinate subagents, process feedback, or continue a Plan Package.
 ---
 
 # Plan Runner
 
-Use this skill to execute work from an existing PlanWeave Plan Package.
+Use this skill to execute work from an existing PlanWeave Plan Package. This is an execution protocol, not a CLI reference.
 
 ## Command Entry
 
-Resolve the command before claiming work:
+Resolve the command before claiming work. Use examples as `<pw> ...`.
 
 1. Use a user-provided command if given.
 2. Else try global `planweave`.
 3. In the PlanWeave repo, prefer `pnpm --filter @planweave/cli planweave`.
 
-Write examples as `<pw> ...`.
+For command syntax and topic help, run `<pw> help`, `<pw> help work`, `<pw> help submit`, `<pw> help explain`, `<pw> help recovery`, or `<pw> help autorun`. Do not duplicate the CLI manual in this skill.
 
 ## Controller Loop
 
-1. Run `<pw> current` and `<pw> status --json`.
-2. If a specific ref is known, use `<pw> claim <ref>`; for a whole task use `<pw> claim-task <taskId>`; for review use `<pw> claim --type review`.
-3. Use `<pw> claim-next --dry-run` or `<pw> claim-next --parallel --dry-run` to preview scheduling. Use real `claim-next` only when automatic selection is desired.
-4. If unsure why a block is or is not runnable, run `<pw> explain <ref>` or `<pw> why-not <ref>`.
-5. Parse Claim Result: `kind: "block"`, `kind: "feedback"`, `kind: "batch"`, `kind: "none"`, or `kind: "blocked"`.
-6. For `block`, render `<pw> prompt <ref>`, execute, then submit with `submit-result` or `submit-review`.
-7. For `feedback`, handle content, write a Markdown report, run `<pw> submit-feedback --report <path>`, then follow `nextCommand`.
-8. After submit, run `<pw> current` or `<pw> claim-next --dry-run` to decide the next step.
+1. Inspect current work and status before claiming new work.
+2. Prefer explicit refs when a controller assigns work; use automatic claim only when selection is intentionally delegated to PlanWeave.
+3. Preview scheduling before parallel or ambiguous claims.
+4. Explain blocked or skipped work before changing state.
+5. Treat claim results by kind: block work, feedback work, batch work, no work, or blocked work.
+6. Render the prompt for the claimed item and read referenced files before editing.
+7. Submit through the CLI after producing the required report/result artifact.
+8. Re-check current work after submit; continue only when the next item is clear.
 
 ## Manual Fallback
 
@@ -36,7 +36,7 @@ The CLI is preferred but not assumed perfect.
 - Manually assign only block refs that are dependency-ready, in scope, and not already claimed.
 - Execute from rendered prompt when available; if prompt rendering fails, assemble context from global/project/task/block prompt sources and report the fallback.
 - Try to write back through CLI submit commands. If write-back fails, preserve reports/results and tell the user exactly what could not be reconciled.
-- Run `<pw> doctor` before recovery; use `<pw> doctor --repair` only for recoverable state/results drift.
+- Use CLI help recovery guidance before repair; only run repair for recoverable state/results drift.
 
 ## Prompt Diagnostics
 
@@ -54,6 +54,7 @@ The CLI is preferred but not assumed perfect.
 - Run relevant validation after the change.
 - Reports must state changed files, behavior changed, behavior kept, validation run, and remaining risk.
 - For review blocks, produce `review-result.json` with `passed` or `needs_changes`; do not encode blocked/diverged state as a review verdict.
+- Do not treat a mock, dry-run, fixture-only test, or uncalled API as a completed live path unless the prompt explicitly scoped it that way.
 
 ## Review Policy
 
@@ -65,26 +66,17 @@ The CLI is preferred but not assumed perfect.
 
 - For multiple canvases, run them in explicit dependency/phase order from the package or project prompt.
 - Independent canvases may run in parallel only when dependencies and locks are clear.
-- Controller duties: preview claims, assign refs to subagents, give each subagent prompt path and submit command, monitor reports, close completed agents, and reconcile state with `<pw> current` / `<pw> status --json`.
+- Controller duties: preview claims, assign refs to subagents, give each subagent prompt path and submit command, monitor reports, close completed agents, and reconcile state.
 - Do not leave completed subagents running. After their report is submitted, release or close them.
 
-## Recovery Commands
+## Recovery Protocol
 
-- Blocked: `<pw> mark-blocked <ref> --reason "<reason>"`, then later `<pw> unblock <block-ref> --reason "<reason>"`.
-- Diverged: `<pw> mark-diverged <ref> --reason "<reason>"`, reconcile the package, then `<pw> resolve-divergence <block-ref> --reason "<reason>"`.
-- Stale current/ref/index issues: run `<pw> doctor`, then `<pw> doctor --repair` if the reported repair is safe.
-- Feedback resolved: run `<pw> claim-next` or explicit `<pw> claim <review-ref>` to continue re-review.
-- Parallel mismatch: compare `status.nextParallelClaimable` and `status.nextSequentialClaimable`; review gates are sequential-only.
-
-## Claim Result Contract
-
-```ts
-{ kind: "block"; ref: string; taskId: string; blockId: string; blockType: "implementation" | "check" | "review"; reason?: "claimed" | "current" | "feedback_resolved" }
-{ kind: "feedback"; content: string }
-{ kind: "batch"; refs: string[] }
-{ kind: "none"; reason?: string; nextSequentialClaimable?: string[] }
-{ kind: "blocked"; ref?: string; reason: string }
-```
+- Use `<pw> help recovery` for exact commands.
+- Blocked work needs an explicit reason and an unblock reason later.
+- Diverged work must be reconciled in the Plan Package before normal execution resumes.
+- Stale current refs, orphan results, and index/state drift require diagnosis before repair.
+- Resolved feedback usually returns to review; do not resubmit resolved feedback as current work.
+- Parallel mismatch should be explained through status/explain output before assuming no work exists.
 
 ## Rules
 

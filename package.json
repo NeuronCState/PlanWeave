@@ -1,6 +1,6 @@
 {
   "name": "planweave",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -9,6 +9,7 @@
     "build": "pnpm -r build",
     "check:dom-boundaries": "node scripts/check-renderer-dom-boundaries.mjs",
     "pack:npm": "pnpm -r --filter @planweave/runtime --filter @planweave/cli pack",
+    "planweave": "pnpm --filter @planweave/cli planweave",
     "publish:npm": "pnpm -r --filter @planweave/runtime --filter @planweave/cli publish --access public",
     "test": "pnpm check:dom-boundaries && vitest run"
   },

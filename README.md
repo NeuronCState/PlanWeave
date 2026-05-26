@@ -13,11 +13,12 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.0.0-orange?style=for-the-badge" />
+  <img alt="version" src="https://img.shields.io/badge/version-0.1.0-orange?style=for-the-badge" />
   <img alt="license" src="https://img.shields.io/badge/license-MIT-yellow.svg?style=for-the-badge" />
   <img alt="language" src="https://img.shields.io/badge/language-TypeScript-3178c6?style=for-the-badge" />
   <img alt="runtime" src="https://img.shields.io/badge/runtime-Node.js-43853d?style=for-the-badge" />
   <img alt="desktop" src="https://img.shields.io/badge/desktop-Electron-47848f?style=for-the-badge" />
+  <img alt="agents" src="https://img.shields.io/badge/agents-Codex%20%7C%20OpenCode-6f42c1?style=for-the-badge" />
 </p>
 
 
@@ -51,7 +52,7 @@ Install the CLI with npm:
 npm install -g @planweave/cli
 ```
 
-After the Homebrew formula is published, install it with Homebrew:
+Or install it with Homebrew:
 
 ```bash
 brew install GaosCode/tap/planweave
@@ -61,8 +62,104 @@ Then run:
 
 ```bash
 planweave --help
-planweave help
 ```
+
+## Agent Execution
+
+PlanWeave supports executor profiles, so different blocks can run through different agents or local commands. A typical graph can mix:
+
+- Codex execution for implementation work.
+- OpenCode execution for blocks that should run in an OpenCode session.
+- Local review commands for deterministic validation.
+- Review-feedback loops that continue automatically when feedback is enabled.
+
+Each block run writes durable output under the PlanWeave workspace, including prompt, stdout, stderr, report, metadata, and monitor commands when available.
+
+## Agent Skills
+
+The repository includes focused agent skills under `skills/`:
+
+- `plan-maker`: design a PlanWeave plan draft from a fuzzy goal or sparse codebase context before a formal package exists.
+- `plan-importer`: create a PlanWeave Plan Package from project docs, with plan-quality checks before writing.
+- `plan-auditor`: review an already-authored PlanWeave plan for coverage, lifecycle gaps, contract drift, weak prompts, and unverifiable completion criteria.
+- `plan-coordinator`: keep a full PlanWeave execution loop moving as the main agent, dispatching implementation, review, and recovery work.
+- `plan-runner`: execute one implementation block and produce a completion report.
+- `plan-reviewer`: execute one review gate and produce a structured `passed` or `needs_changes` result.
+- `plan-recovery`: diagnose and recover stale current refs, state/results drift, blocked/diverged work, and submit retry confusion.
+
+Install them with the `skills` CLI:
+
+```bash
+npx skills@latest add GaosCode/PlanWeave
+```
+
+## Agent Workflow
+
+After installing the skills, use this flow in your target project:
+
+1. Ask your agent to create or import a plan.
+
+```text
+Use skill: plan-maker
+Create a PlanWeave plan for this project from the goal below...
+```
+
+If you already have PRDs, roadmaps, issues, or architecture notes, use `plan-importer` instead.
+
+2. Ask the coordinator to run the plan.
+
+```text
+Use skill: plan-coordinator
+Run the current PlanWeave package. Route implementation to plan-runner, review gates to plan-reviewer, and recovery work to plan-recovery.
+```
+
+3. Let the coordinator dispatch focused agents.
+
+The coordinator should assign one concrete block at a time. Implementation agents use `plan-runner`; review agents use `plan-reviewer`; abnormal state or submit retry problems use `plan-recovery`.
+
+4. Use the CLI for inspection when needed.
+
+```bash
+planweave status
+planweave current
+planweave explain <ref>
+planweave doctor
+```
+
+For simple tasks, one agent can use `plan-runner` directly. For larger plans, use `plan-coordinator` as the main agent and route subagent work to `plan-runner`, `plan-reviewer`, or `plan-recovery`.
+
+## Auto Run
+
+PlanWeave includes an experimental one-command execution path:
+
+```bash
+planweave run --once
+planweave run-status
+```
+
+Auto Run can claim work, call an executor, collect run artifacts, and continue review-feedback loops. It is still experimental: scheduling, executor integration, and recovery behavior may be unstable. Inspect `planweave run-status` and generated run artifacts before relying on it for unattended work.
+
+## Manual CLI Workflow
+
+Most users should drive PlanWeave through skills. The manual CLI loop is useful for debugging, demos, or writing your own agent integration:
+
+```bash
+planweave init --json
+planweave validate --json
+planweave current
+planweave claim-next --dry-run
+planweave prompt T-001#B-001
+planweave submit-result T-001#B-001 --report report.md
+```
+
+Review gates and feedback loops can be handled manually too:
+
+```bash
+planweave submit-review T-001#R-001 --result review-result.json
+planweave submit-feedback --report feedback-report.md
+```
+
+When scheduling is unclear, prefer `planweave explain <ref>`, `planweave why-not <ref>`, and `planweave doctor` before editing package or state files.
 
 ## Experimental Desktop App
 
@@ -86,85 +183,6 @@ pnpm --dir packages/desktop start
 
 For repository layout, source setup, tests, and packaging commands, see [Development](DEVELOPMENT.md).
 
-Initialize or open a project workspace:
-
-```bash
-planweave init --json
-planweave validate --json
-```
-
-Run one automatic step:
-
-```bash
-planweave run --once
-```
-
-Auto Run is experimental. It can run the current plan with one command, but the scheduling, executor integration, and recovery behavior may still be unstable; inspect `planweave run-status` and generated run artifacts before relying on it for unattended work.
-
-Inspect execution state:
-
-```bash
-planweave status
-planweave run-status
-```
-
-## CLI Help
-
-PlanWeave includes a product-level help command for agent workflows:
-
-```bash
-planweave help
-planweave help work
-planweave help submit
-planweave help recovery
-```
-
-Use `planweave --help` for the raw command list, and `planweave help <command>` for command-specific options. Use `planweave help <topic>` for workflow guidance:
-
-- `setup`: locate or initialize the PlanWeave workspace.
-- `plan`: inspect and refresh prompt surfaces.
-- `work`: inspect current work, preview claims, and claim executable blocks.
-- `submit`: submit implementation, review, and feedback results.
-- `explain`: understand why a block is or is not claimable.
-- `recovery`: diagnose blocked, diverged, or inconsistent state.
-- `autorun`: inspect executors and run controlled auto-run steps.
-
-## Agent Workflow
-
-A typical manual agent loop is:
-
-```bash
-planweave current
-planweave claim-next --dry-run
-planweave prompt T-001#B-001
-planweave submit-result T-001#B-001 --report report.md
-```
-
-For review gates, submit a structured review result:
-
-```bash
-planweave submit-review T-001#R-001 --result review-result.json
-```
-
-If a review returns `needs_changes`, PlanWeave creates runtime feedback work. Handle it with:
-
-```bash
-planweave submit-feedback --report feedback-report.md
-```
-
-When scheduling is unclear, prefer `planweave explain <ref>`, `planweave why-not <ref>`, and `planweave doctor` before editing package or state files.
-
-## Agent Execution
-
-PlanWeave supports executor profiles, so different blocks can run through different agents or local commands. A typical graph can mix:
-
-- Codex execution for implementation work.
-- OpenCode execution for blocks that should run in an OpenCode session.
-- Local review commands for deterministic validation.
-- Review-feedback loops that continue automatically when feedback is enabled.
-
-Each block run writes durable output under the PlanWeave workspace, including prompt, stdout, stderr, report, metadata, and monitor commands when available.
-
 ## Future Direction
 
 PlanWeave is still early, and several directions can make plan-based agent work smoother:
@@ -172,29 +190,6 @@ PlanWeave is still early, and several directions can make plan-based agent work 
 - **Better Auto Run UX and reliability**: make automatic execution easier to understand, monitor, pause, resume, recover, and trust, while improving scheduling correctness, failure recovery, and long-running stability.
 - **Collaborative planning board**: let multiple people edit the same task board, refine plan structure together, and turn shared planning decisions into executable blocks.
 - **Cross-host coordination**: PlanWeave already supports routing different blocks to different local agents or executor profiles. A future coordinator could let remote Agent Hosts register capabilities, claim plan blocks through leases, report heartbeats, and submit artifacts safely, making it possible to run specialized frontend, review, runtime, docs, or other agents on different machines.
-
-## Agent Skills
-
-The repository includes focused agent skills under `skills/`:
-
-- `plan-maker`: design a PlanWeave plan draft from a fuzzy goal or sparse codebase context before a formal package exists.
-- `plan-importer`: create a PlanWeave Plan Package from project docs, with plan-quality checks before writing.
-- `plan-auditor`: review an already-authored PlanWeave plan for coverage, lifecycle gaps, contract drift, weak prompts, and unverifiable completion criteria.
-- `plan-coordinator`: keep a full PlanWeave execution loop moving as the main agent, dispatching implementation, review, and recovery work.
-- `plan-runner`: execute one implementation block and produce a completion report.
-- `plan-reviewer`: execute one review gate and produce a structured `passed` or `needs_changes` result.
-- `plan-recovery`: diagnose and recover stale current refs, state/results drift, blocked/diverged work, and submit retry confusion.
-
-Install them with the `skills` CLI:
-
-```bash
-npx skills@latest add GaosCode/PlanWeave --list
-npx skills@latest add GaosCode/PlanWeave -g -a codex --skill '*' -y
-```
-
-The first command lists the available skills before installing. The second command installs all PlanWeave skills globally for Codex. To install into the current project instead, remove `-g`; to target OpenClaw, replace `codex` with `openclaw`. To opt out of anonymous installer telemetry, prefix the command with `DISABLE_TELEMETRY=1`.
-
-For simple tasks, one agent can use `plan-runner` directly. For larger plans, use `plan-coordinator` as the main agent and route subagent work to `plan-runner`, `plan-reviewer`, or `plan-recovery`. For command syntax, use `planweave help`.
 
 ## Development
 

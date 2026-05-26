@@ -11,10 +11,17 @@ Use this skill for abnormal PlanWeave execution state. Do not perform normal imp
 
 1. Stop dispatching dependent work.
 2. Resolve the CLI entry and run `<pw> help recovery` for exact commands.
-3. Inspect current/status/explain output and run doctor before repair.
+3. Inspect current/status/explain output; run doctor only for state/results consistency questions.
 4. Separate plan defects from runtime state/results drift.
 5. Prefer CLI repair and explicit recovery commands over direct file edits.
 6. Report what was repaired, what remains unsafe, and the next coordinator action.
+
+## Doctor Boundary
+
+- `doctor` detects narrow runtime state/results consistency issues such as stale current refs, orphan results, and state/index run drift.
+- `doctor --repair` is not a general plan repair tool.
+- Do not use doctor to fix bad dependencies, unsafe parallelization, missing prompts, wrong review-gate design, or unclear task/block granularity.
+- For plan defects, report `NEEDS_PLAN_UPDATE` and guide manual edits to the Plan Package, prompts, dependencies, or review gates.
 
 ## Diagnose First
 
@@ -31,12 +38,13 @@ Check:
 
 ## Recovery Actions
 
-- Use doctor before repair; use repair only when the reported fix is narrow and evidence-backed.
+- Use doctor before state/results repair; use repair only when the reported fix is narrow and evidence-backed.
 - Use blocked/unblocked commands for external prerequisites or temporary stops.
 - Use diverged/resolve-divergence when implementation reality no longer matches the Plan Package.
 - For submit partial success, look for persisted report/result artifacts before creating new runs or attempts.
 - For feedback resolved but still current, re-check current/status before submitting anything.
 - For parallel mismatch, compare sequential and parallel claimability before declaring no work.
+- If parallel mismatch comes from package design, adjust dependencies, parallel safety, or review gate placement manually instead of running repair.
 
 ## Manual Fallback
 

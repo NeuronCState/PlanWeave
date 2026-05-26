@@ -18,6 +18,7 @@ Use this skill as the main agent/controller for a PlanWeave package. Do not impl
 
 ## Routing
 
+- Treat PlanWeave skills as execution roles. The coordinator owns routing and must tell each subagent which skill to use.
 - Use `plan-runner` for one implementation/check block.
 - Use `plan-reviewer` for one review gate.
 - Use `plan-recovery` for doctor findings, stale current refs, orphan results, state/index drift, blocked/diverged work, or submit retry confusion.
@@ -40,6 +41,7 @@ Use this skill as the main agent/controller for a PlanWeave package. Do not impl
 
 Every subagent handoff should include:
 
+- explicit instruction: `Use skill: plan-runner`, `Use skill: plan-reviewer`, or `Use skill: plan-recovery`.
 - block ref or feedback id.
 - block type and expected skill: `plan-runner`, `plan-reviewer`, or `plan-recovery`.
 - rendered prompt path/content and source prompt paths when relevant.
@@ -60,6 +62,8 @@ Every subagent handoff should include:
 
 - Use `plan-recovery` before running repair commands or editing package/state files.
 - Keep plan defects separate from PlanWeave toolchain defects.
+- Treat `doctor` as a state/results consistency probe, not a general plan repair tool.
+- For bad dependencies, wrong parallelization, missing prompts, or review-gate design problems, route to manual Plan Package adjustment instead of `doctor --repair`.
 - Do not hide partial success, duplicate runs, stale current refs, or orphan artifacts.
 - If package changes are needed to resolve divergence, pause dependent execution until the package is reconciled.
 

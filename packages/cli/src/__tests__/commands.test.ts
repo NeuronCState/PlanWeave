@@ -59,6 +59,8 @@ describe("planweave CLI contract", () => {
     expect(formatPlanweaveHelp("work")).toContain("planweave claim-next --parallel --dry-run");
     expect(formatPlanweaveHelp("submit")).toContain("planweave submit-review <review-block-ref> --result <review-result.json>");
     expect(formatPlanweaveHelp("recovery")).toContain("planweave doctor --repair");
+    expect(formatPlanweaveHelp("recovery")).toContain("Doctor checks state/results consistency; it is not a general Plan Package repair tool.");
+    expect(formatPlanweaveHelp("recovery")).toContain("Fix bad dependencies, unsafe parallelization, missing prompts, or review-gate design");
   });
 
   it("prints claim hint status reasons", () => {

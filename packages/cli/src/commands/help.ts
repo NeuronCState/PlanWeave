@@ -52,7 +52,7 @@ export const planweaveHelpTopics: HelpTopic[] = [
   },
   {
     name: "recovery",
-    summary: "Recover blocked, diverged, or inconsistent runtime state.",
+    summary: "Diagnose recovery issues and repair narrow runtime state/results drift.",
     commands: [
       "doctor",
       "doctor --repair",
@@ -61,7 +61,11 @@ export const planweaveHelpTopics: HelpTopic[] = [
       "mark-diverged <ref> --reason <reason>",
       "resolve-divergence <ref> --reason <reason>"
     ],
-    notes: ["Use doctor before repair.", "Separate Plan Package defects from runtime state/results drift."]
+    notes: [
+      "Doctor checks state/results consistency; it is not a general Plan Package repair tool.",
+      "Use doctor --repair only for narrow, evidence-backed runtime drift.",
+      "Fix bad dependencies, unsafe parallelization, missing prompts, or review-gate design by manually updating the Plan Package."
+    ]
   },
   {
     name: "autorun",

@@ -57,12 +57,17 @@ describe("agent skill contract docs", () => {
     const recovery = await readFile(join(repoRoot, "skills/plan-recovery/SKILL.md"), "utf8");
 
     expect(coordinator).toContain("Use when orchestrating a full PlanWeave plan");
+    expect(coordinator).toContain("Treat PlanWeave skills as execution roles.");
+    expect(coordinator).toContain("Use skill: plan-runner");
     expect(coordinator).toContain("Use `plan-runner` for one implementation/check block.");
     expect(coordinator).toContain("Use `plan-reviewer` for one review gate.");
     expect(coordinator).toContain("Use `plan-recovery` for doctor findings");
+    expect(coordinator).toContain("Treat `doctor` as a state/results consistency probe, not a general plan repair tool.");
     expect(reviewer).toContain("Do not implement fixes, coordinate the whole plan, or repair runtime state.");
     expect(reviewer).toContain("Do not encode blocked, diverged, or tool failure as a review verdict");
     expect(recovery).toContain("Do not perform normal implementation or review work.");
+    expect(recovery).toContain("`doctor --repair` is not a general plan repair tool.");
+    expect(recovery).toContain("For plan defects, report `NEEDS_PLAN_UPDATE`");
     expect(recovery).toContain("verdict: `RECOVERED`, `NEEDS_PLAN_UPDATE`, or `BLOCKED`.");
   });
 

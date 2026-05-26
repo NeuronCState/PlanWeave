@@ -1,112 +1,89 @@
 ---
 name: plan-importer
-description: Generate a block-level PlanWeave Plan Package from project documentation and validate it through the planweave CLI.
+description: Generate a block-level PlanWeave Plan Package from project documentation and validate it through the PlanWeave CLI. Use when importing plans, PRDs, roadmaps, issue sets, or architecture notes into a PlanWeave package.
 ---
 
 # Plan Importer
 
-Use this skill when a user wants to turn a project's own planning documents into a PlanWeave Plan Package for that project.
+Use this skill to turn project planning material into a PlanWeave Plan Package.
 
-## Workspace Location
+## Command Entry
 
-- Run PlanWeave commands from the target project's root, not from the PlanWeave repository unless PlanWeave itself is the target project.
+Resolve the command before writing files:
+
+1. Use a user-provided command if given.
+2. Else try global `planweave`.
+3. In the PlanWeave repo, prefer `pnpm --filter @planweave/cli planweave`.
+4. If the repo defines another local script, use that exact entry and show it in the report.
+
+Write examples as `<pw> ...`, where `<pw>` is the resolved command.
+
+## Workspace
+
+- Run `<pw>` from the target project root, not from the PlanWeave repo unless PlanWeave itself is the target project.
 - Do not create or write `./.planweave` inside the target project by hand.
-- PlanWeave stores project plans under `PLANWEAVE_HOME` when that environment variable is set.
-- When `PLANWEAVE_HOME` is not set, the default home is the user's `.planweave` directory:
+- PlanWeave stores project plans under `PLANWEAVE_HOME` when set; otherwise defaults to:
   - macOS: `~/.planweave`
   - Linux: `~/.planweave`
   - Windows: `%USERPROFILE%\.planweave`
-- A specific project package is nested under that home as `projects/<project-id>/package`; never guess `<project-id>`.
-- Always read the exact package path from `planweave init --json` or `planweave paths --json`, then write only inside that returned `workspace.packageDir` / `packageDir`.
+- Read the exact package path from `<pw> init --json` or `<pw> paths --json`; write only inside the returned `workspace.packageDir` / `packageDir`.
+- Treat the CLI-returned package directory as the only writable Plan Package location.
 
-## Workflow
+## Import Workflow
 
-1. Scan the target project's planning documents, README, ADRs, issue notes, and domain notes.
-2. Record the scanned source list before writing the package.
-3. Extract goals, requirements, constraints, key decisions, components, risks, Task Nodes, and executable Blocks.
-4. Build a coverage map:
-   - every task should implement at least one goal or requirement;
-   - important constraints should be linked with `constrained_by`;
-   - important component impact should be linked with `touches`;
-   - known risks should be risk nodes linked with `conflicts_with` or other relevant context edges;
-   - task `acceptance` entries must be concrete, verifiable outcomes.
-5. Run `planweave init --json` from the target project root.
-6. Read `.workspace.packageDir` from the JSON output. If the workspace already exists and you need to confirm paths, run `planweave paths --json`.
-7. Write `manifest.json` into the returned package directory.
-8. Write task prompts as `nodes/<task-id>/prompt.md`.
-9. Write block prompts as `nodes/<task-id>/blocks/<block-id>.prompt.md`.
-10. Add executor profiles only when the source plan needs Auto Run; otherwise rely on the built-in `manual` executor.
-11. Run `planweave validate --json`.
-12. Fix validation errors and importer-created weak coverage where possible.
-13. Output a Plan Import Report for user review. The report is not runtime truth and must not be added to the manifest schema.
+1. Scan README, planning docs, ADRs, issues, specs, domain notes, and referenced source files.
+2. Record the scanned source list before writing.
+3. Extract executable Task Nodes and Blocks; default to task-only graph nodes.
+4. Do not create context nodes by default. Put goals, requirements, constraints, risks, references, and architecture gates into project/global prompt, task acceptance, task prompt, or block prompt. Create context nodes only when the user explicitly asks for them.
+5. Build a coverage map: each task has concrete acceptance, each block has verifiable done criteria, and key requirements have an explicit prompt placement.
+6. Run `<pw> init --json`, then write `manifest.json`, task prompts, and block prompts under the returned package directory.
+7. Run `<pw> validate --json`; fix validation errors and weak importer-created coverage.
+8. Output a Plan Import Report listing source docs, command entry, package path, prompt placement, canvas strategy, review strategy, and validation result.
 
-## Block Authoring
+## Prompt Placement
 
-Every executable Task Node must include at least:
+- PlanWeave Global Prompt / Project Prompt: cross-cutting rules, architecture constraints, reference files, coding standards, shared risks.
+- Task Prompt: task-local context, acceptance rationale, dependencies, files likely touched.
+- Block Prompt: exact execution instructions, validation commands, output/report expectations.
+- Do not write rendered prompt output back into source prompt files. Rendered prompts come from `<pw> prompt <ref>` and are derived artifacts.
+- Do not leave block prompts empty. If a block needs no separate detail, say that it inherits task/project context and list the concrete done condition.
 
-```text
-T-001/
-├─ prompt.md
-└─ blocks/
-   ├─ B-001.prompt.md
-   └─ R-001.prompt.md
-```
+## Task And Block Granularity
 
-Manifest block shape:
+- Do not split for the sake of splitting. Split by data flow, ownership boundary, dependency, risk, or independently verifiable acceptance.
+- Merge tasks that are too small to claim, test, or report independently.
+- Prefer `implementation` blocks for work and `check` blocks for explicit verification work.
+- Add review blocks only for complex code, cross-contract changes, database/schema migration, provider integration, security/privacy, architecture changes, or high-risk user-visible behavior.
+- Do not add review blocks for simple docs, config tweaks, local copy edits, or low-risk single-file changes unless the user asks.
 
-```json
-{
-  "blocks": [
-    {
-      "id": "B-001",
-      "type": "implementation",
-      "title": "Implement current task",
-      "prompt": "nodes/T-001/blocks/B-001.prompt.md",
-      "depends_on": [],
-      "parallel": { "safe": false, "locks": [] }
-    },
-    {
-      "id": "R-001",
-      "type": "review",
-      "title": "Review current task",
-      "prompt": "nodes/T-001/blocks/R-001.prompt.md",
-      "depends_on": ["B-001"],
-      "review": {
-        "required": true,
-        "maxFeedbackCycles": 1,
-        "hook": null
-      }
-    }
-  ]
-}
-```
+## Multi-Canvas Strategy
 
-If source docs explicitly include testing or verification work, add a `check` block and make the review block depend on it.
+- For small plans, use one package canvas.
+- For large plans, especially 100+ tasks/nodes, split by phase, subsystem, workflow, or owner into task canvases.
+- Keep each canvas small enough for an agent to scan and execute; prefer roughly 10-30 tasks per canvas when the source plan allows it.
+- Express cross-canvas dependencies through task dependency edges in the package and explain canvas order in project/global prompt.
+- Independent canvases may run in parallel only when dependencies and locks make that safe.
 
-## Executor Profiles
-
-Use the built-in manual executor unless the plan explicitly needs Auto Run:
+## Minimal Block Shape
 
 ```json
 {
-  "execution": {
-    "defaultExecutor": "manual",
-    "parallel": { "enabled": false, "maxConcurrent": 1 }
-  },
-  "executors": {
-    "manual": { "adapter": "manual" }
-  }
+  "id": "B-001",
+  "type": "implementation",
+  "title": "Implement focused task slice",
+  "prompt": "nodes/T-001/blocks/B-001.prompt.md",
+  "depends_on": [],
+  "parallel": { "safe": false, "locks": [] }
 }
 ```
+
+If review is justified, add `R-001` after implementation/check blocks with `review.required: true` and a clear review prompt.
 
 ## Rules
 
-- Treat `package/manifest.json`, `nodes/<task-id>/prompt.md`, and `nodes/<task-id>/blocks/*.prompt.md` as the plan content source of truth.
-- Treat the CLI-returned package directory as the only writable Plan Package location.
-- Do not write `package/global-prompt.md`.
-- Do not write `manifest.global_prompt`.
-- Do not create `feedback` block types.
-- Do not create runtime graph mirrors, `.plan/`, SQLite stores, HTTP APIs, Docker services, or MCP servers.
+- Treat `package/manifest.json`, source prompts, and task/block prompt files as plan content source of truth.
+- Do not create `feedback` block types; feedback is runtime state.
 - Do not write implementation state into the manifest.
 - Use `state.json` only for runtime task/block/feedback state.
+- Do not create runtime graph mirrors, `.plan/`, SQLite stores, HTTP APIs, Docker services, or MCP servers.
 - Do not use the Plan Import Report as a substitute for manifest edges, task acceptance, or prompt content.

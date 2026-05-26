@@ -23,6 +23,7 @@ import { registerPathsCommand } from "./commands/paths.js";
 import { registerRunCommand } from "./commands/run.js";
 import { registerExecutorsCommand } from "./commands/executors.js";
 import { registerRunStatusCommand } from "./commands/runStatus.js";
+import { registerHelpCommand } from "./commands/help.js";
 
 export function createProgram(): Command {
   const program = new Command();
@@ -30,6 +31,7 @@ export function createProgram(): Command {
     .name("planweave")
     .description("PlanWeave CLI")
     .version("0.0.0");
+  program.addHelpCommand(false);
 
   registerInitCommand(program);
   registerValidateCommand(program);
@@ -55,6 +57,7 @@ export function createProgram(): Command {
   registerRunCommand(program);
   registerExecutorsCommand(program);
   registerRunStatusCommand(program);
+  registerHelpCommand(program);
 
   return program;
 }

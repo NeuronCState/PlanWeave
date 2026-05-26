@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createProgram } from "../index.js";
 import { formatClaimHint } from "../commands/status.js";
+import { formatPlanweaveHelp, planweaveHelpTopics } from "../commands/help.js";
 
 function commandOptionLongs(name: string): string[] {
   const command = createProgram().commands.find((item) => item.name() === name);
@@ -30,7 +31,8 @@ describe("planweave CLI contract", () => {
         "submit-feedback",
         "run",
         "executors",
-        "run-status"
+        "run-status",
+        "help"
       ])
     );
   });
@@ -48,6 +50,15 @@ describe("planweave CLI contract", () => {
     expect(commandOptionLongs("unblock")).toContain("--reason");
     expect(commandOptionLongs("run")).toEqual(expect.arrayContaining(["--once", "--parallel", "--executor", "--json"]));
     expect(commandOptionLongs("run-status")).toContain("--json");
+    expect(commandOptionLongs("help")).toContain("--json");
+  });
+
+  it("prints PlanWeave-specific help topics for agent CLI workflows", () => {
+    expect(planweaveHelpTopics.map((topic) => topic.name)).toEqual(["setup", "plan", "work", "submit", "explain", "recovery", "autorun"]);
+    expect(formatPlanweaveHelp()).toContain("Common agent loop:");
+    expect(formatPlanweaveHelp("work")).toContain("planweave claim-next --parallel --dry-run");
+    expect(formatPlanweaveHelp("submit")).toContain("planweave submit-review <review-block-ref> --result <review-result.json>");
+    expect(formatPlanweaveHelp("recovery")).toContain("planweave doctor --repair");
   });
 
   it("prints claim hint status reasons", () => {

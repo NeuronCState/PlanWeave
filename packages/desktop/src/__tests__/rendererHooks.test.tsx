@@ -163,6 +163,63 @@ describe("desktop renderer hook interfaces", () => {
     expect(bridge.watchPackageFiles).toHaveBeenCalledWith({ projectRoot: activeProject.rootPath, canvasId: "canvas-active" });
   });
 
+  it("keeps project prompt state when the active canvas graph fails to load", async () => {
+    const bridge = createDesktopBridgeMock({
+      listProjects: vi.fn().mockResolvedValue([project]),
+      getGraphViewModel: vi.fn().mockRejectedValue(new Error("Invalid manifest schema")),
+      readProjectPrompt: vi.fn().mockResolvedValue("# Project Prompt\n"),
+      readProjectPromptPolicy: vi.fn().mockResolvedValue({ includeGlobalPrompt: true })
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
+
+    const setError = vi.fn();
+    const { result } = renderHook(() =>
+      useDesktopProject({
+        setError,
+        setSelectedTaskPanelId: vi.fn(),
+        updateSettings: vi.fn()
+      })
+    );
+
+    await waitFor(() => expect(result.current.projectPromptMarkdown).toBe("# Project Prompt\n"));
+
+    expect(result.current.projectPromptPolicy).toEqual({ includeGlobalPrompt: true });
+    expect(result.current.graph).toBeNull();
+    expect(setError).toHaveBeenCalledWith("Invalid manifest schema");
+  });
+
+  it("keeps the selected canvas graph when layout loading fails", async () => {
+    const bridge = createDesktopBridgeMock({
+      listProjects: vi.fn().mockResolvedValue([project]),
+      getGraphViewModel: vi.fn().mockResolvedValue(graph),
+      getDesktopLayout: vi.fn().mockRejectedValue(new Error("layout.nodes.filter is not a function")),
+      getTodoGroups: vi.fn().mockResolvedValue(null),
+      getProjectExecutionPlan: vi.fn().mockResolvedValue(null),
+      getStatistics: vi.fn().mockResolvedValue(null),
+      refreshPackageFileChanges: vi.fn().mockResolvedValue({ diagnostics: [], dirtyPromptRefs: [] }),
+      watchPackageFiles: vi.fn().mockResolvedValue(undefined)
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
+
+    const setError = vi.fn();
+    const { result } = renderHook(() =>
+      useDesktopProject({
+        setError,
+        setSelectedTaskPanelId: vi.fn(),
+        updateSettings: vi.fn()
+      })
+    );
+
+    await waitFor(() => expect(result.current.graph?.tasks.map((task) => task.taskId)).toEqual(["T-ALPHA", "T-BETA"]));
+
+    expect(result.current.layout).toBeNull();
+    expect(setError).toHaveBeenCalledWith("layout.nodes.filter is not a function");
+  });
+
   it("coordinates project/canvas switching through Desktop Project Session actions", async () => {
     const bridge = createDesktopBridgeMock({
       getLatestAutoRunSummary: vi.fn().mockResolvedValue({

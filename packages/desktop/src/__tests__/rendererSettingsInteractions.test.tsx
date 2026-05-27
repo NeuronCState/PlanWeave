@@ -187,6 +187,7 @@ describe("desktop renderer settings interactions", () => {
         graph={null}
         language="en"
         projectPromptPolicy={{ includeGlobalPrompt: true }}
+        selectedProject={projectA}
         refreshAgentDetections={vi.fn().mockResolvedValue(undefined)}
         refreshRuntimeTools={vi.fn().mockResolvedValue(undefined)}
         runtimeTools={{ tmux: { available: true, command: "tmux" } }}
@@ -247,6 +248,7 @@ describe("desktop renderer settings interactions", () => {
         language="en"
         projectPromptMarkdown={"# Project/Canvas Prompt\n\nVisible policy."}
         projectPromptPolicy={{ includeGlobalPrompt: true }}
+        selectedProject={projectA}
         refreshAgentDetections={vi.fn().mockResolvedValue(undefined)}
         refreshRuntimeTools={vi.fn().mockResolvedValue(undefined)}
         runtimeTools={{ tmux: { available: true, command: "tmux" } }}
@@ -267,6 +269,40 @@ describe("desktop renderer settings interactions", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save Project/Canvas Prompt" }));
 
     expect(updateProjectPrompt).toHaveBeenCalledWith("Updated project policy.");
+  });
+
+  it("keeps project prompt editable while prompt markdown is loading", async () => {
+    stubLayoutApis();
+    const updateProjectPrompt = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <SettingsView
+        agentDetectionRefreshing={false}
+        agents={[]}
+        graph={null}
+        language="en"
+        projectPromptMarkdown={null}
+        projectPromptPolicy={{ includeGlobalPrompt: true }}
+        selectedProject={projectA}
+        refreshAgentDetections={vi.fn().mockResolvedValue(undefined)}
+        refreshRuntimeTools={vi.fn().mockResolvedValue(undefined)}
+        runtimeTools={{ tmux: { available: true, command: "tmux" } }}
+        projects={[projectA]}
+        setActiveView={vi.fn()}
+        settings={settings}
+        t={createTranslator("en")}
+        updateProjectPrompt={updateProjectPrompt}
+        updateProjectPromptPolicy={vi.fn().mockResolvedValue(undefined)}
+        updateSettings={vi.fn()}
+      />
+    );
+
+    const editor = screen.getByRole("textbox", { name: "Project/Canvas Prompt" });
+    expect(editor).toBeEnabled();
+    await userEvent.type(editor, "Policy while graph is unavailable.");
+    await userEvent.click(screen.getByRole("button", { name: "Save Project/Canvas Prompt" }));
+
+    expect(updateProjectPrompt).toHaveBeenCalledWith("Policy while graph is unavailable.");
   });
 
   it("disables agent switches when the CLI is not detected", async () => {

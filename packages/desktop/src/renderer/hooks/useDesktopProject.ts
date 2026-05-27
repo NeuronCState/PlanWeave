@@ -27,6 +27,10 @@ export function resolveProjectCanvasId(project: DesktopProjectSummary, requested
   return project.taskCanvases[0]?.canvasId ?? null;
 }
 
+function errorMessage(caught: unknown): string {
+  return caught instanceof Error ? caught.message : String(caught);
+}
+
 export function useDesktopProject({
   setError,
   setSelectedTaskPanelId,
@@ -55,24 +59,69 @@ export function useDesktopProject({
       setExpandedProjectId(project.projectId);
       setSelectedTaskPanelId(null);
       setError(null);
-      const [nextGraph, nextLayout, nextTodo, nextExecutionPlan, nextStats, nextPromptMarkdown, nextPromptPolicy] = await Promise.all([
-        bridge.getGraphViewModel(desktopCanvasReference(project, canvasId)),
-        bridge.getDesktopLayout(desktopCanvasReference(project, canvasId)),
+      setGraph(null);
+      setLayout(null);
+      setTodoGroups(null);
+      setExecutionPlan(null);
+      setStatistics(null);
+      const canvasRef = desktopCanvasReference(project, canvasId);
+      const [promptResult, graphResult, layoutResult, todoResult, executionPlanResult, statsResult] = await Promise.allSettled([
+        Promise.all([bridge.readProjectPrompt(project.rootPath), bridge.readProjectPromptPolicy(project.rootPath)]),
+        bridge.getGraphViewModel(canvasRef),
+        bridge.getDesktopLayout(canvasRef),
         bridge.getTodoGroups(project.rootPath),
         bridge.getProjectExecutionPlan(project.rootPath),
-        bridge.getStatistics(project.rootPath),
-        bridge.readProjectPrompt(project.rootPath),
-        bridge.readProjectPromptPolicy(project.rootPath)
+        bridge.getStatistics(project.rootPath)
       ]);
-      setGraph(nextGraph);
-      setLayout(nextLayout);
-      setTodoGroups(nextTodo);
-      setExecutionPlan(nextExecutionPlan);
-      setStatistics(nextStats);
-      setProjectPromptMarkdown(nextPromptMarkdown);
-      setProjectPromptPolicy(nextPromptPolicy);
-      await bridge.refreshPackageFileChanges(desktopCanvasReference(project, canvasId));
-      await bridge.watchPackageFiles(desktopCanvasReference(project, canvasId));
+      const errors: string[] = [];
+      if (promptResult.status === "fulfilled") {
+        const [nextPromptMarkdown, nextPromptPolicy] = promptResult.value;
+        setProjectPromptMarkdown(nextPromptMarkdown);
+        setProjectPromptPolicy(nextPromptPolicy);
+      } else {
+        setProjectPromptMarkdown(null);
+        setProjectPromptPolicy(null);
+        errors.push(errorMessage(promptResult.reason));
+      }
+      if (graphResult.status === "fulfilled") {
+        setGraph(graphResult.value);
+        try {
+          await bridge.refreshPackageFileChanges(canvasRef);
+          await bridge.watchPackageFiles(canvasRef);
+        } catch (caught) {
+          errors.push(errorMessage(caught));
+        }
+      } else {
+        setGraph(null);
+        errors.push(errorMessage(graphResult.reason));
+      }
+      if (layoutResult.status === "fulfilled") {
+        setLayout(layoutResult.value);
+      } else {
+        setLayout(null);
+        errors.push(errorMessage(layoutResult.reason));
+      }
+      if (todoResult.status === "fulfilled") {
+        setTodoGroups(todoResult.value);
+      } else {
+        setTodoGroups(null);
+        errors.push(errorMessage(todoResult.reason));
+      }
+      if (executionPlanResult.status === "fulfilled") {
+        setExecutionPlan(executionPlanResult.value);
+      } else {
+        setExecutionPlan(null);
+        errors.push(errorMessage(executionPlanResult.reason));
+      }
+      if (statsResult.status === "fulfilled") {
+        setStatistics(statsResult.value);
+      } else {
+        setStatistics(null);
+        errors.push(errorMessage(statsResult.reason));
+      }
+      if (errors.length > 0) {
+        setError(errors.join("\n"));
+      }
       updateSettings({ runtimePath: project.workspaceRoot });
     },
     [setError, setSelectedTaskPanelId, updateSettings]

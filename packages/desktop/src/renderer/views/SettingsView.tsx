@@ -106,7 +106,8 @@ export function SettingsView({
     { key: "review", label: t("settingsReview"), icon: GitPullRequestIcon },
     { key: "agents", label: t("settingsAgents"), icon: BotIcon }
   ] satisfies Array<{ key: SettingsSection; label: string; icon: typeof SettingsIcon }>;
-  const projectPromptAvailable = projectPromptMarkdown !== undefined && projectPromptMarkdown !== null && Boolean(updateProjectPrompt);
+  const projectPromptAvailable = Boolean(selectedProject && updateProjectPrompt);
+  const projectPromptPolicyAvailable = Boolean(selectedProject && projectPromptPolicy && updateProjectPromptPolicy);
   const projectSelectorAvailable = projects.length > 0 && Boolean(loadProject);
 
   useEffect(() => {
@@ -243,9 +244,9 @@ export function SettingsView({
                 </Field>
                 <SettingsSwitchRow
                   checked={projectPromptPolicy?.includeGlobalPrompt ?? false}
-                  disabled={!projectPromptPolicy || !updateProjectPromptPolicy}
+                  disabled={!projectPromptPolicyAvailable}
                   title={t("inheritGlobalPrompt")}
-                  description={projectPromptPolicy ? t("inheritGlobalPromptHint") : t("inheritGlobalPromptUnavailableHint")}
+                  description={projectPromptPolicyAvailable ? t("inheritGlobalPromptHint") : t("inheritGlobalPromptUnavailableHint")}
                   onCheckedChange={(checked) => {
                     void updateProjectPromptPolicy?.({ includeGlobalPrompt: checked });
                   }}

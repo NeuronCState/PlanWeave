@@ -112,6 +112,11 @@ describe("agent skill contract docs", () => {
 
     expect(skill).toContain("Use when auditing, reviewing, checking, or challenging a PlanWeave plan before execution.");
     expect(skill).toContain("Do not import a new plan, execute blocks, repair state, or rewrite the package");
+    expect(skill).toContain("Before judging task completeness");
+    expect(skill).toContain("Flow Coverage table before findings.");
+    expect(skill).toContain("| Flow | Trigger/Input | Core Processing | External Dependency | State/Storage | Interface/Consumer | Output/Side Effect | Failure Path | Verification | Gaps |");
+    expect(skill).toContain("### Data Flow Coverage");
+    expect(skill).toContain("Do not let a long task list count as coverage when the end-to-end flow is broken.");
     expect(skill).toContain("Core Object Lifecycle");
     expect(skill).toContain("schema without runtime use");
     expect(skill).toContain("Compare suspicious manifest/state/layout structure against `planweave schema manifest`");

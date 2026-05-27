@@ -1,6 +1,6 @@
 ---
 name: plan-auditor
-description: Review an already-authored PlanWeave plan for goal coverage, lifecycle gaps, contract drift, execution graph errors, weak prompts, and unverifiable completion criteria. Use when auditing, reviewing, checking, or challenging a PlanWeave plan before execution.
+description: Review an already-authored PlanWeave plan for goal coverage, data-flow coverage, lifecycle gaps, contract drift, execution graph errors, weak prompts, and unverifiable completion criteria. Use when auditing, reviewing, checking, or challenging a PlanWeave plan before execution.
 ---
 
 # Plan Auditor
@@ -10,9 +10,24 @@ Use this skill to audit an existing PlanWeave plan. Do not import a new plan, ex
 ## Quick Start
 1. Find the authority sources: user request, PRD, schema, design docs, current code, and the PlanWeave package.
 2. Read `manifest.json`, source prompts, task/block definitions, canvas structure, dependencies, validation output, and `planweave schema` output when available.
-3. Compare the plan against real goals, object lifecycles, contracts, execution order, prompts, failure paths, and verification criteria.
-4. Report a verdict first: `PASS`, `NEEDS_REVISION`, or `BLOCKED`.
-5. List findings by severity, with evidence and concrete plan changes.
+3. Before judging task completeness, identify the plan's main value flows or lifecycle flows and fill the required Flow Coverage table.
+4. Compare the plan against real goals, data-flow coverage, object lifecycles, contracts, execution order, prompts, failure paths, and verification criteria.
+5. Report a verdict first: `PASS`, `NEEDS_REVISION`, or `BLOCKED`.
+6. List findings by severity, with evidence and concrete plan changes.
+
+## Required Output
+
+1. Verdict: `PASS`, `NEEDS_REVISION`, or `BLOCKED`.
+2. Flow Coverage table before findings.
+3. Findings by severity.
+4. Recommended revision order.
+
+Flow Coverage table:
+
+| Flow | Trigger/Input | Core Processing | External Dependency | State/Storage | Interface/Consumer | Output/Side Effect | Failure Path | Verification | Gaps |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
+For every cell, cite exact PlanWeave task/block ids, prompts, reference files, and validation methods when they exist. Use `Gap:` for missing task coverage, prompt coverage, dependency edge, verification, real behavior, or required failure handling.
 
 ## Audit Checklist
 
@@ -21,6 +36,14 @@ Use this skill to audit an existing PlanWeave plan. Do not import a new plan, ex
 - Check whether all key goals, requirements, constraints, and risks are represented.
 - Flag omitted, weakened, or incorrectly deferred requirements.
 - Do not accept a demo subset as full delivery unless the user explicitly scoped it that way.
+
+### Data Flow Coverage
+- This section is mandatory and must be completed before judging task-list completeness.
+- Identify the plan's main value flows or lifecycle flows. A flow is any path where an input, decision, object, user action, external event, or scheduled job moves through the system and produces an observable outcome.
+- For each major flow, trace the relevant stages that apply: source/trigger/input; validation/normalization/parsing; planning/decision/orchestration; processing/transformation/execution; external dependency/provider/model/tool call; state/persistence/cache/artifact storage; contract/interface/API/CLI/event/message; user or downstream consumption; output/side effect/artifact/report; error/retry/cancellation/recovery; verification/observability/acceptance evidence.
+- Map every applicable stage to exact PlanWeave task/block ids, prompts, reference files, dependency edges, and validation methods.
+- If a required stage has no task, no prompt, no dependency edge, no verification, or is only covered by mock behavior while the goal requires real behavior, report a gap.
+- Do not let a long task list count as coverage when the end-to-end flow is broken.
 
 ### Core Object Lifecycle
 - Identify the project's core objects before checking UI/API/DB/worker tasks.

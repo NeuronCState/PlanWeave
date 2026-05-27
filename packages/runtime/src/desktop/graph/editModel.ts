@@ -122,7 +122,7 @@ export async function addTaskNode(projectRoot: PackageWorkspaceRef, input: Deskt
   const { manifest } = await loadPackage(projectRoot);
   const title = requireNonEmptyTitle(input.title);
   const taskId = nextTaskId(manifest, title);
-  const blockTypes = input.blockTypes?.length ? input.blockTypes : (["implementation", "review"] satisfies BlockType[]);
+  const blockTypes = input.blockTypes?.length ? input.blockTypes : (["implementation"] satisfies BlockType[]);
   const blocks: ManifestBlock[] = [];
   for (const type of blockTypes) {
     const blockId = nextBlockId({ id: taskId, type: "task", title, prompt: "", acceptance: [], blocks }, type);
@@ -143,7 +143,7 @@ export async function addTaskNode(projectRoot: PackageWorkspaceRef, input: Deskt
     title,
     prompt: `nodes/${taskId}/prompt.md`,
     executor: normalizeOptionalText(input.executor ?? null),
-    acceptance: input.acceptance?.length ? input.acceptance : ["Task is implemented and reviewed."],
+    acceptance: input.acceptance?.length ? input.acceptance : ["Task is implemented."],
     blocks
   };
   return commitPlanPackageGraphMutation({

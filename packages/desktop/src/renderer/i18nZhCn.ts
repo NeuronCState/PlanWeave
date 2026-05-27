@@ -161,7 +161,7 @@ export const zhCnCatalog = {
     dragHint: "拖拽提示",
     defaultTaskTitle: "新 Task",
     defaultTaskPrompt: "# 新 Task\n",
-    defaultTaskAcceptance: "Task 完成实现并通过 review。",
+    defaultTaskAcceptance: "Task 完成实现。",
     defaultImplementationBlockTitle: "实现工作",
     defaultReviewBlockTitle: "Review 工作",
     defaultReviewStepTitle: "新 Review Step",

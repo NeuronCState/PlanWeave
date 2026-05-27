@@ -31,7 +31,7 @@ export const defaultDesktopSettings: DesktopUiSettings = {
       implementation: true,
       review: true
     },
-    defaultBlockSet: ["implementation", "review"],
+    defaultBlockSet: ["implementation"],
     dragHint: true
   },
   agents: {

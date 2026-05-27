@@ -18,7 +18,7 @@ function acceptanceFromText(text: string): string[] {
     .map((line) => line.trim().replace(/^[-*]\s+/, ""))
     .filter((line) => line.length > 0)
     .slice(0, 3);
-  return bullets.length > 0 ? bullets : ["Task is implemented and reviewed."];
+  return bullets.length > 0 ? bullets : ["Task is implemented."];
 }
 
 export async function createTaskDraft(
@@ -65,7 +65,7 @@ export async function createTaskDraft(
         title: draftTitle(section),
         promptMarkdown: section,
         acceptance: acceptanceFromText(section),
-        blockTypes: ["implementation", "review"]
+        blockTypes: ["implementation"]
       })),
       blocks: []
     };
@@ -78,7 +78,7 @@ export async function createTaskDraft(
         title: draftTitle(text),
         promptMarkdown: text,
         acceptance: acceptanceFromText(text),
-        blockTypes: ["implementation", "review"]
+        blockTypes: ["implementation"]
       }
     ],
     blocks: []

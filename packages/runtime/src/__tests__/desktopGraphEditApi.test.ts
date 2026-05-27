@@ -105,7 +105,7 @@ describe("desktop graph edit API", () => {
       tasks: [
         {
           title: "Add export flow",
-          blockTypes: ["implementation", "review"]
+          blockTypes: ["implementation"]
         }
       ]
     });
@@ -117,8 +117,9 @@ describe("desktop graph edit API", () => {
       throw new Error("Created task missing.");
     }
     expect(createdTask.id).toBe("T-ADD-EXPORT-FLOW");
-    expect(createdTask.blocks.map((block) => block.type)).toEqual(["implementation", "review"]);
-    expect(createdTask.blocks.map((block) => block.depends_on)).toEqual([[], ["B-001"]]);
+    expect(createdTask.acceptance).toEqual(["# Add export flow", "Users can export the current plan."]);
+    expect(createdTask.blocks.map((block) => block.type)).toEqual(["implementation"]);
+    expect(createdTask.blocks.map((block) => block.depends_on)).toEqual([[]]);
     expect(await readFile(join(init.workspace.packageDir, createdTask.prompt), "utf8")).toContain("Users can export");
     expect(await readFile(join(init.workspace.packageDir, createdTask.blocks[0].prompt), "utf8")).toContain("Add export flow");
 
@@ -140,9 +141,39 @@ describe("desktop graph edit API", () => {
       id: "B-002",
       type: "implementation",
       title: "Implement export follow-up",
-      depends_on: ["R-001"]
+      depends_on: ["B-001"]
     });
     expect(await readFile(join(init.workspace.packageDir, addedBlock?.prompt ?? ""), "utf8")).toBe("# Implement export follow-up\n");
+
+    await expect(
+      addTaskNode(root, {
+        title: "Fallback default blocks",
+        promptMarkdown: "# Fallback default blocks\n"
+      })
+    ).resolves.toMatchObject({ ok: true });
+    manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    const fallbackTask = manifest.nodes.find((node) => node.type === "task" && node.title === "Fallback default blocks");
+    if (fallbackTask?.type !== "task") {
+      throw new Error("Fallback task missing.");
+    }
+    expect(fallbackTask.acceptance).toEqual(["Task is implemented."]);
+    expect(fallbackTask.blocks.map((block) => block.type)).toEqual(["implementation"]);
+
+    await expect(
+      addTaskNode(root, {
+        title: "Manual review gate",
+        promptMarkdown: "# Manual review gate\n",
+        acceptance: ["Manual review remains opt-in."],
+        blockTypes: ["implementation", "review"]
+      })
+    ).resolves.toMatchObject({ ok: true });
+    manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    const reviewedTask = manifest.nodes.find((node) => node.type === "task" && node.title === "Manual review gate");
+    if (reviewedTask?.type !== "task") {
+      throw new Error("Explicit review task missing.");
+    }
+    expect(reviewedTask.blocks.map((block) => block.type)).toEqual(["implementation", "review"]);
+    expect(reviewedTask.blocks.map((block) => block.depends_on)).toEqual([[], ["B-001"]]);
 
     const appendDraft = await createTaskDraft(root, {
       mode: "blocks",

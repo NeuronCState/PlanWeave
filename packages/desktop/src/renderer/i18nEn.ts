@@ -159,7 +159,7 @@ export const enCatalog = {
     dragHint: "Drag hint",
     defaultTaskTitle: "New Task",
     defaultTaskPrompt: "# New Task\n",
-    defaultTaskAcceptance: "Task is implemented and reviewed.",
+    defaultTaskAcceptance: "Task is implemented.",
     defaultImplementationBlockTitle: "Implement work",
     defaultReviewBlockTitle: "Review work",
     defaultReviewStepTitle: "New review step",

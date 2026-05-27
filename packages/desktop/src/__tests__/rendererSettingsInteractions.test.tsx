@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentSettingsPanel } from "../renderer/components/AgentSettingsPanel";
 import { SettingsView } from "../renderer/views/SettingsView";
 import { createTranslator } from "../renderer/i18n";
+import { defaultDesktopSettings } from "../renderer/settings";
 import type { DesktopUiSettings } from "../renderer/types";
 
 const settings: DesktopUiSettings = {
@@ -75,6 +76,10 @@ afterEach(() => {
 });
 
 describe("desktop renderer settings interactions", () => {
+  it("defaults new task cards to implementation blocks only", () => {
+    expect(defaultDesktopSettings.palette.defaultBlockSet).toEqual(["implementation"]);
+  });
+
   it("renders the interface language setting as a dropdown select", async () => {
     stubLayoutApis();
     const updateSettings = vi.fn();

@@ -1,8 +1,7 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execFile, type ExecFileOptions } from "node:child_process";
 import type { DesktopAgentCliProfile, DesktopAgentDetection } from "@planweave/runtime";
 
-const execFileAsync = promisify(execFile);
+const agentPathEntries = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
 
 const agentProfiles: DesktopAgentCliProfile[] = [
   {
@@ -31,9 +30,27 @@ const agentProfiles: DesktopAgentCliProfile[] = [
   }
 ];
 
+export function agentDetectionPath(envPath = process.env.PATH): string {
+  const existingEntries = envPath?.split(":").filter(Boolean) ?? [];
+  return [...new Set([...existingEntries, ...agentPathEntries])].join(":");
+}
+
+function execFileText(command: string, args: string[], options: ExecFileOptions): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, options, (error, stdout, stderr) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve({ stdout: String(stdout), stderr: String(stderr) });
+    });
+  });
+}
+
 async function detectAgent(profile: DesktopAgentCliProfile): Promise<DesktopAgentDetection> {
   try {
-    const { stdout, stderr } = await execFileAsync(profile.command, profile.versionArgs, {
+    const { stdout, stderr } = await execFileText(profile.command, profile.versionArgs, {
+      env: { ...process.env, PATH: agentDetectionPath() },
       timeout: 2_000,
       maxBuffer: 64 * 1024
     });

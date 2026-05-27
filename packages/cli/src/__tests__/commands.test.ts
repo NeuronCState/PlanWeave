@@ -100,6 +100,7 @@ describe("planweave CLI contract", () => {
     expect(formatSchemaHelp("state")).toContain('"planned"');
     expect(formatSchemaHelp("state")).toContain('"implemented"');
     expect(formatSchemaHelp("layout")).toContain('"desktop-layout/v1"');
+    expect(formatSchemaHelp("layout")).toContain("legacy_layout_schema");
     expect(formatSchemaHelp("all")).toContain("manifest: Plan Package source graph schema.");
     expect(schemaDocuments.manifest.schema).toHaveProperty("nodes");
   });

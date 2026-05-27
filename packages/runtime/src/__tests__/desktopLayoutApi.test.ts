@@ -55,4 +55,66 @@ describe("desktop layout API", () => {
       ])
     );
   });
+
+  it("loads legacy object-map desktop layout files", async () => {
+    const { root, init } = await createTestWorkspace();
+    await writeJsonFile(`${init.workspace.workspaceRoot}/desktop/layout.json`, {
+      version: 1,
+      nodes: {
+        "T-001": {
+          position: { x: 120, y: 240 },
+          size: { width: 420, height: 300 }
+        },
+        "T-STALE": {
+          position: { x: 300, y: 420 }
+        }
+      },
+      viewport: { x: 0, y: 0, zoom: 0.75 }
+    });
+
+    const layout = await getDesktopLayout(root);
+    const report = await validatePackage({ projectRoot: root });
+
+    expect(layout).toMatchObject({
+      version: "desktop-layout/v1",
+      projectId: init.workspace.id,
+      nodes: [{ nodeId: "T-001", x: 120, y: 240 }]
+    });
+    expect(report.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "legacy_layout_schema",
+          path: "desktop/layout.json:nodes"
+        }),
+        expect.objectContaining({
+          code: "stale_layout_reference",
+          path: "desktop/layout.json:T-STALE"
+        })
+      ])
+    );
+  });
+
+  it("reports invalid desktop layout schema during validation without blocking graph display fallback", async () => {
+    const { root, init } = await createTestWorkspace();
+    await writeJsonFile(`${init.workspace.workspaceRoot}/desktop/layout.json`, {
+      version: "desktop-layout/v1",
+      projectId: init.workspace.id,
+      nodes: [{ nodeId: "T-001", position: { x: 120, y: 240 } }],
+      updatedAt: new Date(0).toISOString()
+    });
+
+    const layout = await getDesktopLayout(root);
+    const report = await validatePackage({ projectRoot: root });
+
+    expect(layout.nodes).toEqual([]);
+    expect(report.ok).toBe(false);
+    expect(report.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "invalid_layout_schema",
+          path: "desktop/layout.json:nodes.0"
+        })
+      ])
+    );
+  });
 });

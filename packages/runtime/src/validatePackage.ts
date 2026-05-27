@@ -3,7 +3,7 @@ import { constants } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { ZodError } from "zod";
 import { listTaskCanvasWorkspaces } from "./desktop/canvasApi.js";
-import { validateDesktopLayoutReferences } from "./desktop/layoutApi.js";
+import { validateDesktopLayout } from "./desktop/layoutApi.js";
 import { compilePackageGraph } from "./graph/compileTaskGraph.js";
 import { readJsonFile } from "./json.js";
 import { findOrphanResults, findOrphanState } from "./package/orphans.js";
@@ -97,7 +97,9 @@ async function validateWorkspacePackage(projectWorkspace: ProjectWorkspace, work
   const graph = await compilePackageGraph(manifest, workspace.packageDir);
   errors.push(...graph.diagnostics.errors.map((item) => prefixIssue(projectWorkspace, workspace, manifest, item)));
   warnings.push(...graph.diagnostics.warnings.map((item) => prefixIssue(projectWorkspace, workspace, manifest, item)));
-  warnings.push(...(await validateDesktopLayoutReferences(workspace, manifest)).map((item) => prefixIssue(projectWorkspace, workspace, manifest, item)));
+  const layoutReport = await validateDesktopLayout(workspace, manifest);
+  errors.push(...layoutReport.errors.map((item) => prefixIssue(projectWorkspace, workspace, manifest, item)));
+  warnings.push(...layoutReport.warnings.map((item) => prefixIssue(projectWorkspace, workspace, manifest, item)));
 
   const rawState = await readState(workspace.stateFile);
   for (const orphan of findOrphanState(manifest, rawState)) {

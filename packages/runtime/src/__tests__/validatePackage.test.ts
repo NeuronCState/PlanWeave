@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createTaskCanvas, resolveTaskCanvasWorkspace } from "../desktop/index.js";
 import { writeJsonFile } from "../json.js";
 import { validatePackage } from "../validatePackage.js";
-import { basicManifest, createTestWorkspace } from "./promptTestHelpers.js";
+import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
 
 describe("validatePackage", () => {
   it("accepts a complete v1 block-level package", async () => {
@@ -55,6 +55,34 @@ describe("validatePackage", () => {
         expect.objectContaining({
           code: "prompt_missing",
           path: expect.stringContaining(`canvases/${canvas.canvasId}/package/nodes/T-001/blocks/B-001.prompt.md`)
+        })
+      ])
+    );
+  });
+
+  it("reports task canvas layout schema diagnostics with the canvas layout path", async () => {
+    const { root } = await createTestWorkspace();
+    const canvas = await createTaskCanvas(root, { name: "Legacy layout canvas" });
+    const canvasWorkspace = await resolveTaskCanvasWorkspace(root, canvas.canvasId);
+    const manifest = basicManifest();
+    await writeJsonFile(canvasWorkspace.manifestFile, manifest);
+    await writePromptFiles(canvasWorkspace.packageDir, manifest);
+    await writeJsonFile(join(canvasWorkspace.workspaceRoot, "desktop", "layout.json"), {
+      version: 1,
+      nodes: {
+        "T-001": {
+          position: { x: 120, y: 240 }
+        }
+      }
+    });
+
+    const report = await validatePackage({ projectRoot: root });
+
+    expect(report.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "legacy_layout_schema",
+          path: expect.stringContaining(`canvases/${canvas.canvasId}/desktop/layout.json:nodes`)
         })
       ])
     );

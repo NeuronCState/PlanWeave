@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
-import type { BlockType, DesktopAgentDetection, DesktopGraphViewModel, DesktopRuntimeToolAvailability } from "@planweave/runtime";
+import type { BlockType, DesktopAgentDetection, DesktopGraphViewModel, DesktopRuntimeToolAvailability, ProjectPromptPolicy } from "@planweave/runtime";
 import { ArrowLeftIcon, BlocksIcon, BotIcon, GitPullRequestIcon, SettingsIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import { AgentSettingsPanel } from "../components/AgentSettingsPanel";
 import { SettingsSwitchRow } from "../components/SettingsSwitchRow";
 import type { createTranslator, Language } from "../i18n";
@@ -24,7 +25,11 @@ type SettingsViewProps = {
   runtimeTools: DesktopRuntimeToolAvailability;
   setActiveView: Dispatch<SetStateAction<AppView>>;
   settings: DesktopUiSettings;
+  projectPromptMarkdown?: string | null;
+  projectPromptPolicy?: ProjectPromptPolicy | null;
   t: ReturnType<typeof createTranslator>;
+  updateProjectPrompt?: (markdown: string) => Promise<void>;
+  updateProjectPromptPolicy?: (patch: Partial<ProjectPromptPolicy>) => Promise<void>;
   updateSettings: (patch: Partial<DesktopUiSettings>) => void;
 };
 
@@ -37,7 +42,7 @@ function SettingGroup({ children, title }: { children: ReactNode; title: string 
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-base font-semibold">{title}</h2>
-      <div className="overflow-hidden rounded-lg border bg-background">{children}</div>
+      <FieldGroup className="gap-0 overflow-hidden rounded-lg border bg-background">{children}</FieldGroup>
     </section>
   );
 }
@@ -78,10 +83,16 @@ export function SettingsView({
   runtimeTools,
   setActiveView,
   settings,
+  projectPromptMarkdown,
+  projectPromptPolicy,
   t,
+  updateProjectPrompt,
+  updateProjectPromptPolicy,
   updateSettings
 }: SettingsViewProps) {
   const [section, setSection] = useState<SettingsSection>("general");
+  const [projectPromptDraft, setProjectPromptDraft] = useState(projectPromptMarkdown ?? "");
+  const [projectPromptSaving, setProjectPromptSaving] = useState(false);
   const reviewDisabled = !settings.review.pipelineEnabled;
   const navItems = [
     { key: "general", label: t("settingsGeneral"), icon: SettingsIcon },
@@ -89,6 +100,11 @@ export function SettingsView({
     { key: "review", label: t("settingsReview"), icon: GitPullRequestIcon },
     { key: "agents", label: t("settingsAgents"), icon: BotIcon }
   ] satisfies Array<{ key: SettingsSection; label: string; icon: typeof SettingsIcon }>;
+  const projectPromptAvailable = projectPromptMarkdown !== undefined && projectPromptMarkdown !== null && Boolean(updateProjectPrompt);
+
+  useEffect(() => {
+    setProjectPromptDraft(projectPromptMarkdown ?? "");
+  }, [projectPromptMarkdown]);
 
   return (
     <main className="flex h-full min-h-0 bg-background text-foreground">
@@ -187,6 +203,47 @@ export function SettingsView({
                     {t("refreshRuntimeTools")}
                   </Button>
                 </div>
+              </SettingGroup>
+              <SettingGroup title={t("promptSettings")}>
+                <SettingsSwitchRow
+                  checked={projectPromptPolicy?.includeGlobalPrompt ?? false}
+                  disabled={!projectPromptPolicy || !updateProjectPromptPolicy}
+                  title={t("inheritGlobalPrompt")}
+                  description={projectPromptPolicy ? t("inheritGlobalPromptHint") : t("inheritGlobalPromptUnavailableHint")}
+                  onCheckedChange={(checked) => {
+                    void updateProjectPromptPolicy?.({ includeGlobalPrompt: checked });
+                  }}
+                />
+                <Field data-disabled={!projectPromptAvailable} orientation="vertical" className="border-b px-5 py-4 last:border-b-0">
+                  <FieldContent>
+                    <FieldLabel htmlFor="project-canvas-prompt" className="text-sm font-semibold">{t("projectCanvasPrompt")}</FieldLabel>
+                    <FieldDescription>{projectPromptAvailable ? t("projectCanvasPromptHint") : t("projectCanvasPromptUnavailableHint")}</FieldDescription>
+                  </FieldContent>
+                  <Textarea
+                    aria-label={t("projectCanvasPrompt")}
+                    id="project-canvas-prompt"
+                    className="min-h-44 resize-y font-mono text-xs"
+                    disabled={!projectPromptAvailable}
+                    value={projectPromptDraft}
+                    onChange={(event) => setProjectPromptDraft(event.target.value)}
+                  />
+                  <div className="flex justify-end">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!projectPromptAvailable || projectPromptSaving}
+                      onClick={() => {
+                        if (!updateProjectPrompt) {
+                          return;
+                        }
+                        setProjectPromptSaving(true);
+                        void updateProjectPrompt(projectPromptDraft).finally(() => setProjectPromptSaving(false));
+                      }}
+                    >
+                      {t("saveProjectCanvasPrompt")}
+                    </Button>
+                  </div>
+                </Field>
               </SettingGroup>
             </section>
           ) : null}

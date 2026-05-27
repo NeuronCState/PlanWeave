@@ -10,6 +10,7 @@ import type {
 import type {
   DesktopAutoRunState,
   DesktopGraphViewModel,
+  DesktopProjectExecutionPlan,
   DesktopProjectSummary,
   DesktopReviewPipeline,
   DesktopReviewPipelineStepInput,
@@ -40,6 +41,7 @@ type WorkspaceTabsProps = {
   edges: Edge[];
   generateTaskDraft: () => Promise<void>;
   graph: DesktopGraphViewModel | null;
+  executionPlan: DesktopProjectExecutionPlan | null;
   handleAutoRunClick: () => Promise<void>;
   handleBlockSelect: (ref: string, canvasId?: string | null) => Promise<void>;
   handleOpenBlockInspector: (ref: string, canvasId?: string | null) => Promise<void>;

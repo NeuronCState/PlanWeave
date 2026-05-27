@@ -6,6 +6,7 @@ import type {
   DesktopGraphEditValidationInput,
   DesktopGraphViewModel,
   DesktopLayout,
+  DesktopProjectExecutionPlan,
   DesktopSearchFilters,
   DesktopSearchResult,
   DesktopStatistics,
@@ -16,6 +17,7 @@ import type {
   DesktopTodoGroups
 } from "./graphTypes.js";
 import type { DesktopProjectSummary, DesktopTaskCanvasSummary } from "./projectTypes.js";
+import type { ProjectPromptPolicy } from "../../projectPromptPolicy.js";
 import type {
   DesktopBlockRunRecordSummary,
   DesktopFeedbackRecord,
@@ -86,6 +88,11 @@ export type DesktopBridgeApi = {
   getBlockDetail(ref: DesktopCanvasReference, blockRef: string): Promise<DesktopBlockDetail>;
   getTaskExecutionOrder(ref: DesktopCanvasReference, taskId: string): Promise<DesktopTaskExecutionOrder>;
   getTodoGroups(projectRoot: string): Promise<DesktopTodoGroups>;
+  getProjectExecutionPlan(projectRoot: string): Promise<DesktopProjectExecutionPlan>;
+  readProjectPrompt(projectRoot: string): Promise<string>;
+  updateProjectPrompt(projectRoot: string, markdown: string): Promise<string>;
+  readProjectPromptPolicy(projectRoot: string): Promise<ProjectPromptPolicy>;
+  updateProjectPromptPolicy(projectRoot: string, patch: Partial<ProjectPromptPolicy>): Promise<ProjectPromptPolicy>;
   listBlockRunRecords(ref: DesktopCanvasReference, blockRef: string): Promise<DesktopBlockRunRecordSummary[]>;
   getRunRecord(ref: DesktopCanvasReference, recordId: string): Promise<DesktopRunRecord>;
   getReviewAttempts(ref: DesktopCanvasReference, blockRef: string): Promise<DesktopReviewAttemptSummary[]>;

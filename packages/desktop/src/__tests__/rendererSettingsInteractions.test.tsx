@@ -154,6 +154,66 @@ describe("desktop renderer settings interactions", () => {
     expect(updateSettings).toHaveBeenCalledWith({ execution: { tmuxMonitoring: true } });
   });
 
+  it("lets the current project disable inherited global prompt policy", async () => {
+    stubLayoutApis();
+    const updateProjectPromptPolicy = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <SettingsView
+        agentDetectionRefreshing={false}
+        agents={[]}
+        graph={null}
+        language="en"
+        projectPromptPolicy={{ includeGlobalPrompt: true }}
+        refreshAgentDetections={vi.fn().mockResolvedValue(undefined)}
+        refreshRuntimeTools={vi.fn().mockResolvedValue(undefined)}
+        runtimeTools={{ tmux: { available: true, command: "tmux" } }}
+        setActiveView={vi.fn()}
+        settings={settings}
+        t={createTranslator("en")}
+        updateProjectPromptPolicy={updateProjectPromptPolicy}
+        updateSettings={vi.fn()}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("switch", { name: "Inherit global prompt" }));
+
+    expect(updateProjectPromptPolicy).toHaveBeenCalledWith({ includeGlobalPrompt: false });
+  });
+
+  it("shows and saves the current project canvas prompt", async () => {
+    stubLayoutApis();
+    const updateProjectPrompt = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <SettingsView
+        agentDetectionRefreshing={false}
+        agents={[]}
+        graph={null}
+        language="en"
+        projectPromptMarkdown={"# Project/Canvas Prompt\n\nVisible policy."}
+        projectPromptPolicy={{ includeGlobalPrompt: true }}
+        refreshAgentDetections={vi.fn().mockResolvedValue(undefined)}
+        refreshRuntimeTools={vi.fn().mockResolvedValue(undefined)}
+        runtimeTools={{ tmux: { available: true, command: "tmux" } }}
+        setActiveView={vi.fn()}
+        settings={settings}
+        t={createTranslator("en")}
+        updateProjectPrompt={updateProjectPrompt}
+        updateProjectPromptPolicy={vi.fn().mockResolvedValue(undefined)}
+        updateSettings={vi.fn()}
+      />
+    );
+
+    const editor = screen.getByRole("textbox", { name: "Project/Canvas Prompt" });
+    expect(editor).toHaveValue("# Project/Canvas Prompt\n\nVisible policy.");
+    await userEvent.clear(editor);
+    await userEvent.type(editor, "Updated project policy.");
+    await userEvent.click(screen.getByRole("button", { name: "Save Project/Canvas Prompt" }));
+
+    expect(updateProjectPrompt).toHaveBeenCalledWith("Updated project policy.");
+  });
+
   it("disables agent switches when the CLI is not detected", async () => {
     const refreshAgentDetections = vi.fn().mockResolvedValue(undefined);
 

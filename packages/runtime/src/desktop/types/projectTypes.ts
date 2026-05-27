@@ -15,5 +15,6 @@ export type DesktopProjectSummary = {
   name: string;
   rootPath: string;
   workspaceRoot: string;
+  activeCanvasId: string | null;
   taskCanvases: DesktopTaskCanvasSummary[];
 };

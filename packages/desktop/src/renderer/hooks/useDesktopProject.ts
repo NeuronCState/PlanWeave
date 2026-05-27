@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import type { DesktopGraphViewModel, DesktopLayout, DesktopProjectSummary, DesktopStatistics, DesktopTodoGroups } from "@planweave/runtime";
+import type {
+  DesktopGraphViewModel,
+  DesktopLayout,
+  DesktopProjectExecutionPlan,
+  DesktopProjectSummary,
+  DesktopStatistics,
+  DesktopTodoGroups,
+  ProjectPromptPolicy
+} from "@planweave/runtime";
 import { bridge, desktopCanvasReference } from "../bridge";
 import type { DesktopUiSettings } from "../types";
 
@@ -8,6 +16,16 @@ export type UseDesktopProjectArgs = {
   setSelectedTaskPanelId: (taskId: string | null) => void;
   updateSettings: (patch: Partial<DesktopUiSettings>) => void;
 };
+
+export function resolveProjectCanvasId(project: DesktopProjectSummary, requestedCanvasId?: string | null): string | null {
+  if (requestedCanvasId !== undefined && project.taskCanvases.some((canvas) => canvas.canvasId === requestedCanvasId)) {
+    return requestedCanvasId;
+  }
+  if (project.activeCanvasId && project.taskCanvases.some((canvas) => canvas.canvasId === project.activeCanvasId)) {
+    return project.activeCanvasId;
+  }
+  return project.taskCanvases[0]?.canvasId ?? null;
+}
 
 export function useDesktopProject({
   setError,
@@ -21,31 +39,38 @@ export function useDesktopProject({
   const [graph, setGraph] = useState<DesktopGraphViewModel | null>(null);
   const [layout, setLayout] = useState<DesktopLayout | null>(null);
   const [todoGroups, setTodoGroups] = useState<DesktopTodoGroups | null>(null);
+  const [executionPlan, setExecutionPlan] = useState<DesktopProjectExecutionPlan | null>(null);
   const [statistics, setStatistics] = useState<DesktopStatistics | null>(null);
+  const [projectPromptMarkdown, setProjectPromptMarkdown] = useState<string | null>(null);
+  const [projectPromptPolicy, setProjectPromptPolicy] = useState<ProjectPromptPolicy | null>(null);
 
   const loadProject = useCallback(
     async (project: DesktopProjectSummary, requestedCanvasId?: string | null) => {
       if (!bridge) {
         return;
       }
-      const canvasId = project.taskCanvases.some((canvas) => canvas.canvasId === requestedCanvasId)
-        ? (requestedCanvasId ?? null)
-        : (project.taskCanvases[0]?.canvasId ?? null);
+      const canvasId = resolveProjectCanvasId(project, requestedCanvasId);
       setSelectedProject(project);
       setSelectedCanvasId(canvasId);
       setExpandedProjectId(project.projectId);
       setSelectedTaskPanelId(null);
       setError(null);
-      const [nextGraph, nextLayout, nextTodo, nextStats] = await Promise.all([
+      const [nextGraph, nextLayout, nextTodo, nextExecutionPlan, nextStats, nextPromptMarkdown, nextPromptPolicy] = await Promise.all([
         bridge.getGraphViewModel(desktopCanvasReference(project, canvasId)),
         bridge.getDesktopLayout(desktopCanvasReference(project, canvasId)),
         bridge.getTodoGroups(project.rootPath),
-        bridge.getStatistics(project.rootPath)
+        bridge.getProjectExecutionPlan(project.rootPath),
+        bridge.getStatistics(project.rootPath),
+        bridge.readProjectPrompt(project.rootPath),
+        bridge.readProjectPromptPolicy(project.rootPath)
       ]);
       setGraph(nextGraph);
       setLayout(nextLayout);
       setTodoGroups(nextTodo);
+      setExecutionPlan(nextExecutionPlan);
       setStatistics(nextStats);
+      setProjectPromptMarkdown(nextPromptMarkdown);
+      setProjectPromptPolicy(nextPromptPolicy);
       await bridge.refreshPackageFileChanges(desktopCanvasReference(project, canvasId));
       await bridge.watchPackageFiles(desktopCanvasReference(project, canvasId));
       updateSettings({ runtimePath: project.workspaceRoot });
@@ -85,6 +110,26 @@ export function useDesktopProject({
     const nextGraph = await bridge.getGraphViewModel(desktopCanvasReference(selectedProject, selectedCanvasId));
     setGraph(nextGraph);
   }, [selectedCanvasId, selectedProject]);
+
+  const updateProjectPromptPolicy = useCallback(
+    async (patch: Partial<ProjectPromptPolicy>) => {
+      if (!bridge || !selectedProject) {
+        return;
+      }
+      setProjectPromptPolicy(await bridge.updateProjectPromptPolicy(selectedProject.rootPath, patch));
+    },
+    [selectedProject]
+  );
+
+  const updateProjectPrompt = useCallback(
+    async (markdown: string) => {
+      if (!bridge || !selectedProject) {
+        return;
+      }
+      setProjectPromptMarkdown(await bridge.updateProjectPrompt(selectedProject.rootPath, markdown));
+    },
+    [selectedProject]
+  );
 
   const refreshProjectSummary = useCallback(
     async (projectRoot: string, canvasId?: string | null) => {
@@ -145,18 +190,24 @@ export function useDesktopProject({
       setGraph(null);
       setLayout(null);
       setTodoGroups(null);
+      setExecutionPlan(null);
       setStatistics(null);
+      setProjectPromptMarkdown(null);
+      setProjectPromptPolicy(null);
     },
     [loadProject, selectedProject?.projectId, setSelectedTaskPanelId]
   );
 
   return {
     expandedProjectId,
+    executionPlan,
     graph,
     handleOpenProject,
     layout,
     loadProject,
     projects,
+    projectPromptMarkdown,
+    projectPromptPolicy,
     refreshProjectSummary,
     refreshGraph,
     removeProject,
@@ -164,6 +215,8 @@ export function useDesktopProject({
     selectedProject,
     setLayout,
     statistics,
-    todoGroups
+    todoGroups,
+    updateProjectPrompt,
+    updateProjectPromptPolicy
   };
 }

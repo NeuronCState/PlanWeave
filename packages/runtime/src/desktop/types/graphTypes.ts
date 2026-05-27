@@ -7,6 +7,7 @@ import type {
   TaskStatus,
   ValidationIssue
 } from "../../types.js";
+import type { PromptSourceSummary } from "../../taskManager/promptRenderer.js";
 
 export type DesktopTaskException = {
   ref: string;
@@ -84,6 +85,8 @@ export type DesktopBlockDetail = {
   effectiveExecutor: string | null;
   promptMarkdown: string;
   promptMissing: boolean;
+  promptSurfaceMarkdown: string;
+  promptSources: PromptSourceSummary[];
   dependencies: string[];
   latestRunId: string | null;
   latestReviewAttemptId: string | null;
@@ -122,6 +125,25 @@ export type DesktopTodoItem = {
 };
 
 export type DesktopTodoGroups = Record<DesktopTodoGroupName, DesktopTodoItem[]>;
+
+export type DesktopProjectExecutionPhase = {
+  phaseIndex: number;
+  canvasId: string;
+  canvasName: string;
+  taskCount: number;
+  readyQueue: DesktopTodoItem[];
+  parallelReadyQueue: DesktopTodoItem[];
+  sequentialReadyQueue: DesktopTodoItem[];
+  blockedCount: number;
+  inProgressCount: number;
+  completedCount: number;
+};
+
+export type DesktopProjectExecutionPlan = {
+  phases: DesktopProjectExecutionPhase[];
+  readyQueue: DesktopTodoItem[];
+  notes: string[];
+};
 
 export type DesktopStatistics = {
   taskTotal: number;

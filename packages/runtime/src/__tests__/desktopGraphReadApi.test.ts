@@ -1,4 +1,4 @@
-import { readFile, rm } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -7,6 +7,9 @@ import {
   getTaskDetail,
   getTaskExecutionOrder,
   getTodoGroups,
+  readProjectPrompt,
+  updateProjectPromptPolicy,
+  updateProjectPrompt,
   updateBlockPrompt,
   updateTaskPrompt
 } from "../desktop/index.js";
@@ -121,6 +124,47 @@ describe("desktop graph read API", () => {
     await expect(getBlockDetail(root, "T-001#B-001")).resolves.toMatchObject({
       title: "Implement task",
       promptMarkdown: "# Updated block prompt\n"
+    });
+  });
+
+  it("exposes the rendered prompt surface with visible prompt source provenance", async () => {
+    const { home, root, init } = await createTestWorkspace();
+    await writeFile(join(home, "config", "global-prompt.md"), "Global policy from parent flow.\n", "utf8");
+    await writeFile(init.workspace.projectPromptFile, "Project canvas policy.\n", "utf8");
+
+    const inheritedDetail = await getBlockDetail(root, "T-001#B-001");
+
+    expect(inheritedDetail.promptSurfaceMarkdown).toContain("Global policy from parent flow.");
+    expect(inheritedDetail.promptSurfaceMarkdown).toContain("Project canvas policy.");
+    expect(inheritedDetail.promptSurfaceMarkdown).toContain("# T-001 task prompt");
+    expect(inheritedDetail.promptSurfaceMarkdown).toContain("# T-001#B-001 implementation prompt");
+    expect(inheritedDetail.promptSources).toEqual([
+      expect.objectContaining({ kind: "global", label: "PlanWeave Global Prompt", included: true }),
+      expect.objectContaining({ kind: "projectCanvas", label: "Project/Canvas Prompt", included: true }),
+      expect.objectContaining({ kind: "taskNode", label: "Task Node Prompt", included: true }),
+      expect.objectContaining({ kind: "block", label: "Block Prompt", included: true })
+    ]);
+
+    await updateProjectPromptPolicy(root, { includeGlobalPrompt: false });
+    const projectScopedDetail = await getBlockDetail(root, "T-001#B-001");
+
+    expect(projectScopedDetail.promptSurfaceMarkdown).not.toContain("Global policy from parent flow.");
+    expect(projectScopedDetail.promptSurfaceMarkdown).toContain("Project canvas policy.");
+    expect(projectScopedDetail.promptSources.find((source) => source.kind === "global")).toMatchObject({
+      included: false,
+      disabledReason: "Disabled for this project."
+    });
+  });
+
+  it("reads and updates the project canvas prompt from the desktop API", async () => {
+    const { root } = await createTestWorkspace();
+
+    await expect(readProjectPrompt(root)).resolves.toContain("# Project Prompt");
+    await updateProjectPrompt(root, "Project/Canvas prompt visible in settings.\n");
+
+    await expect(readProjectPrompt(root)).resolves.toBe("Project/Canvas prompt visible in settings.\n");
+    await expect(getBlockDetail(root, "T-001#B-001")).resolves.toMatchObject({
+      promptSurfaceMarkdown: expect.stringContaining("Project/Canvas prompt visible in settings.")
     });
   });
 

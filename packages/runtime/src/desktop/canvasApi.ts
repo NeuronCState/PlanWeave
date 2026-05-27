@@ -171,6 +171,11 @@ export async function listTaskCanvases(projectRoot: string): Promise<DesktopTask
   return Promise.all(registry.canvases.map((record) => summarizeCanvas(projectWorkspace, record)));
 }
 
+export async function getActiveTaskCanvasId(projectRoot: string): Promise<string | null> {
+  const { registry } = await readRegistry(projectRoot);
+  return selectedCanvasRecord(registry)?.canvasId ?? null;
+}
+
 export async function listTaskCanvasWorkspaces(
   projectRoot: string,
   options: { createRegistry?: boolean } = {}

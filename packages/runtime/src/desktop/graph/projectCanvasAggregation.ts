@@ -11,7 +11,7 @@ export type ProjectTaskCanvasContext = {
 
 export async function mapProjectTaskCanvases<T>(
   projectRoot: string,
-  mapper: (context: ProjectTaskCanvasContext) => Promise<T>
+  mapper: (context: ProjectTaskCanvasContext, index: number) => Promise<T>
 ): Promise<T[]> {
   const canvases = await listTaskCanvases(projectRoot);
   const results: T[] = [];
@@ -23,12 +23,15 @@ export async function mapProjectTaskCanvases<T>(
       continue;
     }
     results.push(
-      await mapper({
-        canvas,
-        canvasId: canvas.canvasId,
-        canvasName: canvas.name,
-        workspace: await resolveTaskCanvasWorkspace(projectRoot, canvas.canvasId)
-      })
+      await mapper(
+        {
+          canvas,
+          canvasId: canvas.canvasId,
+          canvasName: canvas.name,
+          workspace: await resolveTaskCanvasWorkspace(projectRoot, canvas.canvasId)
+        },
+        results.length
+      )
     );
   }
   return results;

@@ -38,6 +38,7 @@ describe("desktop renderer component interactions", () => {
       name: "frontend-example",
       rootPath: "/tmp/frontend-example",
       workspaceRoot: "/tmp/frontend-example",
+      activeCanvasId: "default",
       taskCanvases: [
         {
           canvasId: "default",
@@ -236,6 +237,9 @@ describe("desktop renderer component interactions", () => {
       executor: null,
       effectiveExecutor: "codex-reviewer",
       promptMarkdown: "# Review",
+      promptMissing: false,
+      promptSurfaceMarkdown: "# Effective review",
+      promptSources: [],
       dependencies: ["T-001#B-001"],
       latestRunId: null,
       latestReviewAttemptId: null,
@@ -371,6 +375,9 @@ describe("desktop renderer component interactions", () => {
       executor: "codex",
       effectiveExecutor: "codex",
       promptMarkdown: "# Existing block prompt\n",
+      promptMissing: false,
+      promptSurfaceMarkdown: "# Effective block prompt",
+      promptSources: [],
       dependencies: [],
       latestRunId: null,
       latestReviewAttemptId: null,
@@ -444,7 +451,7 @@ describe("desktop renderer component interactions", () => {
 
     try {
       expect(screen.queryByRole("button", { name: "保存 Prompt" })).not.toBeInTheDocument();
-      fireEvent.change(screen.getAllByRole("textbox")[1]!, { target: { value: "# Updated block prompt\n" } });
+      fireEvent.change(screen.getByRole("textbox", { name: "Source Prompt" }), { target: { value: "# Updated block prompt\n" } });
       expect(saveSelectedBlockPrompt).not.toHaveBeenCalled();
 
       await act(async () => {

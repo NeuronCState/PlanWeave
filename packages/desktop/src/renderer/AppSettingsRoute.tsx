@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { DesktopAgentDetection, DesktopGraphViewModel, DesktopRuntimeToolAvailability } from "@planweave/runtime";
+import type { DesktopAgentDetection, DesktopGraphViewModel, DesktopRuntimeToolAvailability, ProjectPromptPolicy } from "@planweave/runtime";
 import { WindowTitleBar } from "./components/WindowTitleBar";
 import type { createTranslator, Language } from "./i18n";
 import type { AppView, DesktopUiSettings } from "./types";
@@ -15,7 +15,11 @@ type AppSettingsRouteProps = {
   runtimeTools: DesktopRuntimeToolAvailability;
   setActiveView: Dispatch<SetStateAction<AppView>>;
   settings: DesktopUiSettings;
+  projectPromptMarkdown: string | null;
+  projectPromptPolicy: ProjectPromptPolicy | null;
   t: ReturnType<typeof createTranslator>;
+  updateProjectPrompt: (markdown: string) => Promise<void>;
+  updateProjectPromptPolicy: (patch: Partial<ProjectPromptPolicy>) => Promise<void>;
   updateSettings: (patch: Partial<DesktopUiSettings>) => void;
 };
 
@@ -29,7 +33,11 @@ export function AppSettingsRoute({
   runtimeTools,
   setActiveView,
   settings,
+  projectPromptMarkdown,
+  projectPromptPolicy,
   t,
+  updateProjectPrompt,
+  updateProjectPromptPolicy,
   updateSettings
 }: AppSettingsRouteProps) {
   return (
@@ -45,7 +53,11 @@ export function AppSettingsRoute({
         runtimeTools={runtimeTools}
         setActiveView={setActiveView}
         settings={settings}
+        projectPromptMarkdown={projectPromptMarkdown}
+        projectPromptPolicy={projectPromptPolicy}
         t={t}
+        updateProjectPrompt={updateProjectPrompt}
+        updateProjectPromptPolicy={updateProjectPromptPolicy}
         updateSettings={updateSettings}
       />
     </div>

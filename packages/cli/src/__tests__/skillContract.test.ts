@@ -52,6 +52,9 @@ describe("agent skill contract docs", () => {
     expect(skill).toContain("If strong source docs exist, prefer `plan-importer` instead of this skill.");
     expect(skill).toContain("Design around core object lifecycles");
     expect(skill).toContain("Do not import other projects' skills");
+    expect(skill).toContain("One canvas should represent one acceptably reviewable work package");
+    expect(skill).toContain("Prefer 3-12 tasks per normal canvas");
+    expect(skill).toContain("Do not create one-task canvases unless the work package is intentionally tiny, high-risk, or externally gated.");
     expect(skill).toContain("Do not invent PlanWeave JSON structure");
     expect(skill).toContain("complex blocks must include architecture boundaries");
     expect(skill).toContain("## Task Graph");
@@ -73,6 +76,8 @@ describe("agent skill contract docs", () => {
     expect(coordinator).toContain("claim ownership: `already claimed` or `claim required`");
     expect(coordinator).toContain("Different canvases are not automatically parallel");
     expect(coordinator).toContain("Do not inject other projects' skills");
+    expect(coordinator).toContain("Surface inherited prompt sources before dispatching");
+    expect(coordinator).toContain("If the active tool exposes close, archive, or stop controls for subagents, close completed, failed, or idle subagents after their report is captured.");
     expect(coordinator).toContain("Treat `doctor` as a state/results consistency probe, not a general plan repair tool.");
     expect(reviewer).toContain("do not implement fixes, claim new work, coordinate the plan, or repair runtime state");
     expect(reviewer).toContain("Do not run `claim-next`");

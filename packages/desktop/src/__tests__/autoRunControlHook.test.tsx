@@ -11,6 +11,7 @@ const project: DesktopProjectSummary = {
   name: "Demo project",
   rootPath: "/tmp/demo",
   workspaceRoot: "/tmp/demo",
+  activeCanvasId: null,
   taskCanvases: []
 };
 
@@ -24,6 +25,9 @@ const selectedBlock: DesktopBlockDetail = {
   executor: null,
   effectiveExecutor: "codex",
   promptMarkdown: "# Implement alpha",
+  promptMissing: false,
+  promptSurfaceMarkdown: "# Effective implement alpha",
+  promptSources: [],
   dependencies: [],
   latestRunId: null,
   latestReviewAttemptId: null,

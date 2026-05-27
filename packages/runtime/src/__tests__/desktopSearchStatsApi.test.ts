@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createTaskCanvas, getGraphViewModel, getStatistics, getTodoGroups, resolveTaskCanvasWorkspace, searchProject } from "../desktop/index.js";
+import { createTaskCanvas, getGraphViewModel, getProjectExecutionPlan, getStatistics, getTodoGroups, resolveTaskCanvasWorkspace, searchProject } from "../desktop/index.js";
 import { mapProjectTaskCanvases } from "../desktop/graph/projectCanvasAggregation.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { claimNext, submitBlockResult, submitReviewResult } from "../taskManager/index.js";
 import type { PlanPackageManifest } from "../types.js";
-import { basicManifest, createTestWorkspace, writeReport, writeReviewResult } from "./promptTestHelpers.js";
+import { basicManifest, createTestWorkspace, writePromptFiles, writeReport, writeReviewResult } from "./promptTestHelpers.js";
 
 afterEach(() => {
   delete process.env.PLANWEAVE_HOME;
@@ -68,6 +68,30 @@ describe("desktop search and statistics API", () => {
 
     const graph = await getGraphViewModel(root);
     expect(graph.tasks.find((task) => task.taskId === "T-001")?.executorLabel).toBe("Mixed");
+  });
+
+  it("summarizes canvas phases and ready queues in registry order", async () => {
+    const { root } = await createTestWorkspace();
+    const secondCanvas = await createTaskCanvas(root, { name: "Follow-up canvas" });
+    const secondWorkspace = await resolveTaskCanvasWorkspace(root, secondCanvas.canvasId);
+    await writeJsonFile(secondWorkspace.manifestFile, basicManifest());
+    await writePromptFiles(secondWorkspace.packageDir, basicManifest());
+
+    const plan = await getProjectExecutionPlan(root);
+
+    expect(plan.phases.map((phase) => ({ phaseIndex: phase.phaseIndex, canvasId: phase.canvasId, canvasName: phase.canvasName }))).toEqual([
+      { phaseIndex: 1, canvasId: "default", canvasName: "Test Plan" },
+      { phaseIndex: 2, canvasId: secondCanvas.canvasId, canvasName: "Follow-up canvas" }
+    ]);
+    expect(plan.phases[0].readyQueue.map((item) => item.ref)).toEqual(["T-001#B-001"]);
+    expect(plan.phases[1].readyQueue).toEqual([
+      expect.objectContaining({ canvasId: secondCanvas.canvasId, ref: "T-001#B-001", parallelSafe: true })
+    ]);
+    expect(plan.readyQueue.map((item) => `${item.canvasId}:${item.ref}`)).toEqual([
+      "default:T-001#B-001",
+      `${secondCanvas.canvasId}:T-001#B-001`
+    ]);
+    expect(plan.notes).toContain("Cross-canvas dependency order is registry order until a project-level canvas dependency contract exists.");
   });
 
   it("groups blocks under implemented once their task is implemented", async () => {

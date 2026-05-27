@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from "react";
 import type { DesktopAutoRunState, DesktopBlockDetail, DesktopProjectSummary, DesktopRunRecord } from "@planweave/runtime";
 import { bridge } from "../bridge";
-import { useDesktopProject } from "./useDesktopProject";
+import { resolveProjectCanvasId, useDesktopProject } from "./useDesktopProject";
 
 type DesktopProjectState = ReturnType<typeof useDesktopProject>;
 
@@ -44,7 +44,7 @@ export function useDesktopProjectSession({
 
   const openProject = useCallback(
     async (project: DesktopProjectSummary, canvasId?: string | null) => {
-      const nextCanvasId = canvasId === undefined ? (project.taskCanvases[0]?.canvasId ?? null) : canvasId;
+      const nextCanvasId = resolveProjectCanvasId(project, canvasId);
       clearSelectionForCanvasChange();
       await projectState.loadProject(project, nextCanvasId);
       await refreshLatestAutoRunSummary(project.rootPath, nextCanvasId);

@@ -29,6 +29,9 @@ Use this skill to design a PlanWeave plan draft from incomplete input. Do not ex
 - Design around core object lifecycles: create, validate, transform, state, storage, consumption, side effects, final output, failure, retry, rollback, and manual intervention.
 - Keep schema, types, APIs, CLI flags, events, files, and prompt inputs/outputs consistent across producers and consumers.
 - Split tasks by data flow, contract boundary, ownership, risk, or independently verifiable acceptance.
+- One canvas should represent one acceptably reviewable work package.
+- Prefer 3-12 tasks per normal canvas.
+- Do not create one-task canvases unless the work package is intentionally tiny, high-risk, or externally gated.
 - Do not split only to create more nodes; merge tiny tasks that cannot be claimed, tested, or reported independently.
 - Model real execution order with explicit dependencies and gates.
 - Parallel tasks must be genuinely independent in data, locks, and contract timing.
@@ -70,6 +73,7 @@ For each task include:
 
 - Skip review for simple docs, config tweaks, copy edits, and low-risk local fixes unless the user asks.
 - Add review for cross-layer code, schema/API/CLI contracts, database changes, provider integration, security/privacy, architecture, or high-risk user-visible behavior.
+- Do not generate review blocks by default for simple tasks; use review blocks only for cross-layer contracts, complex code, data migrations, or production-path changes.
 - Review gates should explain why they exist, who should run them, what pass means, and where `needs_changes` returns.
 
 ## Verification Strategy

@@ -22,6 +22,7 @@ Use this skill as the main agent/controller for a PlanWeave package. Do not impl
 - Identify the active canvas/package scope and where cross-canvas dependencies are expressed.
 - Confirm source of truth for global, project, task, and block prompts; rendered prompts are derived output.
 - Produce a prompt source summary when prompts look empty, inherited, or surprising.
+- Surface inherited prompt sources before dispatching work, including global prompt, project/canvas prompt, task node prompt, block prompt, and any higher-level flow requirements.
 - Do not inject other projects' skills, bootstrap rules, or agent instructions into prompts unless the target repository explicitly requires them.
 
 ## Routing
@@ -41,9 +42,11 @@ Use this skill as the main agent/controller for a PlanWeave package. Do not impl
 3. Preview parallel claims before dispatching a batch.
 4. For each assigned item, record ref, task, block type, prompt source, submit command, and agent owner.
 5. Keep only active subagents running; close completed agents after report submission.
-6. After every submit, re-run status/current before assigning more work.
-7. If `none`, compare parallel and sequential claimability before declaring the plan idle.
-8. If `blocked`, `diverged`, stale, or inconsistent, stop dispatching dependent work and route to recovery.
+6. If the active tool exposes close, archive, or stop controls for subagents, close completed, failed, or idle subagents after their report is captured.
+7. If no close/archive/stop API exists, stop polling inactive agents and record their terminal lifecycle state instead of implying they were closed.
+8. After every submit, re-run status/current before assigning more work.
+9. If `none`, compare parallel and sequential claimability before declaring the plan idle.
+10. If `blocked`, `diverged`, stale, or inconsistent, stop dispatching dependent work and route to recovery.
 
 ## Claim Ownership
 

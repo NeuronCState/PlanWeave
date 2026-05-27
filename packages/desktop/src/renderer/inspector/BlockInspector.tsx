@@ -219,7 +219,34 @@ export function BlockInspector({
               </div>
             </div>
             <BlockConnectionsCard blocks={taskBlocks} dependencies={selectedBlock.dependencies} selectedBlockRef={selectedBlock.ref} onBlockSelect={onBlockSelect} />
+            <div className="flex shrink-0 flex-col gap-2 rounded-lg border bg-card p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-semibold">{t("effectivePrompt")}</div>
+                <Badge variant="secondary">{t("promptSources")}</Badge>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {selectedBlock.promptSources.map((source) => (
+                  <Badge key={source.kind} variant={source.included ? "outline" : "secondary"}>
+                    {source.label}: {source.included ? t("included") : t("disabled")}
+                    {source.missing ? ` / ${t("missing")}` : ""}
+                    {source.empty && !source.missing ? ` / ${t("empty")}` : ""}
+                  </Badge>
+                ))}
+              </div>
+              <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {selectedBlock.promptSources
+                  .filter((source) => source.included && source.preview.length > 0)
+                  .map((source) => (
+                    <div className="grid grid-cols-[132px_minmax(0,1fr)] gap-2" key={`${source.kind}-preview`}>
+                      <span className="truncate font-medium">{source.label}</span>
+                      <span className="truncate">{source.preview}</span>
+                    </div>
+                  ))}
+              </div>
+              <Textarea aria-label={t("effectivePrompt")} className="min-h-48 resize-none font-mono text-xs" readOnly value={selectedBlock.promptSurfaceMarkdown} />
+            </div>
             <Textarea
+              aria-label={t("sourcePrompt")}
               className="min-h-56 flex-1 resize-none"
               value={selectedBlock.promptMarkdown}
               onBlur={saveBlockPromptIfDirty}

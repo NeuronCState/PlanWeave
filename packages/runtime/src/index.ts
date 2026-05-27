@@ -1,6 +1,8 @@
 export { readProjectPaths, resolvePlanweaveHome } from "./paths.js";
 export { createProjectId } from "./projectId.js";
 export { readProject, resolveProjectWorkspace } from "./project.js";
+export { readProjectPrompt, readProjectPromptPolicy, updateProjectPrompt, updateProjectPromptPolicy } from "./projectPromptPolicy.js";
+export type { ProjectPromptPolicy } from "./projectPromptPolicy.js";
 export { initWorkspace } from "./initWorkspace.js";
 export { manifestNodeSchema, manifestSchema } from "./schema/manifest.js";
 export { loadPackage } from "./package/loadPackage.js";
@@ -82,6 +84,7 @@ export {
   getFeedbackRecords,
   getGraphViewModel,
   getProjectOverview,
+  getProjectExecutionPlan,
   getReviewAttempts,
   getReviewPipeline,
   getRunRecord,

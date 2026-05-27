@@ -63,17 +63,22 @@ export function App() {
   });
   const {
     expandedProjectId,
+    executionPlan,
     graph,
     handleOpenProject,
     layout,
     projects,
+    projectPromptMarkdown,
+    projectPromptPolicy,
     refreshGraph,
     removeProject,
     selectedCanvasId,
     selectedProject,
     setLayout,
     statistics,
-    todoGroups
+    todoGroups,
+    updateProjectPrompt,
+    updateProjectPromptPolicy
   } = desktopProject;
 
   const pinnedProjectIds = useMemo(() => new Set(settings.pinnedProjectIds), [settings.pinnedProjectIds]);
@@ -499,7 +504,11 @@ export function App() {
         runtimeTools={runtimeTools}
         setActiveView={setActiveView}
         settings={settings}
+        projectPromptMarkdown={projectPromptMarkdown}
+        projectPromptPolicy={projectPromptPolicy}
         t={t}
+        updateProjectPrompt={updateProjectPrompt}
+        updateProjectPromptPolicy={updateProjectPromptPolicy}
         updateSettings={updateSettings}
       />
     );
@@ -542,6 +551,7 @@ export function App() {
           confirmTaskDraft={confirmTaskDraft}
           dirtyPromptRefs={dirtyPromptRefs}
           edges={edges}
+          executionPlan={executionPlan}
           generateTaskDraft={generateTaskDraft}
           graph={graph}
           handleAutoRunClick={handleAutoRunClick}

@@ -12,6 +12,7 @@ const project: DesktopProjectSummary = {
   name: "Demo project",
   rootPath: "/tmp/demo",
   workspaceRoot: "/tmp/demo",
+  activeCanvasId: "canvas-main",
   taskCanvases: [
     {
       canvasId: "canvas-main",
@@ -113,6 +114,53 @@ describe("desktop renderer hook interfaces", () => {
     expect(bridge.getTodoGroups).toHaveBeenCalledWith(project.rootPath);
     expect(bridge.watchPackageFiles).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
     expect(updateSettings).toHaveBeenCalledWith({ runtimePath: project.workspaceRoot });
+  });
+
+  it("opens the active task canvas when project summaries include one", async () => {
+    const activeProject: DesktopProjectSummary = {
+      ...project,
+      activeCanvasId: "canvas-active",
+      taskCanvases: [
+        {
+          canvasId: "canvas-stale",
+          name: "Stale imported canvas",
+          taskCount: 0,
+          createdAt: "2026-05-23T00:00:00.000Z",
+          updatedAt: "2026-05-23T00:00:00.000Z"
+        },
+        {
+          canvasId: "canvas-active",
+          name: "Active canvas",
+          taskCount: 2,
+          createdAt: "2026-05-23T00:00:00.000Z",
+          updatedAt: "2026-05-23T00:00:00.000Z"
+        }
+      ]
+    };
+    const bridge = createDesktopBridgeMock({
+      listProjects: vi.fn().mockResolvedValue([activeProject]),
+      getGraphViewModel: vi.fn().mockResolvedValue(graph),
+      getDesktopLayout: vi.fn().mockResolvedValue(layout),
+      getTodoGroups: vi.fn().mockResolvedValue(null),
+      getStatistics: vi.fn().mockResolvedValue(null),
+      refreshPackageFileChanges: vi.fn().mockResolvedValue({ diagnostics: [], dirtyPromptRefs: [] }),
+      watchPackageFiles: vi.fn().mockResolvedValue(undefined)
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
+
+    renderHook(() =>
+      useDesktopProject({
+        setError: vi.fn(),
+        setSelectedTaskPanelId: vi.fn(),
+        updateSettings: vi.fn()
+      })
+    );
+
+    await waitFor(() => expect(bridge.getGraphViewModel).toHaveBeenCalled());
+    expect(bridge.getGraphViewModel).toHaveBeenCalledWith({ projectRoot: activeProject.rootPath, canvasId: "canvas-active" });
+    expect(bridge.watchPackageFiles).toHaveBeenCalledWith({ projectRoot: activeProject.rootPath, canvasId: "canvas-active" });
   });
 
   it("coordinates project/canvas switching through Desktop Project Session actions", async () => {

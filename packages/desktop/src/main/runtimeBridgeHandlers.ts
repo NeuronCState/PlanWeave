@@ -14,6 +14,7 @@ import {
   getFeedbackRecords,
   getGraphViewModel,
   getLatestAutoRunSummary,
+  getProjectExecutionPlan,
   getProjectOverview,
   getReviewAttempts,
   getReviewPipeline,
@@ -29,6 +30,8 @@ import {
   pauseAutoRun,
   refreshChangedDesktopPackagePrompts,
   refreshPackageFileChanges,
+  readProjectPrompt,
+  readProjectPromptPolicy,
   removeBlock,
   removeDependencyEdge,
   removeProject,
@@ -45,6 +48,8 @@ import {
   updateBlockExecutor,
   updateBlockPrompt,
   updateBlockTitle,
+  updateProjectPrompt,
+  updateProjectPromptPolicy,
   updateReviewPipeline,
   updateTaskExecutor,
   updateTaskPrompt,
@@ -104,6 +109,13 @@ export function registerRuntimeBridgeHandlers(): void {
   ipcMain.handle(desktopBridgeInvokeChannels.getBlockDetail, async (_event, ref: DesktopCanvasReference, blockRef: string) => getBlockDetail(await resolveDesktopCanvasReference(ref), blockRef));
   ipcMain.handle(desktopBridgeInvokeChannels.getTaskExecutionOrder, async (_event, ref: DesktopCanvasReference, taskId: string) => getTaskExecutionOrder(await resolveDesktopCanvasReference(ref), taskId));
   ipcMain.handle(desktopBridgeInvokeChannels.getTodoGroups, (_event, projectRoot: string) => getTodoGroups(projectRoot));
+  ipcMain.handle(desktopBridgeInvokeChannels.getProjectExecutionPlan, (_event, projectRoot: string) => getProjectExecutionPlan(projectRoot));
+  ipcMain.handle(desktopBridgeInvokeChannels.readProjectPrompt, (_event, projectRoot: string) => readProjectPrompt(projectRoot));
+  ipcMain.handle(desktopBridgeInvokeChannels.updateProjectPrompt, (_event, projectRoot: string, markdown: string) => updateProjectPrompt(projectRoot, markdown));
+  ipcMain.handle(desktopBridgeInvokeChannels.readProjectPromptPolicy, (_event, projectRoot: string) => readProjectPromptPolicy(projectRoot));
+  ipcMain.handle(desktopBridgeInvokeChannels.updateProjectPromptPolicy, (_event, projectRoot: string, patch: Parameters<typeof updateProjectPromptPolicy>[1]) =>
+    updateProjectPromptPolicy(projectRoot, patch)
+  );
   ipcMain.handle(desktopBridgeInvokeChannels.listBlockRunRecords, async (_event, ref: DesktopCanvasReference, blockRef: string) => listBlockRunRecords(await resolveDesktopCanvasReference(ref), blockRef));
   ipcMain.handle(desktopBridgeInvokeChannels.getRunRecord, async (_event, ref: DesktopCanvasReference, recordId: string) => getRunRecord(await resolveDesktopCanvasReference(ref), recordId));
   ipcMain.handle(desktopBridgeInvokeChannels.getReviewAttempts, async (_event, ref: DesktopCanvasReference, blockRef: string) => getReviewAttempts(await resolveDesktopCanvasReference(ref), blockRef));

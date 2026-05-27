@@ -6,6 +6,7 @@ import {
   createTaskCanvas,
   getDesktopLayout,
   getGraphViewModel,
+  getProjectOverview,
   getStatistics,
   getTodoGroups,
   listTaskCanvases,
@@ -174,12 +175,14 @@ describe("desktop task canvas API", () => {
     await writeJsonFile(registryPath, { ...registry, activeCanvasId: secondCanvas.canvasId });
 
     const activeWorkspace = await resolveTaskCanvasWorkspace(root);
+    const overview = await getProjectOverview(root);
     const paths = await readProjectPaths(root);
     const status = await getExecutionStatus({ projectRoot: root });
     const claim = await claimNext({ projectRoot: root });
     const current = await getCurrentWork({ projectRoot: root });
 
     expect(activeWorkspace.packageDir).toBe(secondWorkspace.packageDir);
+    expect(overview.activeCanvasId).toBe(secondCanvas.canvasId);
     expect(paths.projectDir).toBe(init.workspace.workspaceRoot);
     expect(paths.packageDir).toBe(secondWorkspace.packageDir);
     expect(paths.statePath).toBe(secondWorkspace.stateFile);

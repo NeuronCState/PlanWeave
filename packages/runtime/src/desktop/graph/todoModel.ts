@@ -2,7 +2,7 @@ import { compileTaskGraph } from "../../graph/compileTaskGraph.js";
 import { loadPackage } from "../../package/loadPackage.js";
 import { getExecutionStatus } from "../../taskManager/index.js";
 import type { PackageWorkspaceRef } from "../../types.js";
-import type { DesktopTodoGroups, DesktopTodoItem } from "../types.js";
+import type { DesktopProjectExecutionPhase, DesktopProjectExecutionPlan, DesktopTodoGroups, DesktopTodoItem } from "../types.js";
 import { getBlock } from "./graphHelpers.js";
 import { mapProjectTaskCanvases } from "./projectCanvasAggregation.js";
 
@@ -68,4 +68,38 @@ export async function getTodoGroups(projectRoot: string): Promise<DesktopTodoGro
     }
   }
   return groups;
+}
+
+function executionPhaseFromGroups(
+  phaseIndex: number,
+  canvasId: string,
+  canvasName: string,
+  taskCount: number,
+  groups: DesktopTodoGroups
+): DesktopProjectExecutionPhase {
+  const readyQueue = groups.ready;
+  return {
+    phaseIndex,
+    canvasId,
+    canvasName,
+    taskCount,
+    readyQueue,
+    parallelReadyQueue: readyQueue.filter((item) => item.parallelSafe),
+    sequentialReadyQueue: readyQueue.filter((item) => !item.parallelSafe),
+    blockedCount: groups.blocked.length + groups.diverged.length + groups.needs_changes.length,
+    inProgressCount: groups.in_progress.length,
+    completedCount: groups.completed.length + groups.implemented.length
+  };
+}
+
+export async function getProjectExecutionPlan(projectRoot: string): Promise<DesktopProjectExecutionPlan> {
+  const phases = await mapProjectTaskCanvases(projectRoot, async ({ canvas, canvasId, canvasName, workspace }, index) => {
+    const groups = await getTodoGroupsForWorkspace(workspace, { canvasId, canvasName });
+    return executionPhaseFromGroups(index + 1, canvasId, canvasName, canvas.taskCount, groups);
+  });
+  return {
+    phases,
+    readyQueue: phases.flatMap((phase) => phase.readyQueue),
+    notes: ["Cross-canvas dependency order is registry order until a project-level canvas dependency contract exists."]
+  };
 }

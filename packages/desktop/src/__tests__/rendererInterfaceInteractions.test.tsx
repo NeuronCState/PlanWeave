@@ -64,6 +64,7 @@ const project: DesktopProjectSummary = {
   name: "Demo",
   rootPath: "/tmp/demo",
   workspaceRoot: "/tmp/demo",
+  activeCanvasId: "canvas-main",
   taskCanvases: [
     {
       canvasId: "canvas-main",

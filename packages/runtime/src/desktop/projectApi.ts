@@ -7,7 +7,7 @@ import { resolvePlanweaveHome } from "../paths.js";
 import { readProject, resolveProjectWorkspace } from "../project.js";
 import type { ProjectMetadata } from "../types.js";
 import type { DesktopProjectSummary } from "./types.js";
-import { listTaskCanvases } from "./canvasApi.js";
+import { getActiveTaskCanvasId, listTaskCanvases } from "./canvasApi.js";
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -19,12 +19,14 @@ async function exists(path: string): Promise<boolean> {
 }
 
 async function projectSummary(project: ProjectMetadata, workspaceRoot: string): Promise<DesktopProjectSummary> {
+  const [activeCanvasId, taskCanvases] = await Promise.all([getActiveTaskCanvasId(project.rootPath), listTaskCanvases(project.rootPath)]);
   return {
     projectId: project.id,
     name: project.name,
     rootPath: project.rootPath,
     workspaceRoot,
-    taskCanvases: await listTaskCanvases(project.rootPath)
+    activeCanvasId,
+    taskCanvases
   };
 }
 

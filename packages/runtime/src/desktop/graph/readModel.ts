@@ -3,7 +3,7 @@ import { compilePackageGraph, compileTaskGraph } from "../../graph/compileTaskGr
 import { loadPackage } from "../../package/loadPackage.js";
 import { resolvePackagePath } from "../../package/resolvePackagePath.js";
 import { readState } from "../../state.js";
-import { getExecutionStatus } from "../../taskManager/index.js";
+import { getExecutionStatus, renderPromptSurface } from "../../taskManager/index.js";
 import { listExecutorProfiles } from "../../autoRun/executors.js";
 import type { PackageWorkspaceRef, ValidationIssue } from "../../types.js";
 import type { DesktopBlockDetail, DesktopBlockPreview, DesktopGraphViewModel, DesktopTaskDetail, DesktopTaskException, DesktopTaskExecutionOrder } from "../types.js";
@@ -136,6 +136,11 @@ export async function getBlockDetail(projectRoot: PackageWorkspaceRef, ref: stri
   const blockStatus = status.blocks.find((item) => item.ref === ref);
   const claimHint = status.claimHints.find((item) => item.ref === ref);
   const prompt = await readOptionalFile(await resolvePackagePath(workspace.packageDir, block.prompt), block.prompt);
+  const promptSurface = await renderPromptSurface({
+    projectRoot,
+    ref,
+    allowMissingPromptSources: true
+  });
   return {
     ref,
     taskId,
@@ -147,6 +152,8 @@ export async function getBlockDetail(projectRoot: PackageWorkspaceRef, ref: stri
     effectiveExecutor: block.executor ?? task.executor ?? manifest.execution.defaultExecutor ?? null,
     promptMarkdown: prompt.markdown,
     promptMissing: prompt.missing,
+    promptSurfaceMarkdown: promptSurface.markdown,
+    promptSources: promptSurface.sources,
     dependencies: graph.blockDependenciesByRef.get(ref) ?? [],
     latestRunId: blockStatus?.lastRunId ?? null,
     latestReviewAttemptId: blockStatus?.latestReviewAttemptId ?? null,

@@ -502,6 +502,9 @@ export function App() {
         refreshAgentDetections={refreshAgentDetections}
         refreshRuntimeTools={refreshRuntimeTools}
         runtimeTools={runtimeTools}
+        projects={orderedProjects}
+        selectedProject={selectedProject}
+        loadProject={openProjectInSession}
         setActiveView={setActiveView}
         settings={settings}
         projectPromptMarkdown={projectPromptMarkdown}

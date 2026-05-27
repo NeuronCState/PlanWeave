@@ -144,6 +144,8 @@ export const zhCnCatalog = {
     tmuxMonitoringUnavailableHint: "本机没有检测到 tmux。禁用 tmux 后仍会保留通用流式日志。",
     refreshRuntimeTools: "刷新工具检测",
     promptSettings: "Prompt 设置",
+    projectPromptProject: "项目",
+    projectPromptProjectHint: "选择要编辑 Prompt 策略的项目。",
     inheritGlobalPrompt: "继承 Global Prompt",
     inheritGlobalPromptHint: "将 PlanWeave 全局 Prompt 纳入当前项目的最终生效 Prompt。",
     inheritGlobalPromptUnavailableHint: "打开项目后可配置是否继承全局 Prompt。",

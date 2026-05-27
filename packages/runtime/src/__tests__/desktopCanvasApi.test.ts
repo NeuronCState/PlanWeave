@@ -126,6 +126,30 @@ describe("desktop task canvas API", () => {
     });
   });
 
+  it("keeps raw task counts visible when a canvas contains removed plan structures", async () => {
+    const { root } = await createTestWorkspace();
+    const canvas = await createTaskCanvas(root, { name: "Imported legacy plan" });
+    const canvasWorkspace = await resolveTaskCanvasWorkspace(root, canvas.canvasId);
+    const manifest = basicManifest() as unknown as { nodes: Array<Record<string, unknown> & { blocks?: Array<Record<string, unknown>> }> };
+    manifest.nodes.unshift({ id: "G-001", type: "goal", title: "Removed goal" });
+    manifest.nodes[1].blocks?.splice(1, 0, {
+      id: "C-001",
+      type: "check",
+      title: "Removed check block",
+      prompt: "nodes/T-001/blocks/C-001.prompt.md",
+      depends_on: ["B-001"]
+    });
+    await writeJsonFile(canvasWorkspace.manifestFile, manifest);
+
+    const canvases = await listTaskCanvases(root);
+
+    expect(canvases.find((item) => item.canvasId === canvas.canvasId)).toMatchObject({
+      canvasId: canvas.canvasId,
+      taskCount: 1,
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: "manifest_schema" })])
+    });
+  });
+
   it("loads legacy canvas registry records with id and inferred state paths", async () => {
     const { root, init } = await createTestWorkspace();
     const manifest = basicManifest();

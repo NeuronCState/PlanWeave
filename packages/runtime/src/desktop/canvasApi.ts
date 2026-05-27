@@ -5,9 +5,8 @@ import { randomUUID } from "node:crypto";
 import { initialManifest } from "../initWorkspace.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { resolveProjectWorkspace } from "../project.js";
-import { manifestSchema } from "../schema/manifest.js";
 import { createEmptyState } from "../state.js";
-import type { PlanPackageManifest, ProjectWorkspace } from "../types.js";
+import type { ProjectWorkspace } from "../types.js";
 import { canvasDiagnostics } from "./canvasDiagnostics.js";
 import { normalizeRegistry, registryVersion, type TaskCanvasRecord, type TaskCanvasRegistry } from "./canvasRegistry.js";
 import type { DesktopTaskCanvasSummary } from "./types.js";
@@ -41,6 +40,10 @@ function fromWorkspaceRelative(workspace: ProjectWorkspace, path: string): strin
   return isAbsolute(path) ? path : join(workspace.workspaceRoot, path);
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
 function defaultCanvasRecord(workspace: ProjectWorkspace, name: string): TaskCanvasRecord {
   const now = new Date().toISOString();
   return {
@@ -56,8 +59,9 @@ function defaultCanvasRecord(workspace: ProjectWorkspace, name: string): TaskCan
 
 async function readManifestTitle(workspace: ProjectWorkspace): Promise<string> {
   try {
-    const parsed = manifestSchema.parse(await readJsonFile<unknown>(workspace.manifestFile)) as PlanPackageManifest;
-    return parsed.project.title || "任务画布";
+    const raw = asRecord(await readJsonFile<unknown>(workspace.manifestFile));
+    const project = asRecord(raw?.project);
+    return typeof project?.title === "string" && project.title.trim() ? project.title : "任务画布";
   } catch {
     return "任务画布";
   }
@@ -123,8 +127,9 @@ function selectedCanvasRecord(registry: TaskCanvasRegistry, canvasId?: string | 
 
 async function taskCount(workspace: ProjectWorkspace): Promise<number> {
   try {
-    const manifest = manifestSchema.parse(await readJsonFile<unknown>(workspace.manifestFile)) as PlanPackageManifest;
-    return manifest.nodes.filter((node) => node.type === "task").length;
+    const raw = asRecord(await readJsonFile<unknown>(workspace.manifestFile));
+    const nodes = Array.isArray(raw?.nodes) ? raw.nodes : [];
+    return nodes.filter((node) => asRecord(node)?.type === "task").length;
   } catch {
     return 0;
   }

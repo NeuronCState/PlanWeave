@@ -142,6 +142,8 @@ export const enCatalog = {
     tmuxMonitoringUnavailableHint: "tmux was not detected on this machine. Streaming logs still work without tmux.",
     refreshRuntimeTools: "Refresh tools",
     promptSettings: "Prompt settings",
+    projectPromptProject: "Project",
+    projectPromptProjectHint: "Choose which project's prompt policy is being edited.",
     inheritGlobalPrompt: "Inherit global prompt",
     inheritGlobalPromptHint: "Include the PlanWeave global prompt in final prompts for this project.",
     inheritGlobalPromptUnavailableHint: "Open a project to configure inherited global prompt policy.",

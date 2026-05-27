@@ -6,6 +6,11 @@ import { createWindow } from "./window.js";
 const isDev = process.env.PLANWEAVE_DESKTOP_DEV_SERVER_URL !== undefined;
 const isSmoke = process.env.PLANWEAVE_DESKTOP_SMOKE === "1";
 
+// Production app launches can inherit shell env from development tools; keep PLANWEAVE_HOME scoped to dev and smoke runs.
+if (!isDev && !isSmoke) {
+  delete process.env.PLANWEAVE_HOME;
+}
+
 if (isSmoke && process.env.PLANWEAVE_DESKTOP_SMOKE_USER_DATA_DIR) {
   app.setPath("userData", process.env.PLANWEAVE_DESKTOP_SMOKE_USER_DATA_DIR);
 }

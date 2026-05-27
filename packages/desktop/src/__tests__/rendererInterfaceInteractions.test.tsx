@@ -176,6 +176,66 @@ describe("desktop renderer interface interactions", () => {
     expect(screen.getByText("1")).toBeInTheDocument();
   });
 
+  it("marks schema-invalid canvases as errors instead of showing a normal task count", () => {
+    class ResizeObserverMock {
+      disconnect = vi.fn();
+      observe = vi.fn();
+      unobserve = vi.fn();
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    const invalidProject: DesktopProjectSummary = {
+      ...project,
+      taskCanvases: [
+        {
+          canvasId: "broken-canvas",
+          name: "Broken canvas",
+          taskCount: 2,
+          missingPromptCount: 0,
+          diagnostics: [
+            {
+              code: "manifest_schema",
+              message: "Invalid discriminator value. Expected 'implementation' | 'review'",
+              path: "nodes.0.blocks.1.type"
+            }
+          ],
+          createdAt: "2026-05-23T00:00:00.000Z",
+          updatedAt: "2026-05-23T00:00:00.000Z"
+        }
+      ]
+    };
+
+    render(
+      <ProjectSidebar
+        activeView="graph"
+        collapsed={false}
+        expandedProjectId={invalidProject.projectId}
+        graph={null}
+        handleDeleteProject={vi.fn().mockResolvedValue(undefined)}
+        handleDeleteTaskCanvas={vi.fn().mockResolvedValue(undefined)}
+        handleDeleteTaskNode={vi.fn().mockResolvedValue(undefined)}
+        handleOpenProject={vi.fn().mockResolvedValue(undefined)}
+        handleProjectNewGraph={vi.fn().mockResolvedValue(undefined)}
+        handleRevealProject={vi.fn().mockResolvedValue(undefined)}
+        handleTaskPanelSelect={vi.fn()}
+        loadProject={vi.fn().mockResolvedValue(undefined)}
+        notificationItems={[]}
+        onToggleSidebar={vi.fn()}
+        onTogglePinnedProject={vi.fn()}
+        pinnedProjectIds={new Set()}
+        projects={[invalidProject]}
+        resetLayout={vi.fn().mockResolvedValue(undefined)}
+        selectedProject={invalidProject}
+        selectedCanvasId="broken-canvas"
+        selectedTaskPanelId={null}
+        setActiveView={vi.fn()}
+        t={t}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: /Broken canvas Error: Invalid discriminator value/ })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Broken canvas\s*2/ })).not.toBeInTheDocument();
+  });
+
   it("reports component palette click and drag intents through public callbacks", async () => {
     const addPaletteComponent = vi.fn().mockResolvedValue(undefined);
     const handlePaletteDragStart = vi.fn();

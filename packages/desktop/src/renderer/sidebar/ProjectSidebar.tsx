@@ -1,5 +1,6 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
 import {
+  AlertTriangleIcon,
   BellIcon,
   ChartNoAxesColumnIncreasingIcon,
   ChevronDownIcon,
@@ -255,13 +256,21 @@ export function ProjectSidebar({
                         const isGraphCanvas =
                           isSelectedCanvas || (selectedCanvasId === null && isSelectedProject && project.taskCanvases.length === 1);
                         const isExpandedCanvas = isGraphCanvas && !collapsedCanvasIds.has(canvas.canvasId);
+                        const schemaDiagnostic = canvas.diagnostics?.find((diagnostic) => diagnostic.code === "manifest_schema");
+                        const canvasLabel = canvas.name || t("taskCanvas");
                         return (
                           <div className="flex min-w-0 flex-col gap-1" key={canvas.canvasId}>
                             <div className="group/canvas grid min-w-0 grid-cols-[minmax(0,1fr)_2rem] items-center gap-1">
                               <ContextMenu>
                                 <ContextMenuTrigger asChild>
                                   <Button
+                                    aria-label={
+                                      schemaDiagnostic
+                                        ? `${canvasLabel} ${t("error")}: ${schemaDiagnostic.message}`
+                                        : undefined
+                                    }
                                     className="h-8 min-w-0 flex-1 justify-between gap-2 overflow-hidden px-2 text-xs"
+                                    title={schemaDiagnostic ? schemaDiagnostic.message : undefined}
                                     variant={isGraphCanvas && selectedTaskPanelId === null ? "secondary" : "ghost"}
                                     onClick={() => {
                                       void loadProject(project, canvas.canvasId).then(() => handleTaskPanelSelect(null));
@@ -269,11 +278,18 @@ export function ProjectSidebar({
                                   >
                                     <span className="flex min-w-0 flex-1 items-center gap-2 truncate">
                                       <WorkflowIcon className="shrink-0" data-icon="inline-start" />
-                                      <span className="truncate">{canvas.name || t("taskCanvas")}</span>
+                                      <span className="truncate">{canvasLabel}</span>
                                     </span>
-                                    <Badge className="shrink-0" variant="outline">
-                                      {canvas.taskCount}
-                                    </Badge>
+                                    {schemaDiagnostic ? (
+                                      <Badge className="shrink-0 gap-1" variant="destructive">
+                                        <AlertTriangleIcon className="size-3" aria-hidden="true" />
+                                        {t("error")}
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="shrink-0" variant="outline">
+                                        {canvas.taskCount}
+                                      </Badge>
+                                    )}
                                   </Button>
                                 </ContextMenuTrigger>
                                 <ContextMenuContent className="w-52">

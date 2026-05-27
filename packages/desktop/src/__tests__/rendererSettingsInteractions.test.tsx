@@ -9,6 +9,7 @@ import { SettingsView } from "../renderer/views/SettingsView";
 import { createTranslator } from "../renderer/i18n";
 import { defaultDesktopSettings } from "../renderer/settings";
 import type { DesktopUiSettings } from "../renderer/types";
+import type { DesktopProjectSummary } from "@planweave/runtime";
 
 const settings: DesktopUiSettings = {
   runtimePath: "/tmp/project",
@@ -56,6 +57,24 @@ const settings: DesktopUiSettings = {
   }
 };
 
+const projectA: DesktopProjectSummary = {
+  projectId: "project-a",
+  name: "Project A",
+  rootPath: "/tmp/project-a",
+  workspaceRoot: "/tmp/.planweave/project-a",
+  activeCanvasId: "default",
+  taskCanvases: []
+};
+
+const projectB: DesktopProjectSummary = {
+  projectId: "project-b",
+  name: "Project B",
+  rootPath: "/tmp/project-b",
+  workspaceRoot: "/tmp/.planweave/project-b",
+  activeCanvasId: "default",
+  taskCanvases: []
+};
+
 function stubLayoutApis() {
   class ResizeObserverMock {
     disconnect = vi.fn();
@@ -93,6 +112,7 @@ describe("desktop renderer settings interactions", () => {
         refreshAgentDetections={vi.fn().mockResolvedValue(undefined)}
         refreshRuntimeTools={vi.fn().mockResolvedValue(undefined)}
         runtimeTools={{ tmux: { available: true, command: "tmux" } }}
+        projects={[]}
         setActiveView={vi.fn()}
         settings={{ ...settings, language: "zh-CN" }}
         t={createTranslator("zh-CN")}
@@ -121,6 +141,7 @@ describe("desktop renderer settings interactions", () => {
         refreshAgentDetections={vi.fn().mockResolvedValue(undefined)}
         refreshRuntimeTools={refreshRuntimeTools}
         runtimeTools={{ tmux: { available: false, command: "tmux" } }}
+        projects={[]}
         setActiveView={vi.fn()}
         settings={settings}
         t={createTranslator("en")}
@@ -143,6 +164,7 @@ describe("desktop renderer settings interactions", () => {
         refreshAgentDetections={vi.fn().mockResolvedValue(undefined)}
         refreshRuntimeTools={refreshRuntimeTools}
         runtimeTools={{ tmux: { available: true, command: "tmux" } }}
+        projects={[]}
         setActiveView={vi.fn()}
         settings={{ ...settings, execution: { tmuxMonitoring: false } }}
         t={createTranslator("en")}
@@ -168,6 +190,7 @@ describe("desktop renderer settings interactions", () => {
         refreshAgentDetections={vi.fn().mockResolvedValue(undefined)}
         refreshRuntimeTools={vi.fn().mockResolvedValue(undefined)}
         runtimeTools={{ tmux: { available: true, command: "tmux" } }}
+        projects={[]}
         setActiveView={vi.fn()}
         settings={settings}
         t={createTranslator("en")}
@@ -179,6 +202,37 @@ describe("desktop renderer settings interactions", () => {
     await userEvent.click(screen.getByRole("switch", { name: "Inherit global prompt" }));
 
     expect(updateProjectPromptPolicy).toHaveBeenCalledWith({ includeGlobalPrompt: false });
+  });
+
+  it("switches the project whose prompt policy is edited", async () => {
+    stubLayoutApis();
+    const loadProject = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <SettingsView
+        agentDetectionRefreshing={false}
+        agents={[]}
+        graph={null}
+        language="en"
+        projectPromptPolicy={{ includeGlobalPrompt: true }}
+        projects={[projectA, projectB]}
+        selectedProject={projectA}
+        loadProject={loadProject}
+        refreshAgentDetections={vi.fn().mockResolvedValue(undefined)}
+        refreshRuntimeTools={vi.fn().mockResolvedValue(undefined)}
+        runtimeTools={{ tmux: { available: true, command: "tmux" } }}
+        setActiveView={vi.fn()}
+        settings={settings}
+        t={createTranslator("en")}
+        updateProjectPromptPolicy={vi.fn().mockResolvedValue(undefined)}
+        updateSettings={vi.fn()}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Project" }));
+    await userEvent.click(screen.getByRole("option", { name: "Project B" }));
+
+    expect(loadProject).toHaveBeenCalledWith(projectB);
   });
 
   it("shows and saves the current project canvas prompt", async () => {
@@ -196,6 +250,7 @@ describe("desktop renderer settings interactions", () => {
         refreshAgentDetections={vi.fn().mockResolvedValue(undefined)}
         refreshRuntimeTools={vi.fn().mockResolvedValue(undefined)}
         runtimeTools={{ tmux: { available: true, command: "tmux" } }}
+        projects={[]}
         setActiveView={vi.fn()}
         settings={settings}
         t={createTranslator("en")}

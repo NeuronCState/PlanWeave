@@ -32,6 +32,7 @@ type TmuxDone = {
 
 let tmuxAvailable: boolean | null = null;
 const activeTmuxSessions = new Set<string>();
+const runtimePathEntries = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -51,7 +52,8 @@ function shellQuote(value: string): string {
 
 async function runCommand(command: string, args: string[], cwd?: string): Promise<{ exitCode: number; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: ["ignore", "ignore", "pipe"] });
+    const env = { ...process.env, PATH: [process.env.PATH, ...runtimePathEntries].filter(Boolean).join(":") };
+    const child = spawn(command, args, { cwd, env, stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {

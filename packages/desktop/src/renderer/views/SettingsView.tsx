@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
-import type { BlockType, DesktopAgentDetection, DesktopGraphViewModel, DesktopRuntimeToolAvailability, ProjectPromptPolicy } from "@planweave/runtime";
+import type { BlockType, DesktopAgentDetection, DesktopGraphViewModel, DesktopProjectSummary, DesktopRuntimeToolAvailability, ProjectPromptPolicy } from "@planweave/runtime";
 import { ArrowLeftIcon, BlocksIcon, BotIcon, GitPullRequestIcon, SettingsIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -23,6 +23,9 @@ type SettingsViewProps = {
   refreshAgentDetections: () => Promise<void>;
   refreshRuntimeTools: () => Promise<void>;
   runtimeTools: DesktopRuntimeToolAvailability;
+  projects?: DesktopProjectSummary[];
+  selectedProject?: DesktopProjectSummary | null;
+  loadProject?: (project: DesktopProjectSummary) => Promise<void>;
   setActiveView: Dispatch<SetStateAction<AppView>>;
   settings: DesktopUiSettings;
   projectPromptMarkdown?: string | null;
@@ -81,6 +84,9 @@ export function SettingsView({
   refreshAgentDetections,
   refreshRuntimeTools,
   runtimeTools,
+  projects = [],
+  selectedProject,
+  loadProject,
   setActiveView,
   settings,
   projectPromptMarkdown,
@@ -101,6 +107,7 @@ export function SettingsView({
     { key: "agents", label: t("settingsAgents"), icon: BotIcon }
   ] satisfies Array<{ key: SettingsSection; label: string; icon: typeof SettingsIcon }>;
   const projectPromptAvailable = projectPromptMarkdown !== undefined && projectPromptMarkdown !== null && Boolean(updateProjectPrompt);
+  const projectSelectorAvailable = projects.length > 0 && Boolean(loadProject);
 
   useEffect(() => {
     setProjectPromptDraft(projectPromptMarkdown ?? "");
@@ -205,6 +212,35 @@ export function SettingsView({
                 </div>
               </SettingGroup>
               <SettingGroup title={t("promptSettings")}>
+                <Field orientation="horizontal" className="items-center justify-between gap-4 border-b px-5 py-4 last:border-b-0">
+                  <FieldContent>
+                    <FieldLabel className="text-sm font-semibold">{t("projectPromptProject")}</FieldLabel>
+                    <FieldDescription>{t("projectPromptProjectHint")}</FieldDescription>
+                  </FieldContent>
+                  <Select
+                    value={selectedProject?.projectId ?? ""}
+                    disabled={!projectSelectorAvailable}
+                    onValueChange={(projectId) => {
+                      const project = projects.find((item) => item.projectId === projectId);
+                      if (project) {
+                        void loadProject?.(project);
+                      }
+                    }}
+                  >
+                    <SelectTrigger aria-label={t("projectPromptProject")} className="w-72">
+                      <SelectValue placeholder={t("projectMissing")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {projects.map((project) => (
+                          <SelectItem key={project.projectId} value={project.projectId}>
+                            {project.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
                 <SettingsSwitchRow
                   checked={projectPromptPolicy?.includeGlobalPrompt ?? false}
                   disabled={!projectPromptPolicy || !updateProjectPromptPolicy}

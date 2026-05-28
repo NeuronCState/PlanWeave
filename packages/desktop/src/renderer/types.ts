@@ -8,7 +8,7 @@ import type {
   DesktopFeedbackRecord,
   DesktopReviewAttemptSummary,
   DesktopTaskNodeViewModel
-} from "@planweave/runtime";
+} from "@planweave-ai/runtime";
 import type { Language } from "./i18n";
 
 export type TaskNodeLabels = {

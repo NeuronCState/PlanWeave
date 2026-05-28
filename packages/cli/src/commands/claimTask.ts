@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { claimTask } from "@planweave/runtime";
+import { claimTask } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerClaimTaskCommand(program: Command): void {

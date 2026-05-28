@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { cp, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { initWorkspace } from "@planweave/runtime";
+import { initWorkspace } from "@planweave-ai/runtime";
 
 const mainEntry = resolve(process.cwd(), "dist", "main", "main.js");
 const electronBin = resolve(process.cwd(), "node_modules", ".bin", "electron");

@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { retryReview } from "@planweave/runtime";
+import { retryReview } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 function parseMaxFeedbackCycles(value: string): number {

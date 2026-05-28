@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { CSSProperties, Dispatch, SetStateAction } from "react";
-import type { DesktopBlockDetail, DesktopBlockRunRecordSummary, DesktopFeedbackRecord, DesktopGraphViewModel, DesktopReviewAttemptSummary, DesktopRunRecord } from "@planweave/runtime";
+import type { DesktopBlockDetail, DesktopBlockRunRecordSummary, DesktopFeedbackRecord, DesktopGraphViewModel, DesktopReviewAttemptSummary, DesktopRunRecord } from "@planweave-ai/runtime";
 import { XIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

@@ -9,7 +9,7 @@ const execFileAsync = promisify(execFile);
 const repoRoot = resolve(import.meta.dirname, "../../../..");
 
 async function planweave(args: string[], env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string }> {
-  return execFileAsync("pnpm", ["--silent", "--filter", "@planweave/cli", "planweave", ...args], {
+  return execFileAsync("pnpm", ["--silent", "--filter", "@planweave-ai/cli", "planweave", ...args], {
     cwd: repoRoot,
     env
   });

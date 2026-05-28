@@ -9,7 +9,7 @@ import { SettingsView } from "../renderer/views/SettingsView";
 import { createTranslator } from "../renderer/i18n";
 import { defaultDesktopSettings } from "../renderer/settings";
 import type { DesktopUiSettings } from "../renderer/types";
-import type { DesktopProjectSummary } from "@planweave/runtime";
+import type { DesktopProjectSummary } from "@planweave-ai/runtime";
 
 const settings: DesktopUiSettings = {
   runtimePath: "/tmp/project",

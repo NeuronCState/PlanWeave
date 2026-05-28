@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { readProjectPaths } from "@planweave/runtime";
+import { readProjectPaths } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerPathsCommand(program: Command): void {

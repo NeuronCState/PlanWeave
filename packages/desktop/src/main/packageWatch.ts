@@ -1,8 +1,8 @@
 import { ipcMain } from "electron";
 import { existsSync, watch, type FSWatcher } from "node:fs";
 import { dirname, join, relative } from "node:path";
-import { resolveTaskCanvasWorkspace } from "@planweave/runtime";
-import type { DesktopCanvasReference, DesktopPackageFileChangeEvent } from "@planweave/runtime";
+import { resolveTaskCanvasWorkspace } from "@planweave-ai/runtime";
+import type { DesktopCanvasReference, DesktopPackageFileChangeEvent } from "@planweave-ai/runtime";
 import type { WebContents } from "electron";
 import { desktopBridgeInvokeChannels, packageFileChangedChannel } from "../shared/ipcChannels.js";
 

@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { getPrompt } from "@planweave/runtime";
+import { getPrompt } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerPromptCommand(program: Command): void {

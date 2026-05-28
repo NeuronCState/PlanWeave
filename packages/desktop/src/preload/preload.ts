@@ -5,7 +5,7 @@ import type {
   DesktopLayout,
   DesktopPackageFileChangeEvent,
   DesktopProjectSummary
-} from "@planweave/runtime";
+} from "@planweave-ai/runtime";
 import { desktopBridgeInvokeChannels, packageFileChangedChannel } from "../shared/ipcChannels.js";
 
 const api: DesktopBridgeApi = {

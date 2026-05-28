@@ -1,4 +1,4 @@
-import type { DesktopSearchResult } from "@planweave/runtime";
+import type { DesktopSearchResult } from "@planweave-ai/runtime";
 import { Badge } from "@/components/ui/badge";
 
 export type SearchNavigationTarget =

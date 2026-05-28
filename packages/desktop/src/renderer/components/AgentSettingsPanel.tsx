@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { DesktopAgentDetection, DesktopAgentKind } from "@planweave/runtime";
+import type { DesktopAgentDetection, DesktopAgentKind } from "@planweave-ai/runtime";
 import { ChevronDownIcon, RefreshCwIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";

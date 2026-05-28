@@ -11,7 +11,7 @@ import {
   type OnEdgesChange,
   type OnNodesChange
 } from "@xyflow/react";
-import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopProjectSummary } from "@planweave/runtime";
+import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { FolderOpenIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AppNodeTypes } from "../graph/flowModel";

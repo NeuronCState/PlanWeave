@@ -13,7 +13,7 @@ pnpm build
 
 export PLANWEAVE_HOME="$(mktemp -d)"
 planweave() {
-  pnpm --silent --filter @planweave/cli planweave "$@"
+  pnpm --silent --filter @planweave-ai/cli planweave "$@"
 }
 
 INIT_JSON="$(planweave init --json)"

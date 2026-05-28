@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { DesktopGraphViewModel, DesktopProjectSummary, DesktopReviewPipeline, DesktopReviewPipelineStepInput } from "@planweave/runtime";
+import type { DesktopGraphViewModel, DesktopProjectSummary, DesktopReviewPipeline, DesktopReviewPipelineStepInput } from "@planweave-ai/runtime";
 import { bridge, desktopCanvasReference } from "../bridge";
 import type { createTranslator } from "../i18n";
 

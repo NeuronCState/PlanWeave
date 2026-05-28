@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { DesktopGraphViewModel, DesktopReviewPipeline, DesktopReviewPipelineStepInput } from "@planweave/runtime";
+import type { DesktopGraphViewModel, DesktopReviewPipeline, DesktopReviewPipelineStepInput } from "@planweave-ai/runtime";
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

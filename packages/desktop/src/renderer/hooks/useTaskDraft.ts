@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import type { DesktopProjectSummary, DesktopTaskDraft, DesktopTaskDraftMode } from "@planweave/runtime";
+import type { DesktopProjectSummary, DesktopTaskDraft, DesktopTaskDraftMode } from "@planweave-ai/runtime";
 import { bridge, desktopCanvasReference } from "../bridge";
 import type { AppView } from "../types";
 

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { DesktopGraphViewModel } from "@planweave/runtime";
+import type { DesktopGraphViewModel } from "@planweave-ai/runtime";
 
 export function useVisibleGraphTasks(graph: DesktopGraphViewModel | null, searchQuery: string) {
   const visibleTasks = useMemo(() => {

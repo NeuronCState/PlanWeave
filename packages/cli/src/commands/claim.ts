@@ -1,6 +1,6 @@
 import type { Command } from "commander";
-import { claimBlock, claimBlockType } from "@planweave/runtime";
-import type { BlockType } from "@planweave/runtime";
+import { claimBlock, claimBlockType } from "@planweave-ai/runtime";
+import type { BlockType } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 const blockTypes = new Set(["implementation", "review"]);

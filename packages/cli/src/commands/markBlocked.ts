@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { markBlockBlocked } from "@planweave/runtime";
+import { markBlockBlocked } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerMarkBlockedCommand(program: Command): void {

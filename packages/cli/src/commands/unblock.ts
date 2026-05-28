@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { unblockBlock } from "@planweave/runtime";
+import { unblockBlock } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerUnblockCommand(program: Command): void {

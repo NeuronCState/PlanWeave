@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { explainBlock } from "@planweave/runtime";
+import { explainBlock } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerExplainCommand(program: Command): void {

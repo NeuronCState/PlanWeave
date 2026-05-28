@@ -1,4 +1,4 @@
-import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopPackageFileChangeEvent } from "@planweave/runtime";
+import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopPackageFileChangeEvent } from "@planweave-ai/runtime";
 import type { createTranslator } from "./i18n";
 import type { DesktopUiSettings, NotificationItem } from "./types";
 

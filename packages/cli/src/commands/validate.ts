@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { validatePackage } from "@planweave/runtime";
+import { validatePackage } from "@planweave-ai/runtime";
 import { formatValidationReport } from "../output.js";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 

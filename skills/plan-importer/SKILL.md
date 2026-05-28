@@ -13,7 +13,7 @@ Resolve the command before writing files:
 
 1. Use a user-provided command if given.
 2. Else try global `planweave`.
-3. In the PlanWeave repo, prefer `pnpm --filter @planweave/cli planweave`.
+3. In the PlanWeave repo, prefer `pnpm --filter @planweave-ai/cli planweave`.
 4. If the repo defines another local script, use that exact entry and show it in the report.
 
 Write examples as `<pw> ...`, where `<pw>` is the resolved command.

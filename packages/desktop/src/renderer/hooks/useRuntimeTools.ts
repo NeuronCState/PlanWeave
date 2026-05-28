@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { DesktopRuntimeToolAvailability } from "@planweave/runtime";
+import type { DesktopRuntimeToolAvailability } from "@planweave-ai/runtime";
 import { bridge } from "../bridge";
 
 const unavailableRuntimeTools: DesktopRuntimeToolAvailability = {

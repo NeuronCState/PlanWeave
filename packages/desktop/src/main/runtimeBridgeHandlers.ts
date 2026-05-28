@@ -55,9 +55,9 @@ import {
   updateTaskPrompt,
   updateTaskTitle,
   validateGraphEdit
-} from "@planweave/runtime";
-import type { DesktopAutoRunScope, DesktopCanvasReference, DesktopGraphEditResult, DesktopLayout, GraphEditResult } from "@planweave/runtime";
-import type { DesktopAutoRunOptions } from "@planweave/runtime";
+} from "@planweave-ai/runtime";
+import type { DesktopAutoRunScope, DesktopCanvasReference, DesktopGraphEditResult, DesktopLayout, GraphEditResult } from "@planweave-ai/runtime";
+import type { DesktopAutoRunOptions } from "@planweave-ai/runtime";
 import { desktopBridgeInvokeChannels } from "../shared/ipcChannels.js";
 import { detectAgentTools } from "./agentTools.js";
 import { openBlockInspectorWindow } from "./blockInspectorWindow.js";

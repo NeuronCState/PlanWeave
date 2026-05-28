@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { initWorkspace } from "@planweave/runtime";
+import { initWorkspace } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerInitCommand(program: Command): void {

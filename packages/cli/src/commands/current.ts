@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { getCurrentWork } from "@planweave/runtime";
+import { getCurrentWork } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerCurrentCommand(program: Command): void {

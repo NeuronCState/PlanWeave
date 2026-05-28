@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { submitBlockResult } from "@planweave/runtime";
+import { submitBlockResult } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerSubmitResultCommand(program: Command): void {

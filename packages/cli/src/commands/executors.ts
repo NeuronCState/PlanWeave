@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { listExecutorProfiles, testExecutorProfile } from "@planweave/runtime";
+import { listExecutorProfiles, testExecutorProfile } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerExecutorsCommand(program: Command): void {

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Command } from "commander";
-import { editTask } from "@planweave/runtime";
+import { editTask } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 async function promptMarkdown(options: { prompt?: string; promptFile?: string }): Promise<string | undefined> {

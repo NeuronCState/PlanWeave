@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { submitFeedback } from "@planweave/runtime";
+import { submitFeedback } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerSubmitFeedbackCommand(program: Command): void {

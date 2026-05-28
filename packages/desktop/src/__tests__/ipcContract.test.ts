@@ -1,4 +1,4 @@
-import type { GraphEditResult } from "@planweave/runtime";
+import type { GraphEditResult } from "@planweave-ai/runtime";
 import { describe, expect, it } from "vitest";
 import { cloneableGraphEditResult } from "../main/runtimeBridgeResult";
 import { desktopBridgeInvokeChannels, packageFileChangedChannel, type DesktopBridgeInvokeMethod } from "../shared/ipcChannels";

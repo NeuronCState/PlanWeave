@@ -1,4 +1,4 @@
-import type { DesktopTodoItem } from "@planweave/runtime";
+import type { DesktopTodoItem } from "@planweave-ai/runtime";
 import { Badge } from "@/components/ui/badge";
 
 type TodoGroupCardLabels = {

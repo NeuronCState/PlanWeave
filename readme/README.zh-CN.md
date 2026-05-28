@@ -50,7 +50,7 @@ PlanWeave 目前主推 CLI。桌面应用可以测试使用，但仍是实验版
 用 npm 安装 CLI：
 
 ```bash
-npm install -g @planweave/cli
+npm install -g @planweave-ai/cli
 ```
 
 也可以用 Homebrew 安装：

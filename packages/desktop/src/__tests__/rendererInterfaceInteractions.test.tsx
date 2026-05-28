@@ -3,7 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopProjectSummary } from "@planweave/runtime";
+import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ComponentPalette } from "../renderer/palette/ComponentPalette";
 import { FloatingAutoRunControl } from "../renderer/run/FloatingAutoRunControl";

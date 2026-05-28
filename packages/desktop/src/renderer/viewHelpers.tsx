@@ -1,4 +1,4 @@
-import type { BlockType } from "@planweave/runtime";
+import type { BlockType } from "@planweave-ai/runtime";
 import type { createTranslator } from "./i18n";
 
 export const statusVariant = {

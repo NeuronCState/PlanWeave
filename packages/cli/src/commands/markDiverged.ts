@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { markBlockDiverged } from "@planweave/runtime";
+import { markBlockDiverged } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerMarkDivergedCommand(program: Command): void {

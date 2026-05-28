@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { DesktopBlockPreview } from "@planweave/runtime";
+import type { DesktopBlockPreview } from "@planweave-ai/runtime";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";

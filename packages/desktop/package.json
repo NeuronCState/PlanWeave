@@ -1,5 +1,5 @@
 {
-  "name": "@planweave/desktop",
+  "name": "@planweave-ai/desktop",
   "version": "0.1.0",
   "license": "MIT",
   "type": "module",
@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.9",
-    "@planweave/runtime": "workspace:*",
+    "@planweave-ai/runtime": "workspace:*",
     "@vitejs/plugin-react": "^5.1.1",
     "@xyflow/react": "^12.9.3",
     "class-variance-authority": "^0.7.1",

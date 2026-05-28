@@ -1,5 +1,5 @@
 import type { CSSProperties, Dispatch, PointerEvent, SetStateAction } from "react";
-import type { DesktopAutoRunState, DesktopProjectSummary } from "@planweave/runtime";
+import type { DesktopAutoRunState, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { FolderOpenIcon, MoveIcon, PauseIcon, PlayIcon, RefreshCwIcon, SquareIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

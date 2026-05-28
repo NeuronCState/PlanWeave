@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import type { DesktopGraphViewModel, DesktopLayout, DesktopProjectSummary } from "@planweave/runtime";
+import type { DesktopGraphViewModel, DesktopLayout, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDesktopBridgeMock } from "./desktopBridgeMock";
 import { useVisibleGraphTasks } from "../renderer/hooks/useVisibleGraphTasks";

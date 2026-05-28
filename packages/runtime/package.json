@@ -1,5 +1,5 @@
 {
-  "name": "@planweave/runtime",
+  "name": "@planweave-ai/runtime",
   "version": "0.1.0",
   "description": "Runtime library for PlanWeave plan packages, task graphs, prompts, and execution state.",
   "license": "MIT",

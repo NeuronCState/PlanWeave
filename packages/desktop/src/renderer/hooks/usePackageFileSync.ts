@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import type { DesktopPackageFileChangeEvent, DesktopProjectSummary } from "@planweave/runtime";
+import type { DesktopPackageFileChangeEvent, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { bridge, desktopCanvasReference } from "../bridge";
 
 type UsePackageFileSyncArgs = {

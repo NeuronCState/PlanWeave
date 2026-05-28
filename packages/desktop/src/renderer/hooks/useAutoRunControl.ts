@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type * as React from "react";
-import type { DesktopAutoRunScope, DesktopAutoRunState, DesktopBlockDetail, DesktopProjectSummary } from "@planweave/runtime";
+import type { DesktopAutoRunScope, DesktopAutoRunState, DesktopBlockDetail, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { bridge, desktopCanvasReference } from "../bridge";
 import type { createTranslator } from "../i18n";
 import type { AutoRunScopeMode, FloatingControlDrag, FloatingControlPosition } from "../types";

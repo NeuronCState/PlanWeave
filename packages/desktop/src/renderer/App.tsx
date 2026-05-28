@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type Edge, type ReactFlowInstance, useEdgesState, useNodesState } from "@xyflow/react";
-import type { DesktopPackageFileChangeEvent, DesktopProjectSummary } from "@planweave/runtime";
+import type { DesktopPackageFileChangeEvent, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { bridge, desktopCanvasReference } from "./bridge";
 import { nodeTypes, graphEdges, graphNodes } from "./graph/flowModel";
 import { taskNodeLabels } from "./graph/taskNodeLabels";

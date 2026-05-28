@@ -49,7 +49,7 @@ PlanWeave is currently CLI-first. The desktop app is available for testing, but 
 Install the CLI with npm:
 
 ```bash
-npm install -g @planweave/cli
+npm install -g @planweave-ai/cli
 ```
 
 Or install it with Homebrew:

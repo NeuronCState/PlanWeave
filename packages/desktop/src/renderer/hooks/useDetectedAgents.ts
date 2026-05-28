@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { DesktopAgentDetection } from "@planweave/runtime";
+import type { DesktopAgentDetection } from "@planweave-ai/runtime";
 import { bridge } from "../bridge";
 
 export function useDetectedAgents() {

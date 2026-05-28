@@ -6,7 +6,7 @@ import type {
   DesktopProjectSummary,
   DesktopReviewAttemptSummary,
   DesktopRunRecord
-} from "@planweave/runtime";
+} from "@planweave-ai/runtime";
 import { bridge, desktopCanvasReference } from "../bridge";
 import type { AppView } from "../types";
 

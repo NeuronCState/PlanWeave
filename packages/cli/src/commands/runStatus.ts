@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { getAutoRunStatus } from "@planweave/runtime";
+import { getAutoRunStatus } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerRunStatusCommand(program: Command): void {

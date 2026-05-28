@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { DesktopAgentDetection, DesktopGraphViewModel, DesktopProjectSummary, DesktopRuntimeToolAvailability, ProjectPromptPolicy } from "@planweave/runtime";
+import type { DesktopAgentDetection, DesktopGraphViewModel, DesktopProjectSummary, DesktopRuntimeToolAvailability, ProjectPromptPolicy } from "@planweave-ai/runtime";
 import { WindowTitleBar } from "./components/WindowTitleBar";
 import type { createTranslator, Language } from "./i18n";
 import type { AppView, DesktopUiSettings } from "./types";

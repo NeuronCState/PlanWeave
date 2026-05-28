@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { runAutoRunStep } from "@planweave/runtime";
+import { runAutoRunStep } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerRunCommand(program: Command): void {

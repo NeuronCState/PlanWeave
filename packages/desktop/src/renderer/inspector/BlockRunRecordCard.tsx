@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { DesktopRunRecord } from "@planweave/runtime";
+import type { DesktopRunRecord } from "@planweave-ai/runtime";
 import { XIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

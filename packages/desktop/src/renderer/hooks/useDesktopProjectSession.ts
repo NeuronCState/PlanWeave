@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import type { DesktopAutoRunState, DesktopBlockDetail, DesktopProjectSummary, DesktopRunRecord } from "@planweave/runtime";
+import type { DesktopAutoRunState, DesktopBlockDetail, DesktopProjectSummary, DesktopRunRecord } from "@planweave-ai/runtime";
 import { bridge } from "../bridge";
 import { resolveProjectCanvasId, useDesktopProject } from "./useDesktopProject";
 

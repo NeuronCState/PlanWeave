@@ -19,7 +19,7 @@ import {
   Trash2Icon,
   WorkflowIcon
 } from "lucide-react";
-import type { DesktopGraphViewModel, DesktopProjectSummary } from "@planweave/runtime";
+import type { DesktopGraphViewModel, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

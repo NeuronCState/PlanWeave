@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { DesktopProjectSummary, DesktopSearchResult } from "@planweave/runtime";
+import type { DesktopProjectSummary, DesktopSearchResult } from "@planweave-ai/runtime";
 import { bridge } from "../bridge";
 import { searchNavigationTarget } from "../components/SearchResultList";
 import type { AppView } from "../types";

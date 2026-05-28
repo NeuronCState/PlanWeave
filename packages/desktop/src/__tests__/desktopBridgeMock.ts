@@ -1,4 +1,4 @@
-import type { DesktopBridgeApi } from "@planweave/runtime";
+import type { DesktopBridgeApi } from "@planweave-ai/runtime";
 import { vi } from "vitest";
 
 export function createDesktopBridgeMock(overrides: Partial<DesktopBridgeApi> = {}): DesktopBridgeApi {

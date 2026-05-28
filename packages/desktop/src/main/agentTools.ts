@@ -1,5 +1,5 @@
 import { execFile, type ExecFileOptions } from "node:child_process";
-import type { DesktopAgentCliProfile, DesktopAgentDetection } from "@planweave/runtime";
+import type { DesktopAgentCliProfile, DesktopAgentDetection } from "@planweave-ai/runtime";
 
 const agentPathEntries = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
 

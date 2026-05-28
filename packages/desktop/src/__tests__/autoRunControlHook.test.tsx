@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { act, cleanup, renderHook } from "@testing-library/react";
-import type { DesktopAutoRunState, DesktopBlockDetail, DesktopProjectSummary } from "@planweave/runtime";
+import type { DesktopAutoRunState, DesktopBlockDetail, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDesktopBridgeMock } from "./desktopBridgeMock";
 import { createTranslator } from "../renderer/i18n";

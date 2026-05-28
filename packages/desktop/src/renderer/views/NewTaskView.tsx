@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { DesktopGraphViewModel, DesktopProjectSummary, DesktopTaskDraft, DesktopTaskDraftMode } from "@planweave/runtime";
+import type { DesktopGraphViewModel, DesktopProjectSummary, DesktopTaskDraft, DesktopTaskDraftMode } from "@planweave-ai/runtime";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";

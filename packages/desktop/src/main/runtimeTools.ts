@@ -1,4 +1,4 @@
-import { isTmuxAvailable, type DesktopRuntimeToolAvailability } from "@planweave/runtime";
+import { isTmuxAvailable, type DesktopRuntimeToolAvailability } from "@planweave-ai/runtime";
 
 export async function detectRuntimeTools(): Promise<DesktopRuntimeToolAvailability> {
   return {

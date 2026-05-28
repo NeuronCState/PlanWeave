@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DesktopGraphViewModel } from "@planweave/runtime";
+import type { DesktopGraphViewModel } from "@planweave-ai/runtime";
 import {
   dependencyConnectionToManifestEndpoints,
   dependencyDisplayEdgeToManifestEndpoints,

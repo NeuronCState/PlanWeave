@@ -1,4 +1,4 @@
-import type { BlockType } from "@planweave/runtime";
+import type { BlockType } from "@planweave-ai/runtime";
 import type { DesktopUiSettings } from "./types";
 
 export const desktopSettingsKey = "planweave.desktop.settings.v1";

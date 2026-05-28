@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { refreshPrompts } from "@planweave/runtime";
+import { refreshPrompts } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerRefreshPromptsCommand(program: Command): void {

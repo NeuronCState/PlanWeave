@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { claimNext } from "@planweave/runtime";
+import { claimNext } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerClaimNextCommand(program: Command): void {

@@ -7,7 +7,7 @@ import type {
   DesktopStatistics,
   DesktopTodoGroups,
   ProjectPromptPolicy
-} from "@planweave/runtime";
+} from "@planweave-ai/runtime";
 import { bridge, desktopCanvasReference } from "../bridge";
 import type { DesktopUiSettings } from "../types";
 

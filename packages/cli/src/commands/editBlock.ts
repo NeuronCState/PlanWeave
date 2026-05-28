@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Command } from "commander";
-import { editBlock } from "@planweave/runtime";
-import type { ReviewHookDefinition } from "@planweave/runtime";
+import { editBlock } from "@planweave-ai/runtime";
+import type { ReviewHookDefinition } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 async function promptMarkdown(options: { prompt?: string; promptFile?: string }): Promise<string | undefined> {

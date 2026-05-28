@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { DesktopSearchResult } from "@planweave/runtime";
+import type { DesktopSearchResult } from "@planweave-ai/runtime";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SearchResultList } from "../components/SearchResultList";

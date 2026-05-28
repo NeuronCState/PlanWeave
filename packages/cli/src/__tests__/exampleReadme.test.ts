@@ -9,7 +9,7 @@ const execFileAsync = promisify(execFile);
 const repoRoot = resolve(import.meta.dirname, "../../../..");
 
 async function planweave(args: string[], env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string }> {
-  return execFileAsync("pnpm", ["--silent", "--filter", "@planweave/cli", "planweave", ...args], {
+  return execFileAsync("pnpm", ["--silent", "--filter", "@planweave-ai/cli", "planweave", ...args], {
     cwd: repoRoot,
     env
   });
@@ -22,7 +22,7 @@ function parseJson<T = unknown>(stdout: string): T {
 describe("basic Plan Package README workflow", () => {
   it("uses a pnpm wrapper that preserves JSON stdout", async () => {
     const readme = await readFile(join(repoRoot, "examples/basic-plan-package/README.md"), "utf8");
-    expect(readme).toContain("pnpm --silent --filter @planweave/cli planweave");
+    expect(readme).toContain("pnpm --silent --filter @planweave-ai/cli planweave");
 
     const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
     const { stdout, stderr } = await planweave(["init", "--json"], { ...process.env, PLANWEAVE_HOME: home });

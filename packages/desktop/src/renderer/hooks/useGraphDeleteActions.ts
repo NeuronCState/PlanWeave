@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { DesktopBlockDetail, DesktopProjectSummary, DesktopRunRecord } from "@planweave/runtime";
+import type { DesktopBlockDetail, DesktopProjectSummary, DesktopRunRecord } from "@planweave-ai/runtime";
 import { bridge, desktopCanvasReference } from "../bridge";
 
 type UseGraphDeleteActionsArgs = {

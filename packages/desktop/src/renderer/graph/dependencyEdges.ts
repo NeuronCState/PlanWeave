@@ -1,5 +1,5 @@
 import type { Connection, Edge } from "@xyflow/react";
-import type { DesktopGraphEdgeViewModel } from "@planweave/runtime";
+import type { DesktopGraphEdgeViewModel } from "@planweave-ai/runtime";
 
 export type ManifestDependencyEndpoints = {
   from: string;

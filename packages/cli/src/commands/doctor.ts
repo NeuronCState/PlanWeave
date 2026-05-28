@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { runDoctor } from "@planweave/runtime";
+import { runDoctor } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerDoctorCommand(program: Command): void {

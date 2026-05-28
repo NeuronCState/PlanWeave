@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { resolveBlockDivergence } from "@planweave/runtime";
+import { resolveBlockDivergence } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerResolveDivergenceCommand(program: Command): void {

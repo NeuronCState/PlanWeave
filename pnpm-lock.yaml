@@ -23,7 +23,7 @@ importers:
 
   packages/cli:
     dependencies:
-      '@planweave/runtime':
+      '@planweave-ai/runtime':
         specifier: workspace:*
         version: link:../runtime
       commander:
@@ -35,7 +35,7 @@ importers:
       '@fontsource-variable/geist':
         specifier: ^5.2.9
         version: 5.2.9
-      '@planweave/runtime':
+      '@planweave-ai/runtime':
         specifier: workspace:*
         version: link:../runtime
       '@vitejs/plugin-react':

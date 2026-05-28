@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
-import type { BlockType, DesktopAgentDetection, DesktopGraphViewModel, DesktopProjectSummary, DesktopRuntimeToolAvailability, ProjectPromptPolicy } from "@planweave/runtime";
+import type { BlockType, DesktopAgentDetection, DesktopGraphViewModel, DesktopProjectSummary, DesktopRuntimeToolAvailability, ProjectPromptPolicy } from "@planweave-ai/runtime";
 import { ArrowLeftIcon, BlocksIcon, BotIcon, GitPullRequestIcon, SettingsIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";

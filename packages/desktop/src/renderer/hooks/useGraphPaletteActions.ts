@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import type * as React from "react";
 import type { Connection, Edge, Node, ReactFlowInstance } from "@xyflow/react";
-import type { DesktopBlockDetail, DesktopGraphViewModel, DesktopLayout, DesktopProjectSummary } from "@planweave/runtime";
+import type { DesktopBlockDetail, DesktopGraphViewModel, DesktopLayout, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { bridge, desktopCanvasReference } from "../bridge";
 import { dependencyConnectionToManifestEndpoints, dependencyDisplayEdgeToManifestEndpoints } from "../graph/dependencyEdges";
 import type { createTranslator } from "../i18n";

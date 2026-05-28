@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DesktopGraphViewModel, DesktopProjectSummary } from "@planweave/runtime";
+import type { DesktopGraphViewModel, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { bridge, desktopCanvasReference } from "../bridge";
 import type { TaskNodeData } from "../types";
 

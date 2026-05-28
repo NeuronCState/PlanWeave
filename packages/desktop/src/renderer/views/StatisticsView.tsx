@@ -1,4 +1,4 @@
-import type { DesktopStatistics } from "@planweave/runtime";
+import type { DesktopStatistics } from "@planweave-ai/runtime";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { createTranslator } from "../i18n";
 import { formatElapsed, formatPercent } from "../viewHelpers";

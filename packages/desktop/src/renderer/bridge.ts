@@ -1,4 +1,4 @@
-import type { DesktopBridgeApi, DesktopCanvasReference, DesktopProjectSummary } from "@planweave/runtime";
+import type { DesktopBridgeApi, DesktopCanvasReference, DesktopProjectSummary } from "@planweave-ai/runtime";
 
 export const bridge: DesktopBridgeApi | null = typeof window !== "undefined" && "planweave" in window ? window.planweave : null;
 

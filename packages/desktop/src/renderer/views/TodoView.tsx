@@ -1,4 +1,4 @@
-import type { DesktopProjectExecutionPlan, DesktopTodoGroups } from "@planweave/runtime";
+import type { DesktopProjectExecutionPlan, DesktopTodoGroups } from "@planweave-ai/runtime";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";

@@ -27,8 +27,8 @@ pnpm -r build
 Run the CLI from the workspace without installing it globally:
 
 ```bash
-pnpm --filter @planweave/cli planweave --help
-pnpm --filter @planweave/cli planweave help
+pnpm --filter @planweave-ai/cli planweave --help
+pnpm --filter @planweave-ai/cli planweave help
 ```
 
 Run the desktop app from source:
@@ -54,7 +54,7 @@ pnpm -r build
 Run the desktop smoke test after building:
 
 ```bash
-pnpm --filter @planweave/desktop smoke
+pnpm --filter @planweave-ai/desktop smoke
 ```
 
 ## Local Packaging

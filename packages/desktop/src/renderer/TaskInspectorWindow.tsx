@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { DesktopGraphViewModel, DesktopTaskDetail } from "@planweave/runtime";
+import type { DesktopGraphViewModel, DesktopTaskDetail } from "@planweave-ai/runtime";
 import { bridge } from "./bridge";
 import { createTranslator, type Language } from "./i18n";
 import { useDetectedAgents } from "./hooks/useDetectedAgents";

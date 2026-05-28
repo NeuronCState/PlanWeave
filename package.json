@@ -8,9 +8,9 @@
   "scripts": {
     "build": "pnpm -r build",
     "check:dom-boundaries": "node scripts/check-renderer-dom-boundaries.mjs",
-    "pack:npm": "pnpm -r --filter @planweave/runtime --filter @planweave/cli pack",
-    "planweave": "pnpm --filter @planweave/cli planweave",
-    "publish:npm": "pnpm -r --filter @planweave/runtime --filter @planweave/cli publish --access public",
+    "pack:npm": "pnpm -r --filter @planweave-ai/runtime --filter @planweave-ai/cli pack",
+    "planweave": "pnpm --filter @planweave-ai/cli planweave",
+    "publish:npm": "pnpm -r --filter @planweave-ai/runtime --filter @planweave-ai/cli publish --access public",
     "test": "pnpm check:dom-boundaries && vitest run"
   },
   "devDependencies": {

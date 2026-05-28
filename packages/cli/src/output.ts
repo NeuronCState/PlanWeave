@@ -1,4 +1,4 @@
-import type { ValidationReport } from "@planweave/runtime";
+import type { ValidationReport } from "@planweave-ai/runtime";
 
 export function formatValidationReport(report: ValidationReport): string {
   const lines: string[] = [];

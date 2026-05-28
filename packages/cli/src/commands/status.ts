@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { getExecutionStatus, type ClaimHint } from "@planweave/runtime";
+import { getExecutionStatus, type ClaimHint } from "@planweave-ai/runtime";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function formatClaimHint(hint: ClaimHint): string {

@@ -19,7 +19,7 @@ import type {
   DesktopTaskDraft,
   DesktopTaskDraftMode,
   DesktopTodoGroups
-} from "@planweave/runtime";
+} from "@planweave-ai/runtime";
 import type { createTranslator, Language } from "../i18n";
 import type { AppNodeTypes } from "../graph/flowModel";
 import type { AppFlowNode, AppView, AutoRunScopeMode, DesktopUiSettings, NotificationItem } from "../types";

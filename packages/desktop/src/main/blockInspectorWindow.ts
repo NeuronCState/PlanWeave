@@ -1,7 +1,7 @@
 import { BrowserWindow } from "electron";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { DesktopCanvasReference } from "@planweave/runtime";
+import type { DesktopCanvasReference } from "@planweave-ai/runtime";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const blockInspectorWindows = new Map<string, BrowserWindow>();

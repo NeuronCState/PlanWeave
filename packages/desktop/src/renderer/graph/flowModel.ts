@@ -1,5 +1,5 @@
 import { MarkerType, type Edge } from "@xyflow/react";
-import type { DesktopBlockDetail, DesktopBlockRunRecordSummary, DesktopFeedbackRecord, DesktopGraphViewModel, DesktopLayout, DesktopReviewAttemptSummary } from "@planweave/runtime";
+import type { DesktopBlockDetail, DesktopBlockRunRecordSummary, DesktopFeedbackRecord, DesktopGraphViewModel, DesktopLayout, DesktopReviewAttemptSummary } from "@planweave-ai/runtime";
 import type { AppFlowNode, TaskFlowNode, TaskNodeData } from "../types";
 import { TaskNodeCard } from "./TaskNodeCard";
 import { displayEdgeManifestData, executionFlowEndpoints } from "./dependencyEdges";

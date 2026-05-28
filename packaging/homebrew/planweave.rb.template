@@ -8,7 +8,7 @@ class Planweave < Formula
   depends_on "node"
 
   def install
-    system "npm", "install", *std_npm_args
+    system "npm", "install", *std_npm_args, "--min-release-age=0"
   end
 
   test do

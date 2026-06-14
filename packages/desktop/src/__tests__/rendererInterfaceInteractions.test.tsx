@@ -3,13 +3,14 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopProjectSummary } from "@planweave-ai/runtime";
+import type { DesktopAutoRunState, DesktopCanvasGraphViewModel, DesktopGraphViewModel, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ComponentPalette } from "../renderer/palette/ComponentPalette";
 import { FloatingAutoRunControl } from "../renderer/run/FloatingAutoRunControl";
 import { ProjectSidebar } from "../renderer/sidebar/ProjectSidebar";
 import { createTranslator } from "../renderer/i18n";
 import type { DesktopUiSettings } from "../renderer/types";
+import { CanvasMapInspector } from "../renderer/views/CanvasMapInspector";
 
 const t = createTranslator("en");
 
@@ -178,6 +179,53 @@ describe("desktop renderer interface interactions", () => {
     expect(screen.getByText("1")).toBeInTheDocument();
   });
 
+  it("keeps project collapse control visible and opens project selection in the canvas map view", async () => {
+    class ResizeObserverMock {
+      disconnect = vi.fn();
+      observe = vi.fn();
+      unobserve = vi.fn();
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    const setActiveView = vi.fn();
+    const loadProject = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <ProjectSidebar
+        activeView="canvas-map"
+        collapsed={false}
+        expandedProjectId={project.projectId}
+        graph={graph}
+        handleDeleteProject={vi.fn().mockResolvedValue(undefined)}
+        handleDeleteTaskCanvas={vi.fn().mockResolvedValue(undefined)}
+        handleDeleteTaskNode={vi.fn().mockResolvedValue(undefined)}
+        handleOpenProject={vi.fn().mockResolvedValue(undefined)}
+        handleProjectNewGraph={vi.fn().mockResolvedValue(undefined)}
+        handleRevealProject={vi.fn().mockResolvedValue(undefined)}
+        handleTaskPanelSelect={vi.fn()}
+        loadProject={loadProject}
+        notificationItems={[]}
+        onToggleSidebar={vi.fn()}
+        onTogglePinnedProject={vi.fn()}
+        pinnedProjectIds={new Set()}
+        projects={[project]}
+        resetLayout={vi.fn().mockResolvedValue(undefined)}
+        selectedProject={project}
+        selectedCanvasId="canvas-main"
+        selectedTaskPanelId={null}
+        setActiveView={setActiveView}
+        t={t}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Collapse project" })).toBeVisible();
+
+    await userEvent.click(screen.getByRole("button", { name: "Demo" }));
+
+    expect(loadProject).toHaveBeenCalledWith(project);
+    expect(setActiveView).toHaveBeenCalledWith("canvas-map");
+    expect(screen.getByRole("button", { name: "Collapse project" })).toBeVisible();
+  });
+
   it("marks diagnostic canvases as errors instead of showing a normal task count", () => {
     class ResizeObserverMock {
       disconnect = vi.fn();
@@ -236,6 +284,41 @@ describe("desktop renderer interface interactions", () => {
 
     expect(screen.getByRole("button", { name: /Broken canvas Error: Expected array/ })).toBeVisible();
     expect(screen.queryByRole("button", { name: /Broken canvas\s*2/ })).not.toBeInTheDocument();
+  });
+
+  it("closes the canvas map inspector from the selected canvas detail", async () => {
+    const onClose = vi.fn();
+    const canvasGraph: DesktopCanvasGraphViewModel = {
+      projectId: "P-001",
+      projectTitle: "Demo",
+      canvases: [
+        {
+          canvasId: "canvas-main",
+          title: "Main canvas",
+          packageDir: "canvases/main/package",
+          diagnostics: []
+        }
+      ],
+      edges: [],
+      crossTaskEdges: [],
+      diagnostics: []
+    };
+
+    render(
+      <CanvasMapInspector
+        graph={canvasGraph}
+        onClose={onClose}
+        onCanvasOpen={vi.fn()}
+        selectedCanvas={canvasGraph.canvases[0] ?? null}
+        selectedCanvasId="canvas-main"
+        selectedEdge={null}
+        t={t}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("reports component palette click and drag intents through public callbacks", async () => {

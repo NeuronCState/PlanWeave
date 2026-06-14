@@ -205,13 +205,30 @@ export function ProjectSidebar({
               const isPinnedProject = pinnedProjectIds.has(project.projectId);
               return (
                 <div className="flex min-w-0 flex-col gap-1" key={project.projectId}>
-                  <div className="group/project grid min-w-0 grid-cols-[minmax(0,1fr)_2rem] items-center gap-1">
+                  <div className="group/project grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] items-center gap-1">
+                    <Button
+                      aria-label={isExpandedProject ? t("collapseProject") : t("expandProject")}
+                      className="relative z-10 size-7 shrink-0 border-0 bg-transparent text-muted-foreground shadow-none opacity-100 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      size="icon-sm"
+                      variant="ghost"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (!isSelectedProject) {
+                          expandProject(project.projectId);
+                          void loadProject(project);
+                          return;
+                        }
+                        toggleProject(project.projectId);
+                      }}
+                    >
+                      {isExpandedProject ? <ChevronDownIcon className="size-4" /> : <ChevronRightIcon className="size-4" />}
+                    </Button>
                     <ContextMenu>
                       <ContextMenuTrigger asChild>
                         <Button
                           className="h-auto min-w-0 flex-1 justify-start overflow-hidden whitespace-normal py-2 text-left"
                           variant={isSelectedProject ? "secondary" : "ghost"}
-                          onClick={() => void loadProject(project)}
+                          onClick={() => void loadProject(project).then(() => setActiveView("canvas-map"))}
                         >
                           <GitBranchIcon className="shrink-0" data-icon="inline-start" />
                           <span className="min-w-0 flex-1 truncate">{project.name}</span>
@@ -242,23 +259,6 @@ export function ProjectSidebar({
                         </ContextMenuItem>
                       </ContextMenuContent>
                     </ContextMenu>
-                    <Button
-                      aria-label={isExpandedProject ? t("collapseProject") : t("expandProject")}
-                      className="relative z-10 size-7 shrink-0 border-0 bg-transparent text-muted-foreground shadow-none opacity-100 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                      size="icon-sm"
-                      variant="ghost"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (!isSelectedProject) {
-                          expandProject(project.projectId);
-                          void loadProject(project);
-                          return;
-                        }
-                        toggleProject(project.projectId);
-                      }}
-                    >
-                      {isExpandedProject ? <ChevronDownIcon className="size-4" /> : <ChevronRightIcon className="size-4" />}
-                    </Button>
                   </div>
                   {isExpandedProject ? (
                     <div className="flex min-w-0 flex-col gap-1 pl-5">

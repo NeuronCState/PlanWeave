@@ -622,18 +622,20 @@ export function App() {
           visibleTaskIds={visibleTaskIds}
           visibleTasks={visibleTasks}
         />
-        <RightPaletteSidebar
-          addPaletteComponent={addPaletteComponent}
-          handlePaletteDragStart={handlePaletteDragStart}
-          rightSidebarCollapsed={rightSidebarCollapsed}
-          setRightSidebarCollapsed={setRightSidebarCollapsed}
-          settings={settings}
-          t={t}
-        />
+        {activeView === "canvas-map" ? null : (
+          <RightPaletteSidebar
+            addPaletteComponent={addPaletteComponent}
+            handlePaletteDragStart={handlePaletteDragStart}
+            rightSidebarCollapsed={rightSidebarCollapsed}
+            setRightSidebarCollapsed={setRightSidebarCollapsed}
+            settings={settings}
+            t={t}
+          />
+        )}
       </main>
       <CollapsedSidebarControls
         leftSidebarCollapsed={leftSidebarCollapsed}
-        rightSidebarCollapsed={rightSidebarCollapsed}
+        rightSidebarCollapsed={activeView === "canvas-map" ? false : rightSidebarCollapsed}
         setLeftSidebarCollapsed={setLeftSidebarCollapsed}
         setRightSidebarCollapsed={setRightSidebarCollapsed}
         t={t}

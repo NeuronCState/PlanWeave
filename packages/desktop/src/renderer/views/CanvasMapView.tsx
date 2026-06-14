@@ -111,6 +111,10 @@ export function CanvasMapView({
     },
     [nodes, saveCanvasMapLayoutFromNodes]
   );
+  const closeInspector = useCallback(() => {
+    setSelectedMapCanvasId(null);
+    setSelectedEdgeId(null);
+  }, [setSelectedMapCanvasId]);
 
   if (!selectedProject || !canvasGraph) {
     return (
@@ -149,7 +153,7 @@ export function CanvasMapView({
             setSelectedEdgeId(edge.id);
             setSelectedMapCanvasId(null);
           }}
-          onPaneClick={() => setSelectedEdgeId(null)}
+          onPaneClick={closeInspector}
           proOptions={{ hideAttribution: true }}
           minZoom={0.1}
           fitView
@@ -174,6 +178,7 @@ export function CanvasMapView({
           <div className="flex flex-col gap-3 p-3">
             <CanvasMapInspector
               graph={canvasGraph}
+              onClose={closeInspector}
               onCanvasOpen={openCanvas}
               selectedCanvas={selectedCanvas}
               selectedCanvasId={selectedMapCanvasId}

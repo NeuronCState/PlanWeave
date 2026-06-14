@@ -3,7 +3,7 @@ import type {
   DesktopCanvasGraphViewModel,
   DesktopCanvasNodeViewModel
 } from "@planweave-ai/runtime";
-import { GitBranchIcon } from "lucide-react";
+import { GitBranchIcon, XIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import type { createTranslator } from "../i18n";
 
 type CanvasMapInspectorProps = {
   graph: DesktopCanvasGraphViewModel;
+  onClose: () => void;
   onCanvasOpen: (canvasId: string) => void;
   selectedCanvas: DesktopCanvasNodeViewModel | null;
   selectedCanvasId: string | null;
@@ -59,6 +60,7 @@ function CanvasEdgeInspector({
 
 export function CanvasMapInspector({
   graph,
+  onClose,
   onCanvasOpen,
   selectedCanvas,
   selectedCanvasId,
@@ -73,7 +75,16 @@ export function CanvasMapInspector({
   );
 
   if (selectedEdge) {
-    return <CanvasEdgeInspector edge={selectedEdge} titleByCanvasId={titleByCanvasId} t={t} />;
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="flex justify-end">
+          <Button size="icon-sm" variant="ghost" aria-label={t("close")} onClick={onClose}>
+            <XIcon data-icon="inline-start" />
+          </Button>
+        </div>
+        <CanvasEdgeInspector edge={selectedEdge} titleByCanvasId={titleByCanvasId} t={t} />
+      </div>
+    );
   }
 
   if (!selectedCanvas) {
@@ -85,7 +96,12 @@ export function CanvasMapInspector({
       <CardHeader>
         <CardTitle className="flex min-w-0 items-center justify-between gap-2 text-sm">
           <span className="truncate">{selectedCanvas.title}</span>
-          {selectedCanvas.diagnostics.length > 0 ? <Badge variant="destructive">{t("error")}</Badge> : null}
+          <span className="flex shrink-0 items-center gap-1">
+            {selectedCanvas.diagnostics.length > 0 ? <Badge variant="destructive">{t("error")}</Badge> : null}
+            <Button size="icon-sm" variant="ghost" aria-label={t("close")} onClick={onClose}>
+              <XIcon data-icon="inline-start" />
+            </Button>
+          </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-sm">

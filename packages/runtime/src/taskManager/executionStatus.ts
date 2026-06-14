@@ -2,28 +2,13 @@ import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import type {
   BlockState,
   BlockStatus,
-  CompiledExecutionGraph,
   ExecutionGraphSession,
-  PackageWorkspaceRef,
-  RuntimeState,
-  ValidationIssue
+  PackageWorkspaceRef
 } from "../types.js";
+import { buildClaimReadiness } from "./claimReadiness.js";
+import { createProjectGraphClaimGuard } from "./projectGraphClaimGuard.js";
 import { loadRuntime } from "./runtimeContext.js";
-import {
-  blockDependenciesCompleted,
-  canDispatchImplementationBlock,
-  canClaimReviewBlock,
-  getBlock,
-  isActiveFeedbackStatus,
-  requiredImplementationRefs,
-  taskDependenciesSatisfied
-} from "./selectors.js";
-
-function reviewGateUnlocksTasks(taskId: string, downstreamTasks: string[], state: RuntimeState, graph: CompiledExecutionGraph): string[] {
-  return downstreamTasks.filter((downstreamTaskId) =>
-    (graph.taskDependenciesByTask.get(downstreamTaskId) ?? []).every((dependency) => dependency === taskId || state.tasks[dependency]?.status === "implemented")
-  );
-}
+import { getBlock, isActiveFeedbackStatus } from "./selectors.js";
 
 function statusReasonForBlock(blockState: BlockState | undefined): string | null {
   if (blockState?.status === "blocked") {
@@ -35,28 +20,9 @@ function statusReasonForBlock(blockState: BlockState | undefined): string | null
   return blockState?.blockedReason ?? blockState?.divergenceReason ?? null;
 }
 
-function currentClaimLockReason(graph: CompiledExecutionGraph, state: RuntimeState): string | null {
-  const activeFeedback = Object.entries(state.feedback).find(([, feedback]) => feedback.status === "open" || feedback.status === "in_progress");
-  if (activeFeedback) {
-    return `Default claims are locked by current feedback '${activeFeedback[0]}'.`;
-  }
-  const inProgressReview = graph.blockRefsInManifestOrder.find((ref) => {
-    const block = graph.blocksByRef.get(ref);
-    return block?.type === "review" && state.blocks[ref]?.status === "in_progress";
-  });
-  if (inProgressReview) {
-    return `Default claims are locked by current review block '${inProgressReview}'.`;
-  }
-  const inProgressBlock = graph.blockRefsInManifestOrder.find((ref) => {
-    const block = graph.blocksByRef.get(ref);
-    return block?.type !== "review" && state.blocks[ref]?.status === "in_progress";
-  });
-  return inProgressBlock ? `Default claims are locked by current block '${inProgressBlock}'.` : null;
-}
-
 export async function getExecutionStatus(options: { projectRoot: PackageWorkspaceRef; session?: ExecutionGraphSession }) {
   const context = await loadRuntime(options);
-  const { workspace, graph, state } = context;
+  const { workspace, manifest, graph, state } = context;
   const taskCounts = Object.fromEntries(["planned", "ready", "in_progress", "implemented"].map((status) => [status, 0])) as Record<
     "planned" | "ready" | "in_progress" | "implemented",
     number
@@ -79,88 +45,7 @@ export async function getExecutionStatus(options: { projectRoot: PackageWorkspac
   }
   const currentFeedbackId =
     state.currentFeedbackId && isActiveFeedbackStatus(state.feedback[state.currentFeedbackId]?.status) ? state.currentFeedbackId : null;
-  const defaultClaimLockReason = currentClaimLockReason(graph, state);
-  const claimHints = graph.blockRefsInManifestOrder.map((ref) => {
-    const taskId = graph.blockTaskByRef.get(ref);
-    const block = graph.blocksByRef.get(ref);
-    const blockState = state.blocks[ref];
-    const { blockId } = parseBlockRef(ref);
-    const blockedByTasks = taskId
-      ? (graph.taskDependenciesByTask.get(taskId) ?? []).filter((dependency) => state.tasks[dependency]?.status !== "implemented")
-      : [];
-    const directBlockBlockers = (graph.blockDependenciesByRef.get(ref) ?? []).filter((dependency) => state.blocks[dependency]?.status !== "completed");
-    const reviewWorkBlockers =
-      taskId && block?.type === "review"
-        ? requiredImplementationRefs(graph, taskId).filter((dependency) => state.blocks[dependency]?.status !== "completed")
-        : [];
-    const blockedByBlocks = Array.from(new Set([...directBlockBlockers, ...reviewWorkBlockers]));
-    const baseReady =
-      !!taskId &&
-      state.blocks[ref]?.status === "ready" &&
-      taskDependenciesSatisfied(graph, state, taskId) &&
-      (block?.type === "review" ? canClaimReviewBlock(graph, state, ref) : blockDependenciesCompleted(graph, state, ref));
-    const ready = baseReady && defaultClaimLockReason === null;
-    const parallelSafe = block?.type !== "review" && !!graph.parallelSafeByBlockRef.get(ref);
-    const dispatchable = canDispatchImplementationBlock(graph, state, ref);
-    const downstreamTasks = taskId && block?.type === "review" ? (graph.taskDependentsByTask.get(taskId) ?? []) : [];
-    const reviewGate =
-      taskId && block?.type === "review"
-        ? {
-            isGate: true as const,
-            required: block.review.required,
-            requiredReason: block.review.required
-              ? "Required review gate for task completion."
-              : "Optional review gate; not required for task completion.",
-            executorRole: "reviewer" as const,
-            downstreamTasks,
-            unlocksTasks: reviewGateUnlocksTasks(taskId, downstreamTasks, state, graph),
-            needsChangesReturnsTo: requiredImplementationRefs(graph, taskId)
-          }
-        : null;
-    const readyReason = ready
-      ? block?.type === "review"
-        ? "Review gate is ready after required implementation blocks completed."
-        : parallelSafe
-          ? "Block is ready and parallel-safe."
-          : "Block is ready for sequential claim."
-      : null;
-    const explicitStatusReason = statusReasonForBlock(blockState);
-    const statusReason =
-      explicitStatusReason ??
-      (baseReady && defaultClaimLockReason ? defaultClaimLockReason : null) ??
-      (block?.type === "review" && !block.review.required
-        ? "Optional review gate is not required and is not claimable; task can complete without it."
-        : null);
-    return {
-      ref,
-      taskId: taskId ?? "",
-      blockId,
-      blockType: block?.type ?? "implementation",
-      status: blockState?.status ?? "planned",
-      statusReason,
-      ready,
-      readyReason,
-      blockedByBlocks,
-      blockedByTasks,
-      parallelSafe,
-      sequentialOnly: block?.type === "review" || !parallelSafe,
-      recommendedCommand: ready ? `planweave claim ${ref}` : null,
-      dispatchable,
-      dispatchCommand: dispatchable ? `planweave claim ${ref} --dispatch` : null,
-      reviewGate
-    };
-  });
-  const nextClaimable = claimHints.filter((hint) => hint.ready).map((hint) => hint.ref);
-  const nextParallelClaimable = claimHints.filter((hint) => hint.ready && hint.parallelSafe).map((hint) => hint.ref);
-  const nextSequentialClaimable = claimHints.filter((hint) => hint.ready && !hint.parallelSafe).map((hint) => hint.ref);
-  const nextParallelDispatchable = claimHints.filter((hint) => hint.dispatchable).map((hint) => hint.ref);
-  const warnings: ValidationIssue[] = graph.blockRefsInManifestOrder
-    .filter((ref) => state.blocks[ref]?.completionReason === "max_cycles_reached")
-    .map((ref) => ({
-      code: "review_max_cycles_reached",
-      message: `Review block '${ref}' reached max feedback cycles without passing.`,
-      path: ref
-    }));
+  const readiness = buildClaimReadiness({ graph, manifest, state, projectGuard: await createProjectGraphClaimGuard(context) });
   return {
     projectId: workspace.id,
     projectRoot: workspace.rootPath,
@@ -198,12 +83,12 @@ export async function getExecutionStatus(options: { projectRoot: PackageWorkspac
         sourceReviewBlockRef: feedback.sourceReviewBlockRef,
         status: feedback.status
       })),
-    nextClaimable,
-    nextParallelClaimable,
-    nextSequentialClaimable,
-    nextParallelDispatchable,
-    claimHints,
-    warnings,
+    nextClaimable: readiness.nextClaimable,
+    nextParallelClaimable: readiness.nextParallelClaimable,
+    nextSequentialClaimable: readiness.nextSequentialClaimable,
+    nextParallelDispatchable: readiness.nextParallelDispatchable,
+    claimHints: readiness.claimHints,
+    warnings: readiness.warnings,
     counts: {
       tasks: taskCounts,
       blocks: blockCounts,

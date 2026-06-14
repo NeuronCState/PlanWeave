@@ -32,12 +32,8 @@ async function getTodoGroupsForWorkspace(
   const groups = emptyTodoGroups();
   for (const blockStatus of status.blocks) {
     const block = getBlock(graph, blockStatus.ref);
-    const taskDependencyBlockers = (graph.taskDependenciesByTask.get(blockStatus.taskId) ?? []).filter((taskId) => taskStatusById.get(taskId) !== "implemented");
-    const blockDependencyBlockers = (graph.blockDependenciesByRef.get(blockStatus.ref) ?? []).filter((dependency) => {
-      const dependencyStatus = status.blocks.find((candidate) => candidate.ref === dependency)?.status;
-      return dependencyStatus !== "completed";
-    });
-    const dependencyBlockers = [...taskDependencyBlockers, ...blockDependencyBlockers];
+    const claimHint = claimHintByRef.get(blockStatus.ref);
+    const dependencyBlockers = claimHint ? [...claimHint.blockedByTasks, ...claimHint.blockedByBlocks] : [];
     const displayStatus = blockStatus.status === "ready" && dependencyBlockers.length > 0 ? "planned" : blockStatus.status;
     const groupName: keyof DesktopTodoGroups = taskStatusById.get(blockStatus.taskId) === "implemented" ? "implemented" : displayStatus;
     const item: DesktopTodoItem = {
@@ -51,7 +47,7 @@ async function getTodoGroupsForWorkspace(
       dependencyBlockers,
       parallelSafe: graph.parallelSafeByBlockRef.get(blockStatus.ref) ?? false,
       locks: graph.locksByBlockRef.get(blockStatus.ref) ?? [],
-      reviewGate: claimHintByRef.get(blockStatus.ref)?.reviewGate ?? null
+      reviewGate: claimHint?.reviewGate ?? null
     };
     groups[groupName].push(item);
   }

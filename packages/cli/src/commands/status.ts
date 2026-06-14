@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import { getExecutionStatus, type ClaimHint } from "@planweave-ai/runtime";
-import { resolveCliProjectRoot } from "../projectRoot.js";
+import { addCanvasOption, resolveCliCanvasId, resolveCliPackageWorkspace, type CanvasCommandOptions } from "../cliWorkspace.js";
 
 export function formatClaimHint(hint: ClaimHint): string {
   const blockers = [...hint.blockedByTasks.map((taskId) => `task:${taskId}`), ...hint.blockedByBlocks.map((ref) => `block:${ref}`)];
@@ -17,13 +17,35 @@ export function formatClaimHint(hint: ClaimHint): string {
   return `- ${hint.ref}: ${reason}, ${gate}${mode}${command}`;
 }
 
+function withCanvasFlag(command: string | null, canvasId: string | null): string | null {
+  if (!command || !canvasId) {
+    return command;
+  }
+  const [binary, subcommand, ...rest] = command.split(" ");
+  return [binary, subcommand, "--canvas", canvasId, ...rest].join(" ");
+}
+
+function withCanvasCommands<T extends { claimHints: ClaimHint[] }>(status: T, canvasId: string | null): T {
+  if (!canvasId) {
+    return status;
+  }
+  return {
+    ...status,
+    claimHints: status.claimHints.map((hint) => ({
+      ...hint,
+      recommendedCommand: withCanvasFlag(hint.recommendedCommand, canvasId),
+      dispatchCommand: withCanvasFlag(hint.dispatchCommand, canvasId)
+    }))
+  };
+}
+
 export function registerStatusCommand(program: Command): void {
-  program
+  addCanvasOption(program
     .command("status")
     .description("Show the current PlanWeave block execution status")
-    .option("--json", "print machine-readable output")
-    .action(async (options: { json?: boolean }) => {
-      const status = await getExecutionStatus({ projectRoot: resolveCliProjectRoot() });
+    .option("--json", "print machine-readable output"))
+    .action(async (options: { json?: boolean } & CanvasCommandOptions) => {
+      const status = withCanvasCommands(await getExecutionStatus({ projectRoot: await resolveCliPackageWorkspace(options) }), resolveCliCanvasId(options));
       if (options.json) {
         console.log(JSON.stringify(status, null, 2));
         return;

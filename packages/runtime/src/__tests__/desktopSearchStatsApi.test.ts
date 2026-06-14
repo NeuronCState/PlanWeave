@@ -4,7 +4,7 @@ import { mapProjectTaskCanvases } from "../desktop/graph/projectCanvasAggregatio
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { writeProjectGraph } from "../projectGraph/index.js";
 import { runAutoRunStep } from "../taskManager/autoRun.js";
-import { claimNext, submitBlockResult, submitReviewResult } from "../taskManager/index.js";
+import { claimNext, getExecutionStatus, submitBlockResult, submitReviewResult } from "../taskManager/index.js";
 import type { PlanPackageManifest } from "../types.js";
 import { basicManifest, createTestWorkspace, writePromptFiles, writeReport, writeReviewResult } from "./promptTestHelpers.js";
 
@@ -138,6 +138,16 @@ describe("desktop search and statistics API", () => {
     expect(todo.planned.find((item) => item.canvasId === secondCanvas.canvasId && item.ref === "T-001#B-001")?.dependencyBlockers).toEqual([
       "canvas:default"
     ]);
+    const downstreamStatus = await getExecutionStatus({ projectRoot: secondWorkspace });
+    const downstreamHint = downstreamStatus.claimHints.find((hint) => hint.ref === "T-001#B-001");
+    expect(downstreamStatus.nextClaimable).toEqual([]);
+    expect(downstreamHint).toMatchObject({
+      ready: false,
+      statusReason: expect.stringContaining("canvas:default"),
+      recommendedCommand: null,
+      dispatchable: false,
+      dispatchCommand: null
+    });
     await expect(claimNext({ projectRoot: secondWorkspace })).resolves.toMatchObject({
       kind: "blocked",
       ref: "T-001#B-001",

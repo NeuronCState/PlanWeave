@@ -1,13 +1,13 @@
 import type { Command } from "commander";
 import { getCurrentWork } from "@planweave-ai/runtime";
-import { resolveCliProjectRoot } from "../projectRoot.js";
+import { addCanvasOption, resolveCliPackageWorkspace, type CanvasCommandOptions } from "../cliWorkspace.js";
 
 export function registerCurrentCommand(program: Command): void {
-  program
+  addCanvasOption(program
     .command("current")
-    .description("Print the current block or feedback work item for an agent loop")
-    .action(async () => {
-      const result = await getCurrentWork({ projectRoot: resolveCliProjectRoot() });
+    .description("Print the current block or feedback work item for an agent loop"))
+    .action(async (options: CanvasCommandOptions) => {
+      const result = await getCurrentWork({ projectRoot: await resolveCliPackageWorkspace(options) });
       console.log(JSON.stringify(result, null, 2));
     });
 }

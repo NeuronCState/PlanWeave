@@ -1,17 +1,17 @@
 import type { Command } from "commander";
 import { runAutoRunStep } from "@planweave-ai/runtime";
-import { resolveCliProjectRoot } from "../projectRoot.js";
+import { addCanvasOption, resolveCliPackageWorkspace, type CanvasCommandOptions } from "../cliWorkspace.js";
 
 export function registerRunCommand(program: Command): void {
-  program
+  addCanvasOption(program
     .command("run")
     .description("Run PlanWeave auto-run until it stops, or one step with --once")
     .option("--once", "execute only one auto-run step")
     .option("--parallel", "claim a deterministic parallel batch")
     .option("--executor <name>", "override executor profile for this run")
-    .option("--json", "print JSON output")
-    .action(async (options: { once?: boolean; parallel?: boolean; executor?: string; json?: boolean }) => {
-      const projectRoot = resolveCliProjectRoot();
+    .option("--json", "print JSON output"))
+    .action(async (options: { once?: boolean; parallel?: boolean; executor?: string; json?: boolean } & CanvasCommandOptions) => {
+      const projectRoot = await resolveCliPackageWorkspace(options);
       const steps = [];
       let last = await runAutoRunStep({
         projectRoot,

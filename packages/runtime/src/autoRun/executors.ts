@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadPackage, resolvePackageWorkspace } from "../package/loadPackage.js";
+import { canvasCommandFlagForWorkspace } from "../taskManager/canvasCommandScope.js";
 import type {
   ClaimResult,
   ExecutorAdapter,
@@ -80,6 +81,7 @@ function createProfiledAdapter(options: {
         throw new Error(`Executor profile '${name}' is '${profile.adapter}', not '${options.expectedAdapter}'.`);
       }
       if (profile.adapter === "manual") {
+        const workspace = await resolvePackageWorkspace(options.projectRoot);
         const run = await prepareBlockRun({
           projectRoot: options.projectRoot,
           claim,
@@ -87,6 +89,7 @@ function createProfiledAdapter(options: {
           profile,
           prompt
         });
+        const canvasFlag = await canvasCommandFlagForWorkspace(workspace);
         return {
           kind: "manual",
           executor: name,
@@ -96,8 +99,8 @@ function createProfiledAdapter(options: {
           runId: run.runId,
           nextCommand:
             claim.blockType === "review"
-              ? `planweave submit-review ${claim.ref} --result <review-result.json>`
-              : `planweave submit-result ${claim.ref} --report <report.md>`
+              ? `planweave submit-review${canvasFlag} ${claim.ref} --result <review-result.json>`
+              : `planweave submit-result${canvasFlag} ${claim.ref} --report <report.md>`
         };
       }
       if (profile.adapter === "codex-exec") {
@@ -119,6 +122,7 @@ function createProfiledAdapter(options: {
         throw new Error(`Executor profile '${name}' is '${profile.adapter}', not '${options.expectedAdapter}'.`);
       }
       if (profile.adapter === "manual") {
+        const canvasFlag = await canvasCommandFlagForWorkspace(workspace);
         const feedbackRoot = join(workspace.resultsDir, "feedback-runs");
         const runId = await nextRunId(feedbackRoot);
         const runDir = join(feedbackRoot, runId);
@@ -132,7 +136,7 @@ function createProfiledAdapter(options: {
           promptPath,
           runDir,
           runId,
-          nextCommand: "planweave submit-feedback --report <report.md>"
+          nextCommand: `planweave submit-feedback${canvasFlag} --report <report.md>`
         };
       }
       if (profile.adapter === "codex-exec") {

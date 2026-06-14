@@ -48,12 +48,18 @@ describe("planweave CLI contract", () => {
     expect(commandOptionLongs("init")).toContain("--reset-results");
     expect(commandOptionLongs("validate")).toContain("--json");
     expect(commandOptionLongs("status")).toContain("--json");
+    expect(commandOptionLongs("status")).toContain("--canvas");
     expect(commandOptionLongs("claim")).toContain("--type");
     expect(commandOptionLongs("claim")).toContain("--dispatch");
+    expect(commandOptionLongs("claim")).toContain("--canvas");
     expect(commandOptionLongs("claim-next")).toContain("--dry-run");
+    expect(commandOptionLongs("claim-next")).toContain("--canvas");
     expect(commandOptionLongs("doctor")).toContain("--repair");
+    expect(commandOptionLongs("doctor")).toContain("--canvas");
     expect(commandOptionLongs("retry-review")).toContain("--max-feedback-cycles");
+    expect(commandOptionLongs("retry-review")).toContain("--canvas");
     expect(commandOptionLongs("edit-task")).toEqual(expect.arrayContaining(["--title", "--prompt-file", "--executor", "--clear-executor"]));
+    expect(commandOptionLongs("edit-task")).toContain("--canvas");
     expect(commandOptionLongs("edit-block")).toEqual(
       expect.arrayContaining([
         "--title",
@@ -66,12 +72,33 @@ describe("planweave CLI contract", () => {
         "--clear-review-hook"
       ])
     );
+    expect(commandOptionLongs("edit-block")).toContain("--canvas");
     expect(commandOptionLongs("resolve-divergence")).toContain("--reason");
+    expect(commandOptionLongs("resolve-divergence")).toContain("--canvas");
     expect(commandOptionLongs("unblock")).toContain("--reason");
+    expect(commandOptionLongs("unblock")).toContain("--canvas");
     expect(commandOptionLongs("run")).toEqual(expect.arrayContaining(["--once", "--parallel", "--executor", "--json"]));
+    expect(commandOptionLongs("run")).toContain("--canvas");
     expect(commandOptionLongs("run-status")).toContain("--json");
+    expect(commandOptionLongs("run-status")).toContain("--canvas");
     expect(commandOptionLongs("schema")).toContain("--json");
     expect(commandOptionLongs("help")).toContain("--json");
+    for (const commandName of [
+      "claim-task",
+      "prompt",
+      "explain",
+      "why-not",
+      "current",
+      "submit-result",
+      "submit-review",
+      "submit-feedback",
+      "mark-blocked",
+      "mark-diverged",
+      "refresh-prompt",
+      "refresh-prompts"
+    ]) {
+      expect(commandOptionLongs(commandName), commandName).toContain("--canvas");
+    }
   });
 
   it("prints PlanWeave-specific help topics for agent CLI workflows", () => {

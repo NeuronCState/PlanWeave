@@ -1,16 +1,16 @@
 import type { Command } from "commander";
 import { submitBlockResult } from "@planweave-ai/runtime";
-import { resolveCliProjectRoot } from "../projectRoot.js";
+import { addCanvasOption, resolveCliPackageWorkspace, type CanvasCommandOptions } from "../cliWorkspace.js";
 
 export function registerSubmitResultCommand(program: Command): void {
-  program
+  addCanvasOption(program
     .command("submit-result")
     .argument("<block-ref>")
     .requiredOption("--report <path>", "implementation report markdown path")
-    .description("Record an implementation block run")
-    .action(async (ref: string, options: { report: string }) => {
+    .description("Record an implementation block run"))
+    .action(async (ref: string, options: { report: string } & CanvasCommandOptions) => {
       const result = await submitBlockResult({
-        projectRoot: resolveCliProjectRoot(),
+        projectRoot: await resolveCliPackageWorkspace(options),
         ref,
         reportPath: options.report
       });

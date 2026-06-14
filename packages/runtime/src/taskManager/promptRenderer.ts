@@ -5,6 +5,7 @@ import { resolvePackagePath } from "../package/resolvePackagePath.js";
 import { resolvePlanweaveHome } from "../paths.js";
 import { readProjectPromptPolicy } from "../projectPromptPolicy.js";
 import type { ExecutionGraphSession, PackageWorkspaceRef } from "../types.js";
+import { canvasCommandFlagForWorkspace } from "./canvasCommandScope.js";
 import { renderProjectCanvasContext } from "./projectCanvasContext.js";
 import { loadRuntime, type RuntimeContext } from "./runtimeContext.js";
 import { getBlock, getTask, requiredImplementationRefs } from "./selectors.js";
@@ -221,10 +222,11 @@ export async function renderPromptSurface(options: {
         ].join("\n")
       : "";
   const includeSubmissionInstructions = options.includeSubmissionInstructions ?? true;
+  const canvasFlag = await canvasCommandFlagForWorkspace(workspace);
   const submitInstruction =
     block.type === "review"
-      ? `Submit review with \`planweave submit-review ${options.ref} --result review-result.json\`.`
-      : `Submit result with \`planweave submit-result ${options.ref} --report implementation.md\`.`;
+      ? `Submit review with \`planweave submit-review${canvasFlag} ${options.ref} --result review-result.json\`.`
+      : `Submit result with \`planweave submit-result${canvasFlag} ${options.ref} --report implementation.md\`.`;
   const sections = [
     `# ${task.id}#${block.id}: ${block.title}`,
     promptPolicy.includeGlobalPrompt ? "## PlanWeave Global Prompt" : "",

@@ -1,7 +1,6 @@
-import { resolve } from "node:path";
-import { compileProjectGraph, loadProjectGraphForWorkspace, projectCanvasWorkspace } from "../projectGraph/index.js";
-import type { CompiledProjectGraph, ProjectCanvasNode, ProjectGraphSource, ProjectTaskRef } from "../projectGraph/index.js";
-import type { ProjectWorkspace } from "../types.js";
+import { compileProjectGraph, loadProjectGraphForWorkspace } from "../projectGraph/index.js";
+import type { CompiledProjectGraph, ProjectGraphSource, ProjectTaskRef } from "../projectGraph/index.js";
+import { findCurrentProjectCanvasByPackageDir } from "./canvasCommandScope.js";
 import type { RuntimeContext } from "./runtimeContext.js";
 
 export type ProjectCanvasContext = {
@@ -33,20 +32,6 @@ function issueDisplayName(issue: { code: string; message: string; path?: string 
   return `${issue.code}${issue.path ? ` [${issue.path}]` : ""}: ${issue.message}`;
 }
 
-function findCurrentProjectCanvas(projectWorkspace: ProjectWorkspace, currentWorkspace: ProjectWorkspace, graph: CompiledProjectGraph): ProjectCanvasNode | null {
-  for (const canvasId of graph.canvasIdsInOrder) {
-    const canvas = graph.canvasesById.get(canvasId);
-    if (!canvas) {
-      continue;
-    }
-    const canvasWorkspace = projectCanvasWorkspace(projectWorkspace, canvas);
-    if (resolve(canvasWorkspace.packageDir) === resolve(currentWorkspace.packageDir)) {
-      return canvas;
-    }
-  }
-  return null;
-}
-
 export async function renderProjectCanvasContext(context: RuntimeContext, taskId: string): Promise<ProjectCanvasContext> {
   const loaded = await loadProjectGraphForWorkspace(context.workspace);
   const graph = await compileProjectGraph(loaded);
@@ -58,7 +43,11 @@ export async function renderProjectCanvasContext(context: RuntimeContext, taskId
       ].join("\n")
     );
   }
-  const currentCanvas = findCurrentProjectCanvas(loaded.workspace, context.workspace, graph);
+  const currentCanvas = findCurrentProjectCanvasByPackageDir(
+    loaded.workspace,
+    context.workspace,
+    graph.canvasIdsInOrder.flatMap((canvasId) => graph.canvasesById.get(canvasId) ?? [])
+  );
   const missing = loaded.source !== "project_graph";
   const disabledReason = missing
     ? `Formal project-graph.json is missing; using ${projectGraphSourceLabel(loaded.source)}.`

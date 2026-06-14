@@ -1,8 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { writeJsonFile } from "../json.js";
+import { writeProjectGraph } from "../projectGraph/index.js";
+import { resolveTaskCanvasWorkspace } from "../desktop/index.js";
 import { renderPrompt } from "../taskManager/index.js";
-import { createTestWorkspace } from "./promptTestHelpers.js";
+import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
 
 describe("renderPrompt", () => {
   it("renders global, project, task, block, graph, and submission instructions for a block ref", async () => {
@@ -28,5 +31,44 @@ describe("renderPrompt", () => {
     expect(prompt).toContain("Required Review Result JSON");
     expect(prompt).toContain('"reviewBlockRef": "T-001#R-001"');
     expect(prompt).toContain("planweave submit-review T-001#R-001 --result");
+  });
+
+  it("scopes submission instructions for formal project graph canvases with arbitrary package paths", async () => {
+    const { root, init } = await createTestWorkspace();
+    const packageDir = join(init.workspace.workspaceRoot, "manual-canvas", "package");
+    const manifest = basicManifest();
+    await writeJsonFile(join(packageDir, "manifest.json"), manifest);
+    await writePromptFiles(packageDir, manifest);
+    await writeProjectGraph(init.workspace, {
+      version: "plan-project/v1",
+      canvases: [
+        {
+          id: "runtime",
+          type: "canvas",
+          title: "Runtime",
+          packageDir: "package",
+          stateFile: "state.json",
+          resultsDir: "results"
+        },
+        {
+          id: "manual-canvas",
+          type: "canvas",
+          title: "Manual Canvas",
+          packageDir: "manual-canvas/package",
+          stateFile: "manual-canvas/state.json",
+          resultsDir: "manual-canvas/results"
+        }
+      ],
+      edges: [],
+      crossTaskEdges: []
+    });
+    const workspace = await resolveTaskCanvasWorkspace(root, "manual-canvas");
+
+    await expect(renderPrompt({ projectRoot: workspace, ref: "T-001#B-001" })).resolves.toContain(
+      "planweave submit-result --canvas manual-canvas T-001#B-001 --report"
+    );
+    await expect(renderPrompt({ projectRoot: workspace, ref: "T-001#R-001" })).resolves.toContain(
+      "planweave submit-review --canvas manual-canvas T-001#R-001 --result"
+    );
   });
 });

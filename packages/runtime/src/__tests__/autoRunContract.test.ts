@@ -9,12 +9,16 @@ import {
   getAutoRunStatus,
   getExecutionStatus,
   listExecutorProfiles,
-  runAutoRunStep
+  resolveTaskCanvasWorkspace,
+  runAutoRunStep,
+  submitBlockResult,
+  submitReviewResult
 } from "../index.js";
-import { readJsonFile } from "../json.js";
+import { readJsonFile, writeJsonFile } from "../json.js";
+import { writeProjectGraph } from "../projectGraph/index.js";
 import { consumeAutoRunClaim } from "../autoRun/contract.js";
 import type { AutoRunExecutorAdapter } from "../autoRun/contract.js";
-import { basicManifest, createTestWorkspace } from "./promptTestHelpers.js";
+import { basicManifest, createTestWorkspace, writePromptFiles, writeReport, writeReviewResult } from "./promptTestHelpers.js";
 import { manifestSchema } from "../schema/manifest.js";
 
 function adapter(): AutoRunExecutorAdapter {
@@ -29,6 +33,38 @@ function adapter(): AutoRunExecutorAdapter {
       artifactPath: `${claim.content}.md`
     })
   };
+}
+
+async function createFormalManualCanvasWorkspace() {
+  const { root, init } = await createTestWorkspace();
+  const packageDir = join(init.workspace.workspaceRoot, "manual-canvas", "package");
+  const manifest = basicManifest();
+  await writeJsonFile(join(packageDir, "manifest.json"), manifest);
+  await writePromptFiles(packageDir, manifest);
+  await writeProjectGraph(init.workspace, {
+    version: "plan-project/v1",
+    canvases: [
+      {
+        id: "runtime",
+        type: "canvas",
+        title: "Runtime",
+        packageDir: "package",
+        stateFile: "state.json",
+        resultsDir: "results"
+      },
+      {
+        id: "manual-canvas",
+        type: "canvas",
+        title: "Manual Canvas",
+        packageDir: "manual-canvas/package",
+        stateFile: "manual-canvas/state.json",
+        resultsDir: "manual-canvas/results"
+      }
+    ],
+    edges: [],
+    crossTaskEdges: []
+  });
+  return { root, workspace: await resolveTaskCanvasWorkspace(root, "manual-canvas") };
 }
 
 describe("Auto Run contract", () => {
@@ -162,6 +198,48 @@ describe("Auto Run contract", () => {
       executor: "manual",
       adapter: "manual",
       exitCode: null
+    });
+  });
+
+  it("manual adapter scopes next commands for formal project graph canvases with arbitrary package paths", async () => {
+    const { root, workspace } = await createFormalManualCanvasWorkspace();
+    const executor = createManualExecutorAdapter({
+      projectRoot: workspace,
+      executorName: "manual"
+    });
+
+    const implementationStep = await runAutoRunStep({
+      projectRoot: workspace,
+      executor
+    });
+
+    expect(implementationStep).toMatchObject({
+      kind: "manual",
+      adapterResult: {
+        nextCommand: "planweave submit-result --canvas manual-canvas T-001#B-001 --report <report.md>"
+      }
+    });
+    await submitBlockResult({ projectRoot: workspace, ref: "T-001#B-001", reportPath: await writeReport(root, "b.md") });
+    await runAutoRunStep({
+      projectRoot: workspace,
+      executor
+    });
+    await submitReviewResult({
+      projectRoot: workspace,
+      ref: "T-001#R-001",
+      resultPath: await writeReviewResult(root, "needs_changes", "Fix formal canvas work.")
+    });
+
+    const feedbackStep = await runAutoRunStep({
+      projectRoot: workspace,
+      executor
+    });
+
+    expect(feedbackStep).toMatchObject({
+      kind: "manual",
+      adapterResult: {
+        nextCommand: "planweave submit-feedback --canvas manual-canvas --report <report.md>"
+      }
     });
   });
 

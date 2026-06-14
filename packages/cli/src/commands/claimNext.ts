@@ -1,15 +1,15 @@
 import type { Command } from "commander";
 import { claimNext } from "@planweave-ai/runtime";
-import { resolveCliProjectRoot } from "../projectRoot.js";
+import { addCanvasOption, resolveCliPackageWorkspace, type CanvasCommandOptions } from "../cliWorkspace.js";
 
 export function registerClaimNextCommand(program: Command): void {
-  program
+  addCanvasOption(program
     .command("claim-next")
     .description("Claim the next executable block or feedback event")
     .option("--parallel", "claim a deterministic parallel batch")
-    .option("--dry-run", "preview the next claim without mutating state")
-    .action(async (options: { parallel?: boolean; dryRun?: boolean }) => {
-      const result = await claimNext({ projectRoot: resolveCliProjectRoot(), parallel: options.parallel, dryRun: options.dryRun });
+    .option("--dry-run", "preview the next claim without mutating state"))
+    .action(async (options: { parallel?: boolean; dryRun?: boolean } & CanvasCommandOptions) => {
+      const result = await claimNext({ projectRoot: await resolveCliPackageWorkspace(options), parallel: options.parallel, dryRun: options.dryRun });
       console.log(JSON.stringify(result, null, 2));
     });
 }

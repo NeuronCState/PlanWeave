@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Command } from "commander";
 import { editTask } from "@planweave-ai/runtime";
-import { resolveCliProjectRoot } from "../projectRoot.js";
+import { addCanvasOption, resolveCliPackageWorkspace, type CanvasCommandOptions } from "../cliWorkspace.js";
 
 async function promptMarkdown(options: { prompt?: string; promptFile?: string }): Promise<string | undefined> {
   if (options.prompt !== undefined && options.promptFile !== undefined) {
@@ -15,7 +15,7 @@ async function promptMarkdown(options: { prompt?: string; promptFile?: string })
 }
 
 export function registerEditTaskCommand(program: Command): void {
-  program
+  addCanvasOption(program
     .command("edit-task")
     .argument("<task-id>")
     .description("Edit one task by exact task id")
@@ -23,17 +23,17 @@ export function registerEditTaskCommand(program: Command): void {
     .option("--prompt <markdown>", "set task prompt markdown directly")
     .option("--prompt-file <path>", "read task prompt markdown from a file")
     .option("--executor <name>", "set task executor")
-    .option("--clear-executor", "remove task executor")
+    .option("--clear-executor", "remove task executor"))
     .action(
       async (
         taskId: string,
-        options: { title?: string; prompt?: string; promptFile?: string; executor?: string; clearExecutor?: boolean }
+        options: { title?: string; prompt?: string; promptFile?: string; executor?: string; clearExecutor?: boolean } & CanvasCommandOptions
       ) => {
         if (options.executor !== undefined && options.clearExecutor) {
           throw new Error("Use either --executor or --clear-executor, not both.");
         }
         const result = await editTask({
-          projectRoot: resolveCliProjectRoot(),
+          projectRoot: await resolveCliPackageWorkspace(options),
           taskId,
           title: options.title,
           promptMarkdown: await promptMarkdown(options),

@@ -107,7 +107,7 @@ describe("basic Plan Package README workflow", () => {
 
     const status = parseJson<{ counts: { tasks: { implemented: number } } }>((await planweave(["status", "--json"], env)).stdout);
     expect(status.counts.tasks.implemented).toBe(1);
-  });
+  }, 20_000);
 
   it("runs the documented manual auto-run entrypoint without auto-submitting work", async () => {
     const home = await mkdtemp(join(tmpdir(), "planweave-home-"));

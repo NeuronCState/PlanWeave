@@ -84,5 +84,80 @@ describe("STEP-1 CLI contract", () => {
     const status = JSON.parse((await planweave(["status", "--json"], env)).stdout);
     expect(status.counts.tasks.implemented).toBe(1);
     expect(status.counts.blocks.completed).toBe(2);
-  });
+  }, 20_000);
+
+  it("operates a non-default canvas in a formal multi-canvas project", async () => {
+    const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    const root = await mkdtemp(join(tmpdir(), "planweave-project-"));
+    const env = { ...process.env, PLANWEAVE_HOME: home, INIT_CWD: root };
+    const init = JSON.parse((await planweave(["init", "--json"], env)).stdout);
+    await cp(join(repoRoot, "examples/basic-plan-package/package"), init.workspace.packageDir, {
+      recursive: true,
+      force: true
+    });
+    const desktopPackageDir = join(init.workspace.workspaceRoot, "canvases", "desktop", "package");
+    await cp(join(repoRoot, "examples/basic-plan-package/package"), desktopPackageDir, {
+      recursive: true,
+      force: true
+    });
+    await writeFile(
+      join(desktopPackageDir, "nodes", "T-001", "blocks", "B-001.prompt.md"),
+      "Desktop canvas block prompt.\n",
+      "utf8"
+    );
+    await writeFile(
+      join(init.workspace.workspaceRoot, "project-graph.json"),
+      `${JSON.stringify(
+        {
+          version: "plan-project/v1",
+          canvases: [
+            {
+              id: "runtime",
+              type: "canvas",
+              title: "Runtime",
+              packageDir: "package",
+              stateFile: "state.json",
+              resultsDir: "results"
+            },
+            {
+              id: "desktop",
+              type: "canvas",
+              title: "Desktop",
+              packageDir: "canvases/desktop/package",
+              stateFile: "canvases/desktop/state.json",
+              resultsDir: "canvases/desktop/results"
+            }
+          ],
+          edges: [],
+          crossTaskEdges: []
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+
+    const paths = JSON.parse((await planweave(["paths", "--json"], env)).stdout);
+    expect(paths.projectGraphPath).toBe(join(init.workspace.workspaceRoot, "project-graph.json"));
+    expect(paths.activeCanvasId).toBe("runtime");
+    expect(paths.canvases.map((canvas: { canvasId: string }) => canvas.canvasId)).toEqual(["runtime", "desktop"]);
+
+    const initialDesktopStatus = JSON.parse((await planweave(["status", "--json", "--canvas", "desktop"], env)).stdout);
+    expect(initialDesktopStatus.claimHints.find((hint: { ref: string }) => hint.ref === "T-001#B-001")?.recommendedCommand).toContain(
+      "planweave claim --canvas desktop"
+    );
+    expect(JSON.parse((await planweave(["claim-next", "--canvas", "desktop"], env)).stdout)).toMatchObject({
+      kind: "block",
+      ref: "T-001#B-001"
+    });
+    const desktopPrompt = (await planweave(["prompt", "--canvas", "desktop", "T-001#B-001"], env)).stdout;
+    expect(desktopPrompt).toContain("Desktop canvas block prompt");
+    expect(desktopPrompt).toContain("planweave submit-result --canvas desktop T-001#B-001 --report");
+    const desktopStatus = JSON.parse((await planweave(["status", "--json", "--canvas", "desktop"], env)).stdout);
+    expect(desktopStatus.currentRefs).toEqual(["T-001#B-001"]);
+
+    const runtimeStatus = JSON.parse((await planweave(["status", "--json"], env)).stdout);
+    expect(runtimeStatus.currentRefs).toEqual([]);
+    expect(JSON.parse((await planweave(["current", "--canvas", "desktop"], env)).stdout).items[0].submitCommand).toContain("--canvas desktop");
+  }, 20_000);
 });

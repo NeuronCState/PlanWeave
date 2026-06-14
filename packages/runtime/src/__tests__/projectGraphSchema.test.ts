@@ -31,6 +31,26 @@ describe("project graph schema", () => {
     ).toMatchObject({ version: "plan-project/v1" });
   });
 
+  it("requires CLI-safe canvas ids", () => {
+    expect(() =>
+      projectGraphManifestSchema.parse({
+        version: "plan-project/v1",
+        canvases: [
+          {
+            id: "desktop canvas; rm -rf",
+            type: "canvas",
+            title: "Unsafe canvas id",
+            packageDir: "desktop/package",
+            stateFile: "desktop/state.json",
+            resultsDir: "desktop/results"
+          }
+        ],
+        edges: [],
+        crossTaskEdges: []
+      })
+    ).toThrow();
+  });
+
   it("derives a legacy project graph when project-graph.json is missing", async () => {
     const { root } = await createTestWorkspace();
     const second = await createTaskCanvas(root, { name: "Second plan" });

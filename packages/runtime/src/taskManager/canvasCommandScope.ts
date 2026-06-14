@@ -1,0 +1,42 @@
+import { resolve } from "node:path";
+import { loadProjectGraphForWorkspace, projectCanvasWorkspace } from "../projectGraph/index.js";
+import type { ProjectCanvasNode } from "../projectGraph/index.js";
+import type { ProjectWorkspace } from "../types.js";
+
+export function canvasCommandFlag(canvasId: string | null): string {
+  return canvasId ? ` --canvas ${canvasId}` : "";
+}
+
+export function findCurrentProjectCanvasByPackageDir(
+  projectWorkspace: ProjectWorkspace,
+  currentWorkspace: ProjectWorkspace,
+  canvases: Iterable<ProjectCanvasNode>
+): ProjectCanvasNode | null {
+  for (const canvas of canvases) {
+    const canvasWorkspace = projectCanvasWorkspace(projectWorkspace, canvas);
+    if (resolve(canvasWorkspace.packageDir) === resolve(currentWorkspace.packageDir)) {
+      return canvas;
+    }
+  }
+  return null;
+}
+
+export async function commandCanvasIdForWorkspace(workspace: ProjectWorkspace): Promise<string | null> {
+  try {
+    const loaded = await loadProjectGraphForWorkspace(workspace);
+    const canvas = findCurrentProjectCanvasByPackageDir(loaded.workspace, workspace, loaded.manifest.canvases);
+    if (canvas) {
+      if (loaded.source === "project_graph") {
+        return canvas.id;
+      }
+      return canvas.id === "default" ? null : canvas.id;
+    }
+  } catch (error) {
+    void error;
+  }
+  return null;
+}
+
+export async function canvasCommandFlagForWorkspace(workspace: ProjectWorkspace): Promise<string> {
+  return canvasCommandFlag(await commandCanvasIdForWorkspace(workspace));
+}

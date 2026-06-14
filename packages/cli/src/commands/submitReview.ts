@@ -1,16 +1,16 @@
 import type { Command } from "commander";
 import { submitReviewResult } from "@planweave-ai/runtime";
-import { resolveCliProjectRoot } from "../projectRoot.js";
+import { addCanvasOption, resolveCliPackageWorkspace, type CanvasCommandOptions } from "../cliWorkspace.js";
 
 export function registerSubmitReviewCommand(program: Command): void {
-  program
+  addCanvasOption(program
     .command("submit-review")
     .argument("<review-block-ref>")
     .requiredOption("--result <path>", "review-result.json path")
-    .description("Record a structured review result for a review block")
-    .action(async (ref: string, options: { result: string }) => {
+    .description("Record a structured review result for a review block"))
+    .action(async (ref: string, options: { result: string } & CanvasCommandOptions) => {
       const result = await submitReviewResult({
-        projectRoot: resolveCliProjectRoot(),
+        projectRoot: await resolveCliPackageWorkspace(options),
         ref,
         resultPath: options.result
       });

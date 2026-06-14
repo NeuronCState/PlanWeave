@@ -1,14 +1,14 @@
 import type { Command } from "commander";
 import { runDoctor } from "@planweave-ai/runtime";
-import { resolveCliProjectRoot } from "../projectRoot.js";
+import { addCanvasOption, resolveCliPackageWorkspace, type CanvasCommandOptions } from "../cliWorkspace.js";
 
 export function registerDoctorCommand(program: Command): void {
-  program
+  addCanvasOption(program
     .command("doctor")
     .description("Check PlanWeave state/results consistency for agent recovery")
-    .option("--repair", "repair recoverable state/results drift")
-    .action(async (options: { repair?: boolean }) => {
-      const result = await runDoctor({ projectRoot: resolveCliProjectRoot(), repair: options.repair === true });
+    .option("--repair", "repair recoverable state/results drift"))
+    .action(async (options: { repair?: boolean } & CanvasCommandOptions) => {
+      const result = await runDoctor({ projectRoot: await resolveCliPackageWorkspace(options), repair: options.repair === true });
       console.log(JSON.stringify(result, null, 2));
     });
 }

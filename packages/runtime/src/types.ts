@@ -308,6 +308,17 @@ export type ProjectPathsResult = {
   workspaceDir: string;
   projectId: string;
   projectDir: string;
+  projectGraphPath: string;
+  packageDir: string;
+  statePath: string;
+  resultsDir: string;
+  activeCanvasId: string | null;
+  canvases: ProjectCanvasPath[];
+};
+
+export type ProjectCanvasPath = {
+  canvasId: string;
+  name: string;
   packageDir: string;
   statePath: string;
   resultsDir: string;

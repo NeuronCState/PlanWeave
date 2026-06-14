@@ -1,15 +1,16 @@
-import { basename, dirname, join } from "node:path";
+import { join } from "node:path";
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import type { BlockExplanation, CurrentWork, CurrentWorkItem, ManifestBlock, PackageWorkspaceRef } from "../types.js";
+import { canvasCommandFlag, commandCanvasIdForWorkspace } from "./canvasCommandScope.js";
 import { getExecutionStatus } from "./executionStatus.js";
 import { loadRuntime } from "./runtimeContext.js";
 import { getBlock, isActiveFeedbackStatus } from "./selectors.js";
 
-function submitCommand(ref: string, block: ManifestBlock): string {
+function submitCommand(ref: string, block: ManifestBlock, canvasId: string | null = null): string {
   if (block.type === "review") {
-    return `planweave submit-review ${ref} --result <review-result.json>`;
+    return `planweave submit-review${canvasCommandFlag(canvasId)} ${ref} --result <review-result.json>`;
   }
-  return `planweave submit-result ${ref} --report <report.md>`;
+  return `planweave submit-result${canvasCommandFlag(canvasId)} ${ref} --report <report.md>`;
 }
 
 function reportPath(block: ManifestBlock): string {
@@ -19,7 +20,7 @@ function reportPath(block: ManifestBlock): string {
   return "<report.md>";
 }
 
-function currentItem(ref: string, block: ManifestBlock, packageDir: string): CurrentWorkItem {
+function currentItem(ref: string, block: ManifestBlock, packageDir: string, canvasId: string | null): CurrentWorkItem {
   const { taskId, blockId } = parseBlockRef(ref);
   return {
     kind: "block",
@@ -29,12 +30,8 @@ function currentItem(ref: string, block: ManifestBlock, packageDir: string): Cur
     blockType: block.type,
     promptPath: join(packageDir, block.prompt),
     reportPath: reportPath(block),
-    submitCommand: submitCommand(ref, block)
+    submitCommand: submitCommand(ref, block, canvasId)
   };
-}
-
-function canvasIdForWorkspace(workspaceRoot: string): string | null {
-  return basename(dirname(workspaceRoot)) === "canvases" ? basename(workspaceRoot) : null;
 }
 
 export async function explainBlock(options: { projectRoot: PackageWorkspaceRef; ref: string }): Promise<BlockExplanation> {
@@ -48,13 +45,14 @@ export async function explainBlock(options: { projectRoot: PackageWorkspaceRef; 
   return {
     ...hint,
     promptPath: join(context.workspace.packageDir, block.prompt),
-    submitCommand: submitCommand(options.ref, block)
+    submitCommand: submitCommand(options.ref, block, await commandCanvasIdForWorkspace(context.workspace))
   };
 }
 
 export async function getCurrentWork(options: { projectRoot: PackageWorkspaceRef }): Promise<CurrentWork> {
   const context = await loadRuntime(options);
-  const items = context.state.currentRefs.map((ref) => currentItem(ref, getBlock(context.graph, ref), context.workspace.packageDir));
+  const canvasId = await commandCanvasIdForWorkspace(context.workspace);
+  const items = context.state.currentRefs.map((ref) => currentItem(ref, getBlock(context.graph, ref), context.workspace.packageDir, canvasId));
   const activeFeedbackId =
     context.state.currentFeedbackId && isActiveFeedbackStatus(context.state.feedback[context.state.currentFeedbackId]?.status)
       ? context.state.currentFeedbackId
@@ -71,7 +69,7 @@ export async function getCurrentWork(options: { projectRoot: PackageWorkspaceRef
         taskId,
         promptPath: join(context.workspace.resultsDir, taskId, "feedback", activeFeedbackId, "feedback.json"),
         reportPath: "<feedback-report.md>",
-        submitCommand: "planweave submit-feedback --report <feedback-report.md>"
+        submitCommand: `planweave submit-feedback${canvasCommandFlag(canvasId)} --report <feedback-report.md>`
       });
     }
   }
@@ -86,7 +84,7 @@ export async function getCurrentWork(options: { projectRoot: PackageWorkspaceRef
     currentReviewBlockRef: context.state.currentReviewBlockRef,
     owner: {
       projectRoot: context.workspace.rootPath,
-      canvasId: canvasIdForWorkspace(context.workspace.workspaceRoot),
+      canvasId,
       taskIds
     },
     items,

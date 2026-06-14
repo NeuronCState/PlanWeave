@@ -10,7 +10,7 @@ export const projectSchemaDocument: SchemaDocument = {
     version: "plan-project/v1",
     canvases: [
       {
-        id: "canvas id string, non-empty and unique in this project graph",
+        id: "CLI-safe canvas id, unique; start with letter/number, then letters/numbers/dot/underscore/hyphen",
         type: "canvas",
         title: "string, non-empty",
         description: "string, optional",
@@ -19,16 +19,17 @@ export const projectSchemaDocument: SchemaDocument = {
         resultsDir: "workspaceRoot-relative results directory"
       }
     ],
-    edges: [{ from: "canvas id string", to: "canvas id string", type: "depends_on" }],
+    edges: [{ from: "CLI-safe canvas id", to: "CLI-safe canvas id", type: "depends_on" }],
     crossTaskEdges: [
       {
-        from: { canvasId: "canvas id string", taskId: "task id string" },
-        to: { canvasId: "canvas id string", taskId: "task id string" },
+        from: { canvasId: "CLI-safe canvas id", taskId: "task id string" },
+        to: { canvasId: "CLI-safe canvas id", taskId: "task id string" },
         type: "depends_on"
       }
     ]
   },
   notes: [
+    "Canvas ids must be CLI-safe because generated agent commands pass them to --canvas without shell quoting.",
     "Use canvas edges only when the whole downstream canvas waits for the whole upstream canvas.",
     "Use crossTaskEdges when only specific tasks have cross-canvas ordering.",
     "Use block parallel.locks for write conflicts that have no logical ordering.",

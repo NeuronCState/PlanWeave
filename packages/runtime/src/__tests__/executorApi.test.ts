@@ -1,6 +1,42 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { resolveTaskCanvasWorkspace } from "../desktop/index.js";
+import { writeJsonFile } from "../json.js";
+import { writeProjectGraph } from "../projectGraph/index.js";
 import { claimNext, explainBlock, getCurrentWork, getExecutionStatus, submitBlockResult, submitFeedback, submitReviewResult } from "../taskManager/index.js";
-import { basicManifest, createTestWorkspace, writeReport, writeReviewResult } from "./promptTestHelpers.js";
+import { basicManifest, createTestWorkspace, writePromptFiles, writeReport, writeReviewResult } from "./promptTestHelpers.js";
+
+async function createFormalManualCanvasWorkspace() {
+  const { root, init } = await createTestWorkspace();
+  const packageDir = join(init.workspace.workspaceRoot, "manual-canvas", "package");
+  const manifest = basicManifest();
+  await writeJsonFile(join(packageDir, "manifest.json"), manifest);
+  await writePromptFiles(packageDir, manifest);
+  await writeProjectGraph(init.workspace, {
+    version: "plan-project/v1",
+    canvases: [
+      {
+        id: "runtime",
+        type: "canvas",
+        title: "Runtime",
+        packageDir: "package",
+        stateFile: "state.json",
+        resultsDir: "results"
+      },
+      {
+        id: "manual-canvas",
+        type: "canvas",
+        title: "Manual Canvas",
+        packageDir: "manual-canvas/package",
+        stateFile: "manual-canvas/state.json",
+        resultsDir: "manual-canvas/results"
+      }
+    ],
+    edges: [],
+    crossTaskEdges: []
+  });
+  return { root, workspace: await resolveTaskCanvasWorkspace(root, "manual-canvas") };
+}
 
 describe("executor API helpers", () => {
   it("previews claim-next without mutating state", async () => {
@@ -100,6 +136,49 @@ describe("executor API helpers", () => {
           promptPath: expect.stringContaining("results/T-001/feedback/FE-001/feedback.json"),
           reportPath: "<feedback-report.md>",
           submitCommand: "planweave submit-feedback --report <feedback-report.md>"
+        }
+      ]
+    });
+  });
+
+  it("scopes current and explain submit commands for formal project graph canvases with arbitrary package paths", async () => {
+    const { root, workspace } = await createFormalManualCanvasWorkspace();
+
+    await claimNext({ projectRoot: workspace });
+
+    await expect(explainBlock({ projectRoot: workspace, ref: "T-001#B-001" })).resolves.toMatchObject({
+      submitCommand: "planweave submit-result --canvas manual-canvas T-001#B-001 --report <report.md>"
+    });
+    await expect(getCurrentWork({ projectRoot: workspace })).resolves.toMatchObject({
+      owner: {
+        canvasId: "manual-canvas"
+      },
+      items: [
+        {
+          kind: "block",
+          ref: "T-001#B-001",
+          submitCommand: "planweave submit-result --canvas manual-canvas T-001#B-001 --report <report.md>"
+        }
+      ]
+    });
+
+    await submitBlockResult({ projectRoot: workspace, ref: "T-001#B-001", reportPath: await writeReport(root, "b.md") });
+    await claimNext({ projectRoot: workspace });
+    await submitReviewResult({
+      projectRoot: workspace,
+      ref: "T-001#R-001",
+      resultPath: await writeReviewResult(root, "needs_changes", "Fix formal canvas work.")
+    });
+    await claimNext({ projectRoot: workspace });
+
+    await expect(getCurrentWork({ projectRoot: workspace })).resolves.toMatchObject({
+      owner: {
+        canvasId: "manual-canvas"
+      },
+      items: [
+        {
+          kind: "feedback",
+          submitCommand: "planweave submit-feedback --canvas manual-canvas --report <feedback-report.md>"
         }
       ]
     });

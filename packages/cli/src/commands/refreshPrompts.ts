@@ -1,13 +1,13 @@
 import type { Command } from "commander";
 import { refreshPrompts } from "@planweave-ai/runtime";
-import { resolveCliProjectRoot } from "../projectRoot.js";
+import { addCanvasOption, resolveCliPackageWorkspace, type CanvasCommandOptions } from "../cliWorkspace.js";
 
 export function registerRefreshPromptsCommand(program: Command): void {
-  program
+  addCanvasOption(program
     .command("refresh-prompts")
-    .description("Render all block Prompt Surfaces without writing source prompts")
-    .action(async () => {
-      const result = await refreshPrompts({ projectRoot: resolveCliProjectRoot() });
+    .description("Render all block Prompt Surfaces without writing source prompts"))
+    .action(async (options: CanvasCommandOptions) => {
+      const result = await refreshPrompts({ projectRoot: await resolveCliPackageWorkspace(options) });
       for (const prompt of result.prompts) {
         console.log(`Rendered ${prompt.ref}`);
       }

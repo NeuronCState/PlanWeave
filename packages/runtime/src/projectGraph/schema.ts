@@ -1,16 +1,21 @@
 import { z } from "zod";
 import { projectGraphEdgeTypes, supportedProjectGraphVersion } from "./types.js";
 
+const canvasIdSchema = z
+  .string()
+  .min(1)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, "Canvas id must be CLI-safe: start with a letter or number, then use only letters, numbers, dots, underscores, or hyphens.");
+
 const projectTaskRefSchema = z
   .object({
-    canvasId: z.string().min(1),
+    canvasId: canvasIdSchema,
     taskId: z.string().min(1)
   })
   .strict();
 
 const projectCanvasNodeSchema = z
   .object({
-    id: z.string().min(1),
+    id: canvasIdSchema,
     type: z.literal("canvas"),
     title: z.string().min(1),
     description: z.string().optional(),
@@ -22,8 +27,8 @@ const projectCanvasNodeSchema = z
 
 const projectCanvasEdgeSchema = z
   .object({
-    from: z.string().min(1),
-    to: z.string().min(1),
+    from: canvasIdSchema,
+    to: canvasIdSchema,
     type: z.enum(projectGraphEdgeTypes)
   })
   .strict();

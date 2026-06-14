@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import type { Command } from "commander";
 import { editBlock } from "@planweave-ai/runtime";
 import type { ReviewHookDefinition } from "@planweave-ai/runtime";
-import { resolveCliProjectRoot } from "../projectRoot.js";
+import { addCanvasOption, resolveCliPackageWorkspace, type CanvasCommandOptions } from "../cliWorkspace.js";
 
 async function promptMarkdown(options: { prompt?: string; promptFile?: string }): Promise<string | undefined> {
   if (options.prompt !== undefined && options.promptFile !== undefined) {
@@ -54,7 +54,7 @@ async function reviewHook(options: { reviewHookJson?: string; clearReviewHook?: 
 }
 
 export function registerEditBlockCommand(program: Command): void {
-  program
+  addCanvasOption(program
     .command("edit-block")
     .argument("<block-ref>")
     .description("Edit one block by exact task#block ref")
@@ -68,7 +68,7 @@ export function registerEditBlockCommand(program: Command): void {
     .option("--review-required <true|false>", "set whether a review block is required")
     .option("--max-feedback-cycles <count>", "set review max feedback cycles")
     .option("--review-hook-json <path>", "read review hook JSON from a file")
-    .option("--clear-review-hook", "remove review hook")
+    .option("--clear-review-hook", "remove review hook"))
     .action(
       async (
         ref: string,
@@ -84,13 +84,13 @@ export function registerEditBlockCommand(program: Command): void {
           maxFeedbackCycles?: string;
           reviewHookJson?: string;
           clearReviewHook?: boolean;
-        }
+        } & CanvasCommandOptions
       ) => {
         if (options.executor !== undefined && options.clearExecutor) {
           throw new Error("Use either --executor or --clear-executor, not both.");
         }
         const result = await editBlock({
-          projectRoot: resolveCliProjectRoot(),
+          projectRoot: await resolveCliPackageWorkspace(options),
           ref,
           title: options.title,
           promptMarkdown: await promptMarkdown(options),

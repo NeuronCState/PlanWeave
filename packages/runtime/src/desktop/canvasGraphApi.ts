@@ -1,11 +1,10 @@
 import { constants } from "node:fs";
 import { access, mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { compileProjectGraph, loadProjectGraph, projectCanvasWorkspace } from "../projectGraph/index.js";
 import { readProject, resolveProjectWorkspace } from "../project.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import type { ProjectWorkspace, ValidationIssue } from "../types.js";
-import { canvasDiagnostics } from "./canvasDiagnostics.js";
+import { loadProjectCanvasAggregation } from "./graph/projectCanvasAggregation.js";
 import type {
   DesktopCanvasGraphViewModel,
   DesktopCanvasMapLayout,
@@ -98,30 +97,28 @@ async function projectTitle(projectRoot: string, fallback: string): Promise<stri
 }
 
 async function canvasIdsForProject(projectRoot: string): Promise<{ workspace: ProjectWorkspace; projectId: string; canvasIds: string[] }> {
-  const loaded = await loadProjectGraph(projectRoot);
+  const { loaded, graph } = await loadProjectCanvasAggregation(projectRoot);
   return {
     workspace: loaded.workspace,
     projectId: loaded.workspace.id,
-    canvasIds: loaded.manifest.canvases.map((canvas) => canvas.id)
+    canvasIds: graph.canvasIdsInOrder
   };
 }
 
 export async function getCanvasGraphViewModel(projectRoot: string): Promise<DesktopCanvasGraphViewModel> {
-  const loaded = await loadProjectGraph(projectRoot);
-  const graph = await compileProjectGraph(loaded);
+  const { loaded, graph, canvasesById } = await loadProjectCanvasAggregation(projectRoot);
   const diagnostics = [...graph.diagnostics.errors, ...graph.diagnostics.warnings];
   const canvases = await Promise.all(
     graph.canvasIdsInOrder.map(async (canvasId) => {
-      const canvas = graph.canvasesById.get(canvasId);
+      const canvas = canvasesById.get(canvasId);
       if (!canvas) {
         throw new Error(`Project canvas '${canvasId}' does not exist.`);
       }
-      const workspace = projectCanvasWorkspace(loaded.workspace, canvas);
       return {
-        canvasId: canvas.id,
-        title: canvas.title,
-        packageDir: canvas.packageDir,
-        diagnostics: [...(await canvasDiagnostics(workspace)), ...diagnosticsForCanvas(canvas.id, diagnostics)]
+        canvasId: canvas.canvasId,
+        title: canvas.canvasName,
+        packageDir: canvas.projectCanvas.packageDir,
+        diagnostics: [...canvas.canvas.diagnostics, ...diagnosticsForCanvas(canvas.canvasId, diagnostics)]
       };
     })
   );

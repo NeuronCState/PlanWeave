@@ -55,9 +55,9 @@ describe("OpenCode session capture", () => {
 
     let stepSettled = false;
     const stepPromise = runAutoRunStep({
-      projectRoot: root,
+      projectRoot: init.workspace,
       executor: createOpencodeExecAdapter({
-        projectRoot: root,
+        projectRoot: init.workspace,
         executorName: "fake-opencode-session"
       })
     }).finally(() => {
@@ -119,9 +119,9 @@ describe("OpenCode session capture", () => {
 
     let stepSettled = false;
     const stepPromise = runAutoRunStep({
-      projectRoot: root,
+      projectRoot: init.workspace,
       executor: createOpencodeExecAdapter({
-        projectRoot: root,
+        projectRoot: init.workspace,
         executorName: "fake-opencode-readable"
       })
     }).finally(() => {
@@ -166,9 +166,9 @@ describe("OpenCode session capture", () => {
     await chmod(join(root, "opencode"), 0o755);
 
     const step = await runAutoRunStep({
-      projectRoot: root,
+      projectRoot: init.workspace,
       executor: createOpencodeExecAdapter({
-        projectRoot: root,
+        projectRoot: init.workspace,
         executorName: "fake-opencode-no-session"
       })
     });

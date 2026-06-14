@@ -4,11 +4,13 @@ import { runAutoRunStep } from "../taskManager/autoRun.js";
 import { resetMaxCycleReviewsForRetry } from "../taskManager/reviewRetry.js";
 import { loadPackage } from "../package/loadPackage.js";
 import { resolveTaskCanvasWorkspace } from "./canvasApi.js";
+import type { ProjectWorkspace } from "../types.js";
 import type { DesktopAutoRunOptions, DesktopAutoRunScope, DesktopAutoRunState } from "./types.js";
 import { appendAutoRunEvent, autoRunRoot, cloneAutoRunState, nextRunId, now, writeAutoRunState } from "./runStateStore.js";
 import { claimRef, claimScope, executorName, latestStatus, outputSummary, phaseAfterStep, terminalPatch } from "./runStepState.js";
 
 const runs = new Map<string, DesktopAutoRunState>();
+const runWorkspaces = new Map<string, ProjectWorkspace>();
 const activeLoops = new Set<string>();
 
 function normalizeAutoRunOptions(options?: DesktopAutoRunOptions): Required<DesktopAutoRunOptions> {
@@ -58,7 +60,7 @@ async function runLoop(runId: string): Promise<void> {
         return;
       }
       try {
-        const workspace = await resolveTaskCanvasWorkspace(current.projectRoot, current.canvasId);
+        const workspace = runWorkspaces.get(runId) ?? (await resolveTaskCanvasWorkspace(current.projectRoot, current.canvasId));
         const { manifest } = await loadPackage(workspace);
         await appendAutoRunEvent(current, "step_start", { scope: current.scope });
         const step = await runAutoRunStep({
@@ -148,6 +150,7 @@ export async function startAutoRun(
     updatedAt: timestamp
   };
   runs.set(runId, state);
+  runWorkspaces.set(runId, workspace);
   await writeAutoRunState(state);
   await appendAutoRunEvent(state, "run_started", { scope, resetMaxCycleReviewRefs: resetReviews.refs });
   launchRunLoop(runId);
@@ -184,7 +187,9 @@ export async function stopAutoRun(runId: string): Promise<DesktopAutoRunState> {
     throw new Error(`Auto Run '${runId}' does not exist.`);
   }
   const killed = current.phase === "running" || current.phase === "pausing" ? await killActiveTmuxSessions() : [];
-  return cloneAutoRunState(await setState(runId, { phase: "stopped" }, "run_stopped", { killedTmuxSessions: killed }));
+  const stopped = await setState(runId, { phase: "stopped" }, "run_stopped", { killedTmuxSessions: killed });
+  runWorkspaces.delete(runId);
+  return cloneAutoRunState(stopped);
 }
 
 export async function getAutoRunState(runId: string): Promise<DesktopAutoRunState> {

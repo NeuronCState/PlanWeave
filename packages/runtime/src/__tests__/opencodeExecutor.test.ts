@@ -60,9 +60,9 @@ describe("OpenCode executor", () => {
 
     let stepSettled = false;
     const stepPromise = runAutoRunStep({
-      projectRoot: root,
+      projectRoot: init.workspace,
       executor: createOpencodeExecAdapter({
-        projectRoot: root,
+        projectRoot: init.workspace,
         executorName: "fake-opencode-json"
       })
     }).finally(() => {
@@ -133,7 +133,7 @@ describe("OpenCode executor", () => {
     await chmod(join(root, "opencode"), 0o755);
 
     await runAutoRunStep({
-      projectRoot: root,
+      projectRoot: init.workspace,
       executor: {
         async runBlock() {
           const reportPath = join(root, "implementation.md");
@@ -146,9 +146,9 @@ describe("OpenCode executor", () => {
       }
     });
     const step = await runAutoRunStep({
-      projectRoot: root,
+      projectRoot: init.workspace,
       executor: createOpencodeExecAdapter({
-        projectRoot: root,
+        projectRoot: init.workspace,
         executorName: "fake-opencode-review"
       })
     });
@@ -206,7 +206,7 @@ describe("OpenCode executor", () => {
     for (const block of task.blocks) {
       block.executor = block.type === "review" ? "needs-review" : "fake-block";
     }
-    const { root } = await createTestWorkspace(manifest);
+    const { root, init } = await createTestWorkspace(manifest);
     await writeFile(
       join(root, "opencode"),
       [
@@ -218,16 +218,16 @@ describe("OpenCode executor", () => {
     );
     await chmod(join(root, "opencode"), 0o755);
 
-    await runAutoRunStep({ projectRoot: root });
-    await runAutoRunStep({ projectRoot: root });
-    await runAutoRunStep({ projectRoot: root });
-    const feedbackStep = await runAutoRunStep({ projectRoot: root });
+    await runAutoRunStep({ projectRoot: init.workspace });
+    await runAutoRunStep({ projectRoot: init.workspace });
+    await runAutoRunStep({ projectRoot: init.workspace });
+    const feedbackStep = await runAutoRunStep({ projectRoot: init.workspace });
 
     expect(feedbackStep).toMatchObject({
       kind: "blocked",
       claim: { kind: "blocked", reason: expect.stringContaining("unknown certificate verification error") }
     });
-    await expect(getExecutionStatus({ projectRoot: root })).resolves.toMatchObject({
+    await expect(getExecutionStatus({ projectRoot: init.workspace })).resolves.toMatchObject({
       currentFeedbackId: "FE-001"
     });
   }, 20_000);

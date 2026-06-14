@@ -36,6 +36,7 @@ describe("planweave CLI contract", () => {
         "run",
         "executors",
         "run-status",
+        "project-graph",
         "schema",
         "help"
       ])
@@ -44,6 +45,7 @@ describe("planweave CLI contract", () => {
 
   it("supports json output for init, validate, and status", () => {
     expect(commandOptionLongs("init")).toContain("--json");
+    expect(commandOptionLongs("init")).toContain("--project-graph");
     expect(commandOptionLongs("init")).toContain("--reset-package");
     expect(commandOptionLongs("init")).toContain("--reset-results");
     expect(commandOptionLongs("validate")).toContain("--json");
@@ -109,7 +111,11 @@ describe("planweave CLI contract", () => {
     expect(formatPlanweaveHelp("schema")).toContain("Use schema project before writing formal multi-canvas project-graph.json.");
     expect(formatPlanweaveHelp("schema")).toContain("Do not hand-author project graph, manifest, state, or layout from memory.");
     expect(formatPlanweaveHelp("work")).toContain("planweave claim-next --parallel --dry-run");
+    expect(formatPlanweaveHelp("work")).toContain("planweave status --json --canvas <canvasId>");
+    expect(formatPlanweaveHelp("work")).toContain("CLI commands target the current or first canvas");
     expect(formatPlanweaveHelp("submit")).toContain("planweave submit-review <review-block-ref> --result <review-result.json>");
+    expect(formatPlanweaveHelp("submit")).toContain("planweave submit-result --canvas <canvasId> <block-ref> --report <report.md>");
+    expect(formatPlanweaveHelp("autorun")).toContain("planweave run --once --executor <name> --canvas <canvasId> --json");
     expect(formatPlanweaveHelp("recovery")).toContain("planweave doctor --repair");
     expect(formatPlanweaveHelp("recovery")).toContain("planweave retry-review <review-block-ref> --max-feedback-cycles 3");
     expect(formatPlanweaveHelp("plan")).toContain("planweave edit-block <block-ref> --review-required false");

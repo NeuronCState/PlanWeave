@@ -17,7 +17,7 @@ import {
 } from "../desktop/index.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { readProjectPaths } from "../paths.js";
-import { writeProjectGraph } from "../projectGraph/index.js";
+import { loadProjectGraph, writeProjectGraph } from "../projectGraph/index.js";
 import { claimNext, getCurrentWork, getExecutionStatus } from "../taskManager/index.js";
 import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
 
@@ -218,7 +218,7 @@ describe("desktop task canvas API", () => {
     expect(current.owner).toMatchObject({ canvasId: secondCanvas.canvasId, taskIds: ["T-ACTIVE-CANVAS-WORK"] });
   });
 
-  it("rejects registry canvas edits when a formal project graph is present", async () => {
+  it("updates formal project graph canvases instead of the legacy registry", async () => {
     const { root, init } = await createTestWorkspace();
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
@@ -236,7 +236,94 @@ describe("desktop task canvas API", () => {
       crossTaskEdges: []
     });
 
-    await expect(createTaskCanvas(root, { name: "Hidden canvas" })).rejects.toThrow("project-graph.json");
-    await expect(removeTaskCanvas(root, "default")).rejects.toThrow("project-graph.json");
+    const created = await createTaskCanvas(root, { name: "Formal canvas" });
+    let loaded = await loadProjectGraph(root);
+    expect(loaded.source).toBe("project_graph");
+    expect(loaded.manifest.canvases).toEqual([
+      expect.objectContaining({ id: "default" }),
+      expect.objectContaining({
+        id: created.canvasId,
+        title: "Formal canvas",
+        packageDir: `canvases/${created.canvasId}/package`,
+        stateFile: `canvases/${created.canvasId}/state.json`,
+        resultsDir: `canvases/${created.canvasId}/results`
+      })
+    ]);
+    await expect(resolveTaskCanvasWorkspace(root, created.canvasId)).resolves.toMatchObject({
+      packageDir: join(init.workspace.workspaceRoot, "canvases", created.canvasId, "package")
+    });
+
+    await writeProjectGraph(init.workspace, {
+      ...loaded.manifest,
+      edges: [{ from: "default", to: created.canvasId, type: "depends_on" }],
+      crossTaskEdges: [
+        {
+          from: { canvasId: created.canvasId, taskId: "T-001" },
+          to: { canvasId: "default", taskId: "T-001" },
+          type: "depends_on"
+        }
+      ]
+    });
+
+    await expect(removeTaskCanvas(root, created.canvasId)).rejects.toThrow("referenced by project graph dependencies");
+    loaded = await loadProjectGraph(root);
+    expect(loaded.manifest.canvases.map((canvas) => canvas.id)).toEqual(["default", created.canvasId]);
+    expect(loaded.manifest.edges).toHaveLength(1);
+    expect(loaded.manifest.crossTaskEdges).toHaveLength(1);
+
+    await writeProjectGraph(init.workspace, {
+      ...loaded.manifest,
+      edges: [],
+      crossTaskEdges: []
+    });
+
+    const remaining = await removeTaskCanvas(root, created.canvasId);
+    loaded = await loadProjectGraph(root);
+
+    expect(remaining.map((canvas) => canvas.canvasId)).toEqual(["default"]);
+    expect(loaded.manifest.canvases.map((canvas) => canvas.id)).toEqual(["default"]);
+    expect(loaded.manifest.edges).toEqual([]);
+    expect(loaded.manifest.crossTaskEdges).toEqual([]);
+    await expect(access(join(init.workspace.workspaceRoot, "canvases", created.canvasId))).rejects.toThrow();
+  });
+
+  it("rejects resetting a formal root canvas while project graph dependencies reference it", async () => {
+    const { root, init } = await createTestWorkspace();
+    await writeProjectGraph(init.workspace, {
+      version: "plan-project/v1",
+      canvases: [
+        {
+          id: "default",
+          type: "canvas",
+          title: "Root plan",
+          packageDir: "package",
+          stateFile: "state.json",
+          resultsDir: "results"
+        },
+        {
+          id: "downstream",
+          type: "canvas",
+          title: "Downstream plan",
+          packageDir: "canvases/downstream/package",
+          stateFile: "canvases/downstream/state.json",
+          resultsDir: "canvases/downstream/results"
+        }
+      ],
+      edges: [{ from: "downstream", to: "default", type: "depends_on" }],
+      crossTaskEdges: [
+        {
+          from: { canvasId: "downstream", taskId: "T-001" },
+          to: { canvasId: "default", taskId: "T-001" },
+          type: "depends_on"
+        }
+      ]
+    });
+
+    await expect(removeTaskCanvas(root, "default")).rejects.toThrow("referenced by project graph dependencies");
+
+    const loaded = await loadProjectGraph(root);
+    expect(loaded.manifest.canvases.map((canvas) => canvas.id)).toEqual(["default", "downstream"]);
+    expect(loaded.manifest.edges).toHaveLength(1);
+    expect(loaded.manifest.crossTaskEdges).toHaveLength(1);
   });
 });

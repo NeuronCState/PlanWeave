@@ -296,6 +296,12 @@ export type InitWorkspaceResult = {
   workspace: ProjectWorkspace;
   project: ProjectMetadata;
   created: boolean;
+  projectGraph?: {
+    path: string;
+    created: boolean;
+    source: "project_graph" | "legacy_registry" | "legacy_default_canvas";
+    canvasCount: number;
+  };
   backup?: {
     backupDir: string;
     packageDir?: string;

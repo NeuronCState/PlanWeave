@@ -6,7 +6,7 @@ import { ZodError } from "zod";
 import { initialManifest } from "../initWorkspace.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { resolveProjectWorkspace } from "../project.js";
-import { loadProjectGraph, projectCanvasWorkspace as workspaceForProjectCanvas, resolveProjectCanvasWorkspace } from "../projectGraph/index.js";
+import { loadProjectGraph, projectCanvasWorkspace as workspaceForProjectCanvas, resolveProjectCanvasWorkspace, writeProjectGraph } from "../projectGraph/index.js";
 import type { ProjectCanvasNode } from "../projectGraph/index.js";
 import { createEmptyState } from "../state.js";
 import type { ProjectWorkspace, ValidationIssue } from "../types.js";
@@ -213,11 +213,17 @@ function assertWorkspaceChild(projectWorkspace: ProjectWorkspace, path: string):
   }
 }
 
-async function assertLegacyCanvasRegistryEditable(projectRoot: string): Promise<void> {
-  const loaded = await loadProjectGraph(projectRoot);
-  if (loaded.source === "project_graph") {
-    throw new Error("Task canvas create/delete is disabled when project-graph.json is the canvas source; edit project-graph.json manually.");
+function assertProjectCanvasUnreferenced(manifest: Awaited<ReturnType<typeof loadProjectGraph>>["manifest"], canvasId: string): void {
+  const canvasEdges = manifest.edges.filter((edge) => edge.from === canvasId || edge.to === canvasId);
+  const crossTaskEdges = manifest.crossTaskEdges.filter((edge) => edge.from.canvasId === canvasId || edge.to.canvasId === canvasId);
+  if (canvasEdges.length === 0 && crossTaskEdges.length === 0) {
+    return;
   }
+  const references = [
+    ...canvasEdges.map((edge) => `canvas edge ${edge.from}->${edge.to}`),
+    ...crossTaskEdges.map((edge) => `cross-task edge ${edge.from.canvasId}:${edge.from.taskId}->${edge.to.canvasId}:${edge.to.taskId}`)
+  ];
+  throw new Error(`Cannot remove project canvas '${canvasId}' because it is referenced by project graph dependencies: ${references.join(", ")}. Remove those dependencies first.`);
 }
 
 export async function listTaskCanvases(projectRoot: string): Promise<DesktopTaskCanvasSummary[]> {
@@ -289,7 +295,28 @@ export async function resolveTaskCanvasWorkspace(projectRoot: string, canvasId?:
 }
 
 export async function createTaskCanvas(projectRoot: string, input: { name?: string | null } = {}): Promise<DesktopTaskCanvasSummary> {
-  await assertLegacyCanvasRegistryEditable(projectRoot);
+  const loaded = await loadProjectGraph(projectRoot);
+  if (loaded.source === "project_graph") {
+    const canvasId = newCanvasId();
+    const canvas: ProjectCanvasNode = {
+      id: canvasId,
+      type: "canvas",
+      title: input.name?.trim() || `新任务画布 ${loaded.manifest.canvases.length + 1}`,
+      packageDir: `canvases/${canvasId}/package`,
+      stateFile: `canvases/${canvasId}/state.json`,
+      resultsDir: `canvases/${canvasId}/results`
+    };
+    const workspace = workspaceForProjectCanvas(loaded.workspace, canvas);
+    await mkdir(join(workspace.packageDir, "nodes"), { recursive: true });
+    await mkdir(workspace.resultsDir, { recursive: true });
+    await writeJsonFile(workspace.manifestFile, initialManifest(canvas.title));
+    await writeJsonFile(workspace.stateFile, createEmptyState());
+    await writeProjectGraph(loaded.workspace, {
+      ...loaded.manifest,
+      canvases: [...loaded.manifest.canvases, canvas]
+    });
+    return summarizeProjectCanvas(loaded.workspace, canvas);
+  }
   const { projectWorkspace, registry } = await readRegistry(projectRoot);
   const canvasId = newCanvasId();
   const record: TaskCanvasRecord = {
@@ -312,7 +339,31 @@ export async function createTaskCanvas(projectRoot: string, input: { name?: stri
 }
 
 export async function removeTaskCanvas(projectRoot: string, canvasId: string): Promise<DesktopTaskCanvasSummary[]> {
-  await assertLegacyCanvasRegistryEditable(projectRoot);
+  const loaded = await loadProjectGraph(projectRoot);
+  if (loaded.source === "project_graph") {
+    const canvas = loaded.manifest.canvases.find((candidate) => candidate.id === canvasId);
+    if (!canvas) {
+      throw new Error(`Project canvas '${canvasId}' does not exist.`);
+    }
+    const workspace = workspaceForProjectCanvas(loaded.workspace, canvas);
+    assertWorkspaceChild(loaded.workspace, workspace.packageDir);
+    assertWorkspaceChild(loaded.workspace, workspace.stateFile);
+    assertWorkspaceChild(loaded.workspace, workspace.resultsDir);
+    assertProjectCanvasUnreferenced(loaded.manifest, canvasId);
+    if (workspace.workspaceRoot === loaded.workspace.workspaceRoot || workspace.packageDir === loaded.workspace.packageDir || loaded.manifest.canvases.length === 1) {
+      await writeJsonFile(workspace.manifestFile, initialManifest(canvas.title));
+      await writeJsonFile(workspace.stateFile, createEmptyState());
+      await rm(workspace.resultsDir, { recursive: true, force: true });
+      await mkdir(workspace.resultsDir, { recursive: true });
+      return listTaskCanvases(projectRoot);
+    }
+    await writeProjectGraph(loaded.workspace, {
+      ...loaded.manifest,
+      canvases: loaded.manifest.canvases.filter((candidate) => candidate.id !== canvasId)
+    });
+    await rm(workspace.workspaceRoot, { recursive: true, force: true });
+    return listTaskCanvases(projectRoot);
+  }
   const { projectWorkspace, registry } = await readRegistry(projectRoot);
   const record = requireCanvasRecord(registry, canvasId);
   const workspace = canvasWorkspace(projectWorkspace, record);

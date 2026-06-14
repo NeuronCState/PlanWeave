@@ -23,6 +23,7 @@ export {
   defaultCanvasProjectGraph,
   loadProjectGraph,
   loadProjectGraphForWorkspace,
+  materializeProjectGraph,
   projectGraphFromLegacyRegistry,
   projectCanvasWorkspace,
   projectGraphPath,

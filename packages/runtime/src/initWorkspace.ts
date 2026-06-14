@@ -5,6 +5,7 @@ import { resolvePlanweaveHome } from "./paths.js";
 import { resolveProjectWorkspace } from "./project.js";
 import { createEmptyState } from "./state.js";
 import { writeJsonFile } from "./json.js";
+import { materializeProjectGraph } from "./projectGraph/index.js";
 import type { InitWorkspaceResult, PlanPackageManifest, ProjectMetadata } from "./types.js";
 
 export function initialManifest(projectName: string): PlanPackageManifest {
@@ -44,6 +45,7 @@ export async function initWorkspace(options: {
   force?: boolean;
   resetPackage?: boolean;
   resetResults?: boolean;
+  projectGraph?: boolean;
 }): Promise<InitWorkspaceResult> {
   const rootPath = await realpath(options.projectRoot);
   const workspace = await resolveProjectWorkspace(rootPath);
@@ -113,10 +115,13 @@ export async function initWorkspace(options: {
     await writeJsonFile(workspace.stateFile, createEmptyState());
   }
 
+  const projectGraph = options.projectGraph ? await materializeProjectGraph(rootPath) : undefined;
+
   return {
     workspace,
     project,
     created: !alreadyExists,
+    ...(projectGraph ? { projectGraph } : {}),
     ...(backup ? { backup } : {})
   };
 }

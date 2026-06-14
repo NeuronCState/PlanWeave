@@ -1,9 +1,12 @@
 import { join } from "node:path";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { createTaskCanvas, listTaskCanvases, resolveTaskCanvasWorkspace } from "../desktop/index.js";
 import { writeJsonFile } from "../json.js";
 import { projectGraphManifestSchema } from "../projectGraph/schema.js";
 import { loadProjectGraph, projectGraphPath, writeProjectGraph } from "../projectGraph/loadProjectGraph.js";
+import { materializeProjectGraph } from "../projectGraph/materializeProjectGraph.js";
 import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
 
 afterEach(() => {
@@ -86,6 +89,36 @@ describe("project graph schema", () => {
     expect(loaded.source).toBe("project_graph");
     expect(loaded.diagnostics).toEqual([]);
     expect(loaded.manifest.canvases[0]?.title).toBe("Formal default");
+  });
+
+  it("materializes the current fallback graph as formal project-graph.json", async () => {
+    const { root, init } = await createTestWorkspace();
+
+    const result = await materializeProjectGraph(root);
+    const loaded = await loadProjectGraph(root);
+
+    expect(result).toEqual({
+      path: projectGraphPath(init.workspace),
+      created: true,
+      source: "legacy_default_canvas",
+      canvasCount: 1
+    });
+    expect(loaded.source).toBe("project_graph");
+    expect(loaded.manifest.canvases).toEqual([
+      expect.objectContaining({
+        id: "default",
+        packageDir: "package",
+        stateFile: "state.json",
+        resultsDir: "results"
+      })
+    ]);
+  });
+
+  it("rejects materializing a project graph before workspace init", async () => {
+    process.env.PLANWEAVE_HOME = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    const root = await mkdtemp(join(tmpdir(), "planweave-project-"));
+
+    await expect(materializeProjectGraph(root)).rejects.toThrow("planweave init --project-graph --json");
   });
 
   it("can reference a second canvas package from project-graph.json", async () => {

@@ -26,6 +26,7 @@ import { registerResolveDivergenceCommand } from "./commands/resolveDivergence.j
 import { registerUnblockCommand } from "./commands/unblock.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerPathsCommand } from "./commands/paths.js";
+import { registerProjectGraphCommand } from "./commands/projectGraph.js";
 import { registerRunCommand } from "./commands/run.js";
 import { registerExecutorsCommand } from "./commands/executors.js";
 import { registerRunStatusCommand } from "./commands/runStatus.js";
@@ -67,6 +68,7 @@ export function createProgram(): Command {
   registerUnblockCommand(program);
   registerStatusCommand(program);
   registerPathsCommand(program);
+  registerProjectGraphCommand(program);
   registerRunCommand(program);
   registerExecutorsCommand(program);
   registerRunStatusCommand(program);

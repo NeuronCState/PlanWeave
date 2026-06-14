@@ -16,6 +16,42 @@ async function planweave(args: string[], env: NodeJS.ProcessEnv): Promise<{ stdo
 }
 
 describe("STEP-1 CLI contract", () => {
+  it("initializes and materializes a formal project graph through the CLI", async () => {
+    const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    const root = await mkdtemp(join(tmpdir(), "planweave-project-"));
+    const env = { ...process.env, PLANWEAVE_HOME: home, INIT_CWD: root };
+
+    const init = JSON.parse((await planweave(["init", "--project-graph", "--json"], env)).stdout);
+    expect(init.projectGraph).toMatchObject({
+      path: join(init.workspace.workspaceRoot, "project-graph.json"),
+      created: true,
+      source: "legacy_default_canvas",
+      canvasCount: 1
+    });
+    expect(JSON.parse(await readFile(init.projectGraph.path, "utf8"))).toMatchObject({
+      version: "plan-project/v1",
+      canvases: [expect.objectContaining({ id: "default", packageDir: "package" })]
+    });
+
+    const migrate = JSON.parse((await planweave(["project-graph", "migrate", "--json"], env)).stdout);
+    expect(migrate).toMatchObject({
+      path: init.projectGraph.path,
+      created: false,
+      source: "project_graph",
+      canvasCount: 1
+    });
+  }, 20_000);
+
+  it("rejects project-graph migrate before init", async () => {
+    const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    const root = await mkdtemp(join(tmpdir(), "planweave-project-"));
+    const env = { ...process.env, PLANWEAVE_HOME: home, INIT_CWD: root };
+
+    await expect(planweave(["project-graph", "migrate", "--json"], env)).rejects.toMatchObject({
+      stderr: expect.stringContaining("planweave init --project-graph --json")
+    });
+  }, 20_000);
+
   it("runs the documented block-level review feedback loop", async () => {
     const readme = await readFile(join(repoRoot, "examples/basic-plan-package/README.md"), "utf8");
     expect(readme).toContain("planweave prompt T-001#B-001");

@@ -11,8 +11,12 @@ export const planweaveHelpTopics: HelpTopic[] = [
   {
     name: "setup",
     summary: "Initialize or locate the PlanWeave workspace.",
-    commands: ["paths --json", "init --json", "validate --json"],
-    notes: ["Use the CLI-returned package directory as the writable Plan Package location.", "Run validate after editing manifest or prompt sources."]
+    commands: ["paths --json", "init --project-graph --json", "project-graph migrate --json", "validate --json"],
+    notes: [
+      "Use the CLI-returned package directory as the writable Plan Package location.",
+      "Use project-graph migrate to materialize a formal multi-canvas graph from legacy/default canvas sources.",
+      "Run validate after editing manifest or prompt sources."
+    ]
   },
   {
     name: "schema",
@@ -47,15 +51,19 @@ export const planweaveHelpTopics: HelpTopic[] = [
     commands: [
       "current",
       "status --json",
+      "status --json --canvas <canvasId>",
       "claim-next --dry-run",
+      "claim-next --dry-run --canvas <canvasId>",
       "claim-next --parallel --dry-run",
       "claim <ref>",
+      "claim --canvas <canvasId> <ref>",
       "claim <ref> --dispatch",
       "claim-task <taskId>",
       "claim --type review"
     ],
     notes: [
       "Use dry-run before automatic scheduling when the next step is unclear.",
+      "Use --canvas for formal multi-canvas projects; without it, CLI commands target the current or first canvas, not every project canvas.",
       "Review gates are sequential work, not parallel implementation blocks.",
       "Use --dispatch only for graph-ready, parallel-safe implementation blocks assigned to another agent."
     ]
@@ -65,10 +73,17 @@ export const planweaveHelpTopics: HelpTopic[] = [
     summary: "Submit block, review, and feedback results.",
     commands: [
       "submit-result <block-ref> --report <report.md>",
+      "submit-result --canvas <canvasId> <block-ref> --report <report.md>",
       "submit-review <review-block-ref> --result <review-result.json>",
+      "submit-review --canvas <canvasId> <review-block-ref> --result <review-result.json>",
       "submit-feedback --report <feedback-report.md>"
     ],
-    notes: ["submit-result is for implementation blocks.", "submit-review verdicts are passed or needs_changes.", "Feedback is runtime state; do not create feedback blocks in the package."]
+    notes: [
+      "Use --canvas when submitting work claimed from a non-default canvas.",
+      "submit-result is for implementation blocks.",
+      "submit-review verdicts are passed or needs_changes.",
+      "Feedback is runtime state; do not create feedback blocks in the package."
+    ]
   },
   {
     name: "explain",
@@ -98,8 +113,12 @@ export const planweaveHelpTopics: HelpTopic[] = [
   {
     name: "autorun",
     summary: "Inspect executors and run automated execution steps.",
-    commands: ["executors list", "executors test <name>", "run --once --executor <name> --json", "run-status --json"],
-    notes: ["Use --once for controlled agent loops.", "The manual executor claims work and writes prompt paths without auto-submitting results."]
+    commands: ["executors list", "executors test <name>", "run --once --executor <name> --json", "run --once --executor <name> --canvas <canvasId> --json", "run-status --json"],
+    notes: [
+      "Use --canvas for canvas-scoped Auto Run; without it, Auto Run targets the current or first canvas.",
+      "Use --once for controlled agent loops.",
+      "The manual executor claims work and writes prompt paths without auto-submitting results."
+    ]
   }
 ];
 

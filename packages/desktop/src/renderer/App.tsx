@@ -150,57 +150,24 @@ export function App() {
   const {
     createTaskCanvas: createTaskCanvasInSession,
     deleteTaskCanvas: deleteTaskCanvasInSession,
-    openProject: openProjectInSession
+    openBlockInspector: handleOpenBlockInspector,
+    openProject: openProjectInSession,
+    openTaskInspector: handleOpenTaskInspector,
+    selectTaskPanel: handleTaskPanelSelect
   } = useDesktopProjectSession({
     clearSelectedBlockRecords,
+    language,
     projectState: desktopProject,
+    requestTaskFocus,
+    selectBlock: handleBlockSelect,
+    setActiveView,
     setAutoRunState,
     setBlockInspectorOpen,
+    setError,
     setSelectedBlock,
+    setSelectedTaskPanelId,
     setSelectedRunRecord
   });
-
-  const handleOpenBlockInspector = useCallback(
-    async (ref: string, canvasIdOverride?: string | null) => {
-      const canvasId = canvasIdOverride === undefined ? selectedCanvasId : canvasIdOverride;
-      try {
-        await handleBlockSelect(ref, canvasId);
-        if (!bridge || !selectedProject) {
-          return;
-        }
-        await bridge.openBlockInspectorWindow({
-          blockRef: ref,
-          canvas: desktopCanvasReference(selectedProject, canvasId),
-          language,
-        });
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      }
-    },
-    [handleBlockSelect, language, selectedCanvasId, selectedProject]
-  );
-
-  const handleOpenTaskInspector = useCallback(
-    async (taskId: string, canvasIdOverride?: string | null) => {
-      const canvasId = canvasIdOverride === undefined ? selectedCanvasId : canvasIdOverride;
-      try {
-        setSelectedTaskPanelId(taskId);
-        setActiveView("graph");
-        requestTaskFocus(taskId);
-        if (!bridge || !selectedProject) {
-          return;
-        }
-        await bridge.openTaskInspectorWindow({
-          taskId,
-          canvas: desktopCanvasReference(selectedProject, canvasId),
-          language
-        });
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      }
-    },
-    [language, requestTaskFocus, selectedCanvasId, selectedProject, setActiveView]
-  );
 
   const { handleDeleteBlock, handleDeleteTaskNode } = useGraphDeleteActions({
     clearSelectedBlockRecords,
@@ -284,12 +251,6 @@ export function App() {
     },
     [refreshGraph, selectedCanvasId, selectedProject]
   );
-
-  const handleTaskPanelSelect = useCallback((taskId: string | null) => {
-    setSelectedTaskPanelId(taskId);
-    setActiveView("graph");
-    requestTaskFocus(taskId);
-  }, [requestTaskFocus]);
 
   const handleProjectNewGraph = useCallback(
     async (project: DesktopProjectSummary) => {

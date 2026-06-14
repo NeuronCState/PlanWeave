@@ -258,9 +258,14 @@ describe("desktop renderer hook interfaces", () => {
     const clearSelectedBlockRecords = vi.fn();
     const loadProject = vi.fn().mockResolvedValue(undefined);
     const setAutoRunState = vi.fn();
+    const setActiveView = vi.fn();
     const setBlockInspectorOpen = vi.fn();
+    const setError = vi.fn();
+    const setSelectedTaskPanelId = vi.fn();
     const setSelectedBlock = vi.fn();
     const setSelectedRunRecord = vi.fn();
+    const requestTaskFocus = vi.fn();
+    const selectBlock = vi.fn().mockResolvedValue(undefined);
     const projectState = {
       expandedProjectId: null,
       graph: null,
@@ -281,10 +286,16 @@ describe("desktop renderer hook interfaces", () => {
     const { result } = renderHook(() =>
       useDesktopProjectSession({
         clearSelectedBlockRecords,
+        language: "zh-CN",
         projectState,
+        requestTaskFocus,
+        selectBlock,
+        setActiveView,
         setAutoRunState,
         setBlockInspectorOpen,
+        setError,
         setSelectedBlock,
+        setSelectedTaskPanelId,
         setSelectedRunRecord
       })
     );
@@ -300,6 +311,86 @@ describe("desktop renderer hook interfaces", () => {
     expect(loadProject).toHaveBeenCalledWith(project, "canvas-main");
     expect(bridge.getLatestAutoRunSummary).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
     expect(setAutoRunState).toHaveBeenCalledWith(expect.objectContaining({ runId: "RUN-001" }));
+  });
+
+  it("coordinates task and inspector opening through Desktop Project Session actions", async () => {
+    const bridge = createDesktopBridgeMock({
+      getLatestAutoRunSummary: vi.fn().mockResolvedValue(null),
+      openBlockInspectorWindow: vi.fn().mockResolvedValue(undefined),
+      openTaskInspectorWindow: vi.fn().mockResolvedValue(undefined)
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDesktopProjectSession } = await import("../renderer/hooks/useDesktopProjectSession");
+
+    const setActiveView = vi.fn();
+    const setSelectedTaskPanelId = vi.fn();
+    const requestTaskFocus = vi.fn();
+    const selectBlock = vi.fn().mockResolvedValue(undefined);
+    const projectState = {
+      expandedProjectId: null,
+      graph: null,
+      handleOpenProject: vi.fn(),
+      layout: null,
+      loadProject: vi.fn(),
+      projects: [project],
+      refreshGraph: vi.fn(),
+      refreshProjectSummary: vi.fn(),
+      removeProject: vi.fn(),
+      selectedCanvasId: "canvas-main",
+      selectedProject: project,
+      setLayout: vi.fn(),
+      statistics: null,
+      todoGroups: null
+    };
+
+    const { result } = renderHook(() =>
+      useDesktopProjectSession({
+        clearSelectedBlockRecords: vi.fn(),
+        language: "zh-CN",
+        projectState,
+        requestTaskFocus,
+        selectBlock,
+        setActiveView,
+        setAutoRunState: vi.fn(),
+        setBlockInspectorOpen: vi.fn(),
+        setError: vi.fn(),
+        setSelectedBlock: vi.fn(),
+        setSelectedTaskPanelId,
+        setSelectedRunRecord: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.selectTaskPanel("T-ALPHA");
+    });
+
+    expect(setSelectedTaskPanelId).toHaveBeenCalledWith("T-ALPHA");
+    expect(setActiveView).toHaveBeenCalledWith("graph");
+    expect(requestTaskFocus).toHaveBeenCalledWith("T-ALPHA");
+
+    await act(async () => {
+      await result.current.openTaskInspector("T-BETA", "canvas-alt");
+    });
+
+    expect(setSelectedTaskPanelId).toHaveBeenCalledWith("T-BETA");
+    expect(requestTaskFocus).toHaveBeenCalledWith("T-BETA");
+    expect(bridge.openTaskInspectorWindow).toHaveBeenCalledWith({
+      taskId: "T-BETA",
+      canvas: { projectRoot: project.rootPath, canvasId: "canvas-alt" },
+      language: "zh-CN"
+    });
+
+    await act(async () => {
+      await result.current.openBlockInspector("B-001");
+    });
+
+    expect(selectBlock).toHaveBeenCalledWith("B-001", "canvas-main");
+    expect(bridge.openBlockInspectorWindow).toHaveBeenCalledWith({
+      blockRef: "B-001",
+      canvas: { projectRoot: project.rootPath, canvasId: "canvas-main" },
+      language: "zh-CN"
+    });
   });
 
 });

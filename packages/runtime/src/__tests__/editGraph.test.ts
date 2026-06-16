@@ -157,6 +157,17 @@ describe("editGraph", () => {
     await expect(readFile(`${init.workspace.packageDir}/nodes/T-002/prompt.md`, "utf8")).resolves.toContain("# New task");
   });
 
+  it("uses the shared affected task rules for graph mutation edge changes", () => {
+    const manifest = basicManifest({ includeSecondTask: true });
+
+    const mutation = buildPlanPackageGraphMutation(manifest, {
+      kind: "addEdge",
+      edge: { from: "T-002", to: "T-001", type: "depends_on" }
+    });
+
+    expect(mutation.affectedTasks).toEqual(["T-002"]);
+  });
+
   it("validates edge endpoint contracts before writing", async () => {
     const { root } = await createTestWorkspace();
 

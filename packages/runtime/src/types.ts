@@ -590,6 +590,7 @@ export type ClaimHint = {
   readyReason: string | null;
   blockedByBlocks: string[];
   blockedByTasks: string[];
+  blockedByProject: string[];
   parallelSafe: boolean;
   sequentialOnly: boolean;
   recommendedCommand: string | null;

@@ -40,7 +40,6 @@ export function App() {
   const [, setBlockInspectorOpen] = useState(false);
   const { agentDetectionRefreshing, agentDetections, executorOptions, refreshAgentDetections } = useDetectedAgents();
   const { refreshRuntimeTools, runtimeTools } = useRuntimeTools();
-  const [selectedTaskPanelId, setSelectedTaskPanelId] = useState<string | null>(null);
   const [, setProjectPath] = useState(settings.runtimePath);
   const [lastFileChange, setLastFileChange] = useState<DesktopPackageFileChangeEvent | null>(null);
   const [fileSyncDiagnostics, setFileSyncDiagnostics] = useState<string[]>([]);
@@ -58,7 +57,6 @@ export function App() {
 
   const desktopProject = useDesktopProject({
     setError,
-    setSelectedTaskPanelId,
     updateSettings
   });
   const {
@@ -112,65 +110,68 @@ export function App() {
     selectedCanvasId,
     selectedProject,
     setActiveView,
-    setError,
-    setSelectedTaskPanelId
+    setError
   });
 
   const {
-    autoRunControlStyle,
-    autoRunScopeMode,
     autoRunState,
-    handleAutoRunClick,
-    miniRunPanelOpen,
-    moveAutoRunControl,
-    setAutoRunScopeMode,
-    setAutoRunState,
-    setMiniRunPanelOpen,
-    startAutoRunWithScope,
-    startAutoRunControlDrag,
-    stopAutoRunClick,
-    stopAutoRunControlDrag
-  } = useAutoRunControl({
-    onAutoRunStateRefresh: refreshGraph,
-    selectedCanvasId,
-    selectedBlock,
-    selectedProject,
-    selectedTaskPanelId,
-    setError,
-    t,
-    tmuxMonitoringEnabled: settings.execution.tmuxMonitoring && runtimeTools.tmux.available
-  });
-  const { requestTaskFocus } = useTaskNodeFocus({
-    activeView,
-    flowInstance,
-    nodes,
-    selectedTaskPanelId
-  });
-
-  const {
+    clearTaskPanelSelection,
     createTaskCanvas: createTaskCanvasInSession,
     deleteTaskCanvas: deleteTaskCanvasInSession,
     openBlockInspector: handleOpenBlockInspector,
     openProject: openProjectInSession,
     openTaskInspector: handleOpenTaskInspector,
     reloadCurrentCanvas,
-    selectTaskPanel: handleTaskPanelSelect
+    selectedTaskPanelId,
+    selectTaskPanel: handleTaskPanelSelect,
+    setAutoRunState,
+    taskFocusRequest
   } = useDesktopProjectSession({
     clearSelectedBlockRecords,
     language,
     projectState: desktopProject,
-    requestTaskFocus,
     selectBlock: handleBlockSelect,
     setActiveView,
-    setAutoRunState,
     setBlockInspectorOpen,
     setError,
     setSelectedBlock,
-    setSelectedTaskPanelId,
     setSelectedRunRecord
   });
 
+  const {
+    autoRunControlStyle,
+    autoRunScopeMode,
+    handleAutoRunClick,
+    miniRunPanelOpen,
+    moveAutoRunControl,
+    setAutoRunScopeMode,
+    setMiniRunPanelOpen,
+    startAutoRunWithScope,
+    startAutoRunControlDrag,
+    stopAutoRunClick,
+    stopAutoRunControlDrag
+  } = useAutoRunControl({
+    autoRunState,
+    onAutoRunStateRefresh: refreshGraph,
+    selectedCanvasId,
+    selectedBlock,
+    selectedProject,
+    selectedTaskPanelId,
+    setAutoRunState,
+    setError,
+    t,
+    tmuxMonitoringEnabled: settings.execution.tmuxMonitoring && runtimeTools.tmux.available
+  });
+  useTaskNodeFocus({
+    activeView,
+    flowInstance,
+    nodes,
+    selectedTaskPanelId,
+    taskFocusRequest
+  });
+
   const { handleDeleteBlock, handleDeleteTaskNode } = useGraphDeleteActions({
+    clearTaskPanelSelection,
     clearSelectedBlockRecords,
     deleteBlockConfirm: t("deleteBlockConfirm"),
     deleteTaskConfirm: t("deleteTaskConfirm"),
@@ -183,8 +184,7 @@ export function App() {
     setBlockInspectorOpen,
     setError,
     setSelectedBlock,
-    setSelectedRunRecord,
-    setSelectedTaskPanelId
+    setSelectedRunRecord
   });
 
   const {
@@ -215,9 +215,8 @@ export function App() {
     loadProject: openProjectInSession,
     selectedCanvasId,
     selectedProject,
-    setActiveView,
     setError,
-    setSelectedTaskPanelId
+    selectTaskPanel: handleTaskPanelSelect
   });
 
   const {
@@ -430,7 +429,7 @@ export function App() {
     setError,
     setLayout,
     setNewTaskTargetId,
-    setSelectedTaskPanelId,
+    selectTaskPanel: handleTaskPanelSelect,
     settings,
     t
   });
@@ -530,7 +529,6 @@ export function App() {
           generateTaskDraft={generateTaskDraft}
           graph={graph}
           handleAutoRunClick={handleAutoRunClick}
-          handleBlockSelect={handleBlockSelect}
           handleOpenBlockInspector={handleOpenBlockInspector}
           handleConnect={handleConnect}
           handleEdgesDelete={handleEdgesDelete}

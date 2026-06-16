@@ -16,7 +16,6 @@ type UseSelectedBlockArgs = {
   selectedProject: DesktopProjectSummary | null;
   setActiveView: (view: AppView) => void;
   setError: (message: string | null) => void;
-  setSelectedTaskPanelId: (taskId: string | null) => void;
 };
 
 export function useSelectedBlock({
@@ -24,8 +23,7 @@ export function useSelectedBlock({
   selectedCanvasId,
   selectedProject,
   setActiveView,
-  setError,
-  setSelectedTaskPanelId
+  setError
 }: UseSelectedBlockArgs) {
   const [selectedBlock, setSelectedBlock] = useState<DesktopBlockDetail | null>(null);
   const [blockRunRecords, setBlockRunRecords] = useState<DesktopBlockRunRecordSummary[]>([]);
@@ -56,11 +54,11 @@ export function useSelectedBlock({
       setBlockRunRecords(runRecords);
       setBlockReviewAttempts(reviewAttempts);
       setBlockFeedbackRecords(feedbackRecords);
-      setSelectedTaskPanelId(block.taskId);
       setSelectedRunRecord(null);
       setActiveView("graph");
+      return block;
     },
-    [selectedCanvasId, selectedProject, setActiveView, setSelectedTaskPanelId]
+    [selectedCanvasId, selectedProject, setActiveView]
   );
 
   const handleOpenRunRecord = useCallback(

@@ -2,16 +2,11 @@ import { writeState } from "../state.js";
 import type { BlockType, ClaimResult, ClaimScope, ExecutionGraphSession, PackageWorkspaceRef } from "../types.js";
 import { claimDispatchedBlock } from "./claimBlockDispatch.js";
 import { buildClaimReadiness, type ClaimCandidate } from "./claimReadiness.js";
-import { projectBlockerReason } from "./claimReadinessRules.js";
 import { patchFeedbackArtifact } from "./feedbackArtifacts.js";
 import { createProjectGraphClaimGuard } from "./projectGraphClaimGuard.js";
 import { updateTaskIndex } from "./resultIndex.js";
 import { loadRuntime, refreshDerivedState } from "./runtimeContext.js";
 import {
-  activeOpenFeedback,
-  blockInScope,
-  claimResultForBlock,
-  feedbackInScope,
   markClaimed,
   normalizeClaimScope,
   validateClaimScope
@@ -45,25 +40,14 @@ export async function claimNext(options: {
   }
   const projectGuard = await createProjectGraphClaimGuard(context);
   const readiness = buildClaimReadiness({ graph, manifest, state, scope, blockType, projectGuard });
-  const openFeedback = activeOpenFeedback(state);
-  if (openFeedback.length > 1) {
-    return { kind: "blocked", reason: "Multiple open feedback envelopes exist; resolve or dismiss one before continuing." };
+
+  if (readiness.claimOrder.kind === "blocked") {
+    return readiness.claimOrder.result;
   }
-  if (openFeedback.length === 1) {
-    const [feedbackId, feedback] = openFeedback[0];
-    if (!feedbackInScope(feedback, graph, scope)) {
-      return { kind: "none", reason: "no_claimable_blocks_in_scope" };
-    }
-    const taskId = graph.blockTaskByRef.get(feedback.sourceReviewBlockRef);
-    if (!taskId) {
-      throw new Error(`Feedback '${feedbackId}' points to an unknown review block.`);
-    }
-    const projectBlocker = projectBlockerReason(projectGuard, taskId);
-    if (projectBlocker) {
-      return { kind: "blocked", ref: feedback.sourceReviewBlockRef, reason: projectBlocker };
-    }
+  if (readiness.claimOrder.kind === "feedback") {
+    const { feedbackId, feedback, taskId } = readiness.claimOrder;
     if (dryRun) {
-      return { kind: "feedback", content: feedback.content };
+      return readiness.claimOrder.result;
     }
     await patchFeedbackArtifact(workspace, taskId, feedbackId, { status: "in_progress" });
     await updateTaskIndex(workspace, taskId, (index) => ({
@@ -79,64 +63,25 @@ export async function claimNext(options: {
     state.currentRefs = withoutCurrentRef(state.currentRefs, feedback.sourceReviewBlockRef);
     state = refreshDerivedState(manifest, state);
     await writeState(workspace.stateFile, state);
-    return { kind: "feedback", content: feedback.content };
+    return readiness.claimOrder.result;
   }
 
-  const inProgressReview = graph.blockRefsInManifestOrder.find((ref) => {
-    const block = graph.blocksByRef.get(ref);
-    return block?.type === "review" && state.blocks[ref]?.status === "in_progress";
-  });
-  if (inProgressReview && state.currentFeedbackId) {
-    if (blockType && blockType !== "review") {
-      return { kind: "blocked", ref: inProgressReview, reason: "A review block is in progress outside the selected claim type." };
-    }
-    const currentFeedback = state.feedback[state.currentFeedbackId];
-    if (currentFeedback?.status === "resolved") {
-      if (!blockInScope(inProgressReview, graph, scope)) {
-        return { kind: "blocked", ref: inProgressReview, reason: "A review block is in progress outside the selected Auto Run scope." };
-      }
-      if (dryRun) {
-        return claimResultForBlock(inProgressReview, graph, "feedback_resolved");
-      }
-      state.blocks[inProgressReview] = { ...state.blocks[inProgressReview], pendingFeedbackId: null };
-      state.currentRefs = withCurrentRef(state.currentRefs, inProgressReview);
-      state.currentFeedbackId = null;
-      state.currentReviewBlockRef = inProgressReview;
-      await writeState(workspace.stateFile, refreshDerivedState(manifest, state));
-      return claimResultForBlock(inProgressReview, graph, "feedback_resolved");
-    }
-  }
-  if (inProgressReview) {
-    if (blockType && blockType !== "review") {
-      return { kind: "blocked", ref: inProgressReview, reason: "A review block is in progress outside the selected claim type." };
-    }
-    if (!blockInScope(inProgressReview, graph, scope)) {
-      return { kind: "blocked", ref: inProgressReview, reason: "A review block is in progress outside the selected Auto Run scope." };
-    }
-    const reason = state.blocks[inProgressReview]?.pendingFeedbackId ? "feedback_resolved" : "current";
+  if (readiness.claimOrder.kind === "currentReview") {
     if (dryRun) {
-      return claimResultForBlock(inProgressReview, graph, reason);
+      return readiness.claimOrder.result;
     }
-    state.blocks[inProgressReview] = { ...state.blocks[inProgressReview], pendingFeedbackId: null };
-    state.currentRefs = withCurrentRef(state.currentRefs, inProgressReview);
-    state.currentReviewBlockRef = inProgressReview;
+    state.blocks[readiness.claimOrder.ref] = { ...state.blocks[readiness.claimOrder.ref], pendingFeedbackId: null };
+    state.currentRefs = withCurrentRef(state.currentRefs, readiness.claimOrder.ref);
+    if (readiness.claimOrder.clearCurrentFeedback) {
+      state.currentFeedbackId = null;
+    }
+    state.currentReviewBlockRef = readiness.claimOrder.ref;
     await writeState(workspace.stateFile, refreshDerivedState(manifest, state));
-    return claimResultForBlock(inProgressReview, graph, reason);
+    return readiness.claimOrder.result;
   }
 
-  const current = graph.blockRefsInManifestOrder.find((ref) => {
-    const block = graph.blocksByRef.get(ref);
-    return state.blocks[ref]?.status === "in_progress" && block?.type !== "review";
-  });
-  if (current) {
-    const currentBlock = graph.blocksByRef.get(current);
-    if (blockType && currentBlock?.type !== blockType) {
-      return { kind: "blocked", ref: current, reason: "A block is in progress outside the selected claim type." };
-    }
-    if (!blockInScope(current, graph, scope)) {
-      return { kind: "blocked", ref: current, reason: "A block is in progress outside the selected Auto Run scope." };
-    }
-    return claimResultForBlock(current, graph, "current");
+  if (readiness.claimOrder.kind === "currentBlock") {
+    return readiness.claimOrder.result;
   }
 
   const claimCandidate = async (candidate: ClaimCandidate): Promise<ClaimResult> => {

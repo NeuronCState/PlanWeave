@@ -88,6 +88,77 @@ describe("task node focus", () => {
     act(() => result.current.requestTaskFocus("T-001"));
     await waitFor(() => expect(setCenter).toHaveBeenCalledTimes(2));
   });
+
+  it("consumes a session focus request once nodes update after a successful focus", async () => {
+    const setCenter = vi.fn().mockResolvedValue(true);
+    const flow = flowInstance({ setCenter });
+
+    const { rerender } = renderHook(({ nodes, taskFocusRequest }) =>
+      useTaskNodeFocus({
+        activeView: "graph",
+        flowInstance: flow,
+        nodes,
+        selectedTaskPanelId: "T-001",
+        taskFocusRequest
+      }), {
+      initialProps: {
+        nodes: [taskNode("T-001", 80, 120)],
+        taskFocusRequest: { taskId: "T-001", version: 1 }
+      }
+    });
+
+    await waitFor(() => expect(setCenter).toHaveBeenCalledTimes(1));
+
+    rerender({
+      nodes: [taskNode("T-001", 120, 160)],
+      taskFocusRequest: { taskId: "T-001", version: 1 }
+    });
+
+    expect(setCenter).toHaveBeenCalledTimes(1);
+
+    rerender({
+      nodes: [taskNode("T-001", 120, 160)],
+      taskFocusRequest: { taskId: "T-001", version: 2 }
+    });
+
+    await waitFor(() => expect(setCenter).toHaveBeenCalledTimes(2));
+  });
+
+  it("accepts the same session focus version again after selection clears outside graph view", async () => {
+    const setCenter = vi.fn().mockResolvedValue(true);
+    const flow = flowInstance({ setCenter });
+
+    const { rerender } = renderHook(({ activeView, selectedTaskPanelId, taskFocusRequest }) =>
+      useTaskNodeFocus({
+        activeView,
+        flowInstance: flow,
+        nodes: [taskNode("T-001", 80, 120)],
+        selectedTaskPanelId,
+        taskFocusRequest
+      }), {
+      initialProps: {
+        activeView: "graph" as const,
+        selectedTaskPanelId: "T-001" as string | null,
+        taskFocusRequest: { taskId: "T-001", version: 1 } as { taskId: string; version: number } | null
+      }
+    });
+
+    await waitFor(() => expect(setCenter).toHaveBeenCalledTimes(1));
+
+    rerender({
+      activeView: "search",
+      selectedTaskPanelId: null,
+      taskFocusRequest: null
+    });
+
+    rerender({
+      activeView: "graph",
+      selectedTaskPanelId: "T-001",
+      taskFocusRequest: { taskId: "T-001", version: 1 }
+    });
+
+    await waitFor(() => expect(setCenter).toHaveBeenCalledTimes(2));
+  });
 });
 
 function taskNode(taskId: string, x: number, y: number, measured?: { width: number; height: number }) {

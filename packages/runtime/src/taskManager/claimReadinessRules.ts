@@ -9,11 +9,16 @@ import {
 } from "./selectors.js";
 
 export const noProjectGraphBlockers: ProjectGraphClaimGuard = {
+  blockersForTask: () => [],
   blockerReasonForTask: () => null
 };
 
 export function projectBlockerReason(projectGuard: ProjectGraphClaimGuard, taskId: string | undefined): string | null {
   return taskId ? projectGuard.blockerReasonForTask(taskId) : null;
+}
+
+export function projectBlockers(projectGuard: ProjectGraphClaimGuard, taskId: string | undefined): string[] {
+  return taskId ? projectGuard.blockersForTask(taskId) : [];
 }
 
 export function currentClaimLockReason(graph: CompiledExecutionGraph, state: RuntimeState): string | null {

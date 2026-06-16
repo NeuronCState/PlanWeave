@@ -23,7 +23,7 @@ type UseGraphPaletteActionsArgs = {
   setError: (message: string | null) => void;
   setLayout: (layout: DesktopLayout | null) => void;
   setNewTaskTargetId: (taskId: string | null) => void;
-  setSelectedTaskPanelId: (taskId: string | null) => void;
+  selectTaskPanel: (taskId: string | null) => void;
   settings: DesktopUiSettings;
   t: ReturnType<typeof createTranslator>;
 };
@@ -42,7 +42,7 @@ export function useGraphPaletteActions({
   setError,
   setLayout,
   setNewTaskTargetId,
-  setSelectedTaskPanelId,
+  selectTaskPanel,
   settings,
   t
 }: UseGraphPaletteActionsArgs) {
@@ -142,7 +142,7 @@ export function useGraphPaletteActions({
               const savedLayout = await bridge.saveDesktopLayout(canvas, nextLayout);
               await loadProject(selectedProject, selectedCanvasId);
               setLayout(savedLayout);
-              setSelectedTaskPanelId(createdTask.taskId);
+              selectTaskPanel(createdTask.taskId);
               setNewTaskTargetId(createdTask.taskId);
               return;
             }
@@ -171,7 +171,7 @@ export function useGraphPaletteActions({
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [graph, loadProject, selectedBlock, selectedCanvasId, selectedProject, selectedTaskPanelId, setError, setLayout, setNewTaskTargetId, setSelectedTaskPanelId, settings, t]
+    [graph, loadProject, selectedBlock, selectedCanvasId, selectedProject, selectedTaskPanelId, setError, setLayout, setNewTaskTargetId, selectTaskPanel, settings, t]
   );
 
   const handlePaletteDragStart = useCallback((event: React.DragEvent, type: PaletteDropComponent) => {

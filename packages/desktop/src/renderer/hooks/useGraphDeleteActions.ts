@@ -4,6 +4,7 @@ import type { DesktopBlockDetail, DesktopProjectSummary, DesktopRunRecord } from
 import { bridge, desktopCanvasReference } from "../bridge";
 
 type UseGraphDeleteActionsArgs = {
+  clearTaskPanelSelection: () => void;
   clearSelectedBlockRecords: () => void;
   deleteBlockConfirm: string;
   deleteTaskConfirm: string;
@@ -17,10 +18,10 @@ type UseGraphDeleteActionsArgs = {
   setError: (message: string | null) => void;
   setSelectedBlock: Dispatch<SetStateAction<DesktopBlockDetail | null>>;
   setSelectedRunRecord: Dispatch<SetStateAction<DesktopRunRecord | null>>;
-  setSelectedTaskPanelId: Dispatch<SetStateAction<string | null>>;
 };
 
 export function useGraphDeleteActions({
+  clearTaskPanelSelection,
   clearSelectedBlockRecords,
   deleteBlockConfirm,
   deleteTaskConfirm,
@@ -33,8 +34,7 @@ export function useGraphDeleteActions({
   setBlockInspectorOpen,
   setError,
   setSelectedBlock,
-  setSelectedRunRecord,
-  setSelectedTaskPanelId
+  setSelectedRunRecord
 }: UseGraphDeleteActionsArgs) {
   const clearBlockSelection = useCallback(() => {
     setSelectedBlock(null);
@@ -55,7 +55,7 @@ export function useGraphDeleteActions({
           return;
         }
         if (selectedTaskPanelId === taskId || selectedBlock?.taskId === taskId) {
-          setSelectedTaskPanelId(null);
+          clearTaskPanelSelection();
           clearBlockSelection();
         }
         await loadProject(selectedProject, selectedCanvasId);
@@ -63,7 +63,7 @@ export function useGraphDeleteActions({
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [clearBlockSelection, deleteTaskConfirm, loadProject, selectedBlock, selectedCanvasId, selectedProject, selectedTaskPanelId, setError, setSelectedTaskPanelId]
+    [clearBlockSelection, clearTaskPanelSelection, deleteTaskConfirm, loadProject, selectedBlock, selectedCanvasId, selectedProject, selectedTaskPanelId, setError]
   );
 
   const handleDeleteBlock = useCallback(

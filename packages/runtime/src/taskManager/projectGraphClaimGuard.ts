@@ -1,6 +1,7 @@
 import {
   currentProjectCanvasForWorkspace,
   loadProjectCanvasRuntimeAggregation,
+  projectBlockersForTask,
   projectBlockerReasonForTask,
   projectGraphDiagnosticNote,
   type ProjectCanvasRuntimeAggregationContext
@@ -9,10 +10,12 @@ import type { ValidationIssue } from "../types.js";
 import type { RuntimeContext } from "./runtimeContext.js";
 
 export type ProjectGraphClaimGuard = {
+  blockersForTask(taskId: string): string[];
   blockerReasonForTask(taskId: string): string | null;
 };
 
 const noProjectGraphBlockers: ProjectGraphClaimGuard = {
+  blockersForTask: () => [],
   blockerReasonForTask: () => null
 };
 
@@ -32,16 +35,18 @@ export function createProjectGraphClaimGuardFromAggregation(
       "Project graph is invalid; no task canvas work can be claimed.",
       ...aggregation.graph.diagnostics.errors.map((error) => `- ${issueDisplayName(error)}`)
     ].join("\n");
-    return { blockerReasonForTask: () => reason };
+    return { blockersForTask: () => [reason], blockerReasonForTask: () => reason };
   }
   const currentCanvas = currentProjectCanvasForWorkspace(aggregation, context.workspace);
   if (!currentCanvas) {
     return {
+      blockersForTask: () => ["Current task canvas is not listed in project-graph.json."],
       blockerReasonForTask: () => "Current task canvas is not listed in project-graph.json."
     };
   }
 
   return {
+    blockersForTask: (taskId: string) => projectBlockersForTask(aggregation, currentCanvas.canvasId, taskId),
     blockerReasonForTask: (taskId: string) => projectBlockerReasonForTask(aggregation, currentCanvas.canvasId, taskId)
   };
 }

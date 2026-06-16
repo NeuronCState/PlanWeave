@@ -5,7 +5,6 @@ import type { DesktopProjectExecutionPhase, DesktopProjectExecutionPlan, Desktop
 import { getBlock } from "./graphHelpers.js";
 import {
   loadProjectCanvasAggregation,
-  projectBlockersForTask,
   runtimeSnapshotFromGraphState,
   type ProjectCanvasAggregationContext
 } from "./projectCanvasAggregation.js";
@@ -30,15 +29,19 @@ type CanvasTodoRuntimeContext = RuntimeContext & {
 function buildTodoGroupsForRuntime(
   context: CanvasTodoRuntimeContext,
   canvasMeta?: { canvasId: string; canvasName: string }
-): DesktopTodoGroups {
+): { groups: DesktopTodoGroups; projectBlockedReadyCount: number } {
   const { graph, status } = context;
   const taskStatusById = new Map(status.tasks.map((task) => [task.taskId, task.status]));
   const claimHintByRef = new Map(status.claimHints.map((hint) => [hint.ref, hint]));
   const groups = emptyTodoGroups();
+  let projectBlockedReadyCount = 0;
   for (const blockStatus of status.blocks) {
     const block = getBlock(graph, blockStatus.ref);
     const claimHint = claimHintByRef.get(blockStatus.ref);
-    const dependencyBlockers = claimHint ? [...claimHint.blockedByTasks, ...claimHint.blockedByBlocks] : [];
+    const dependencyBlockers = claimHint ? [...claimHint.blockedByTasks, ...claimHint.blockedByBlocks, ...claimHint.blockedByProject] : [];
+    if (blockStatus.status === "ready" && (claimHint?.blockedByProject.length ?? 0) > 0) {
+      projectBlockedReadyCount += 1;
+    }
     const displayStatus = blockStatus.status === "ready" && dependencyBlockers.length > 0 ? "planned" : blockStatus.status;
     const groupName: keyof DesktopTodoGroups = taskStatusById.get(blockStatus.taskId) === "implemented" ? "implemented" : displayStatus;
     const item: DesktopTodoItem = {
@@ -56,7 +59,7 @@ function buildTodoGroupsForRuntime(
     };
     groups[groupName].push(item);
   }
-  return groups;
+  return { groups, projectBlockedReadyCount };
 }
 
 function executionPhaseFromGroups(
@@ -84,6 +87,7 @@ function executionPhaseFromGroups(
 
 export type CanvasExecutionSnapshot = {
   groups: DesktopTodoGroups;
+  projectBlockedReadyCount: number;
   taskCount: number;
   runtime: RuntimeContext | null;
   status: ExecutionStatus | null;
@@ -102,53 +106,30 @@ async function canvasExecutionSnapshot(
 ): Promise<CanvasExecutionSnapshot> {
   const canvas = aggregation.canvasesById.get(canvasId);
   if (!canvas) {
-    return {
-      groups: emptyTodoGroups(),
-      taskCount: 0,
-      runtime: null,
-      status: null,
-      error: new Error(`Project canvas '${canvasId}' is missing from aggregation.`)
-    };
+    throw new Error(`Project canvas '${canvasId}' is missing from aggregation.`);
   }
-  const canvasRuntime = runtime ?? await loadRuntime({ projectRoot: canvas.workspace });
-  const status = await buildExecutionStatus(canvasRuntime, {
-    claimGuard: createProjectGraphClaimGuardFromAggregation(canvasRuntime, aggregation)
-  });
-  const groups = buildTodoGroupsForRuntime({ ...canvasRuntime, status }, {
+  let canvasRuntime: RuntimeContext;
+  let status: ExecutionStatus;
+  try {
+    canvasRuntime = runtime ?? await loadRuntime({ projectRoot: canvas.workspace });
+    status = await buildExecutionStatus(canvasRuntime, {
+      claimGuard: createProjectGraphClaimGuardFromAggregation(canvasRuntime, aggregation)
+    });
+  } catch (error) {
+    throw new Error(`Canvas '${canvasId}' execution snapshot failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const { groups, projectBlockedReadyCount } = buildTodoGroupsForRuntime({ ...canvasRuntime, status }, {
     canvasId,
     canvasName: canvas.canvasName
   });
   return {
     groups,
+    projectBlockedReadyCount,
     taskCount: canvasRuntime.graph.taskNodesInManifestOrder.length,
     runtime: canvasRuntime,
     status,
     error: null
   };
-}
-
-function applyProjectBlockers(
-  aggregation: ProjectCanvasAggregationContext,
-  canvasId: string,
-  groups: DesktopTodoGroups
-): { groups: DesktopTodoGroups; blockedReadyCount: number } {
-  const next = emptyTodoGroups();
-  let blockedReadyCount = 0;
-  for (const [groupName, items] of Object.entries(groups) as Array<[keyof DesktopTodoGroups, DesktopTodoItem[]]>) {
-    for (const item of items) {
-      const projectBlockers = projectBlockersForTask(aggregation, canvasId, item.taskId);
-      const nextItem = projectBlockers.length > 0
-        ? { ...item, dependencyBlockers: Array.from(new Set([...item.dependencyBlockers, ...projectBlockers])) }
-        : item;
-      if (groupName === "ready" && projectBlockers.length > 0) {
-        next.planned.push({ ...nextItem, status: "planned" });
-        blockedReadyCount += 1;
-      } else {
-        next[groupName].push(nextItem);
-      }
-    }
-  }
-  return { groups: next, blockedReadyCount };
 }
 
 export async function loadProjectTodoContext(projectRoot: string): Promise<ProjectTodoContext> {
@@ -163,17 +144,7 @@ export async function loadProjectTodoContext(projectRoot: string): Promise<Proje
   const snapshotsByCanvas = new Map<string, CanvasExecutionSnapshot>();
 
   for (const canvasId of aggregation.orderedCanvasIds) {
-    try {
-      snapshotsByCanvas.set(canvasId, await canvasExecutionSnapshot(aggregation, canvasId, runtimesByCanvas.get(canvasId)));
-    } catch (error) {
-      snapshotsByCanvas.set(canvasId, {
-        groups: emptyTodoGroups(),
-        taskCount: 0,
-        runtime: null,
-        status: null,
-        error
-      });
-    }
+    snapshotsByCanvas.set(canvasId, await canvasExecutionSnapshot(aggregation, canvasId, runtimesByCanvas.get(canvasId)));
   }
   return { aggregation, snapshotsByCanvas };
 }
@@ -186,8 +157,7 @@ export function buildTodoGroupsFromContext(context: ProjectTodoContext): Desktop
     if (!snapshot) {
       continue;
     }
-    const projectAwareGroups = applyProjectBlockers(aggregation, canvasId, snapshot.groups).groups;
-    for (const [groupName, items] of Object.entries(projectAwareGroups) as Array<[keyof DesktopTodoGroups, DesktopTodoItem[]]>) {
+    for (const [groupName, items] of Object.entries(snapshot.groups) as Array<[keyof DesktopTodoGroups, DesktopTodoItem[]]>) {
       groups[groupName].push(...items);
     }
   }
@@ -206,8 +176,7 @@ export function buildProjectExecutionPlanFromContext(context: ProjectTodoContext
     if (!canvas || !snapshot) {
       return [];
     }
-    const { groups, blockedReadyCount } = applyProjectBlockers(aggregation, canvasId, snapshot.groups);
-    return [executionPhaseFromGroups(index + 1, canvasId, canvas.canvasName, snapshot.taskCount, groups, blockedReadyCount)];
+    return [executionPhaseFromGroups(index + 1, canvasId, canvas.canvasName, snapshot.taskCount, snapshot.groups, snapshot.projectBlockedReadyCount)];
   });
   return {
     phases,

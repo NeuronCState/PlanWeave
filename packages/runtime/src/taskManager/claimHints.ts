@@ -1,7 +1,7 @@
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import type { BlockState, ClaimHint, CompiledExecutionGraph, ManifestBlock, RuntimeState } from "../types.js";
 import type { ProjectGraphClaimGuard } from "./projectGraphClaimGuard.js";
-import { blockReadyWithoutProjectBlockers, projectBlockerReason } from "./claimReadinessRules.js";
+import { blockReadyWithoutProjectBlockers, projectBlockerReason, projectBlockers } from "./claimReadinessRules.js";
 import { canDispatchImplementationBlock, requiredImplementationRefs } from "./selectors.js";
 
 function statusReasonForBlock(blockState: BlockState | undefined): string | null {
@@ -46,6 +46,7 @@ export function buildClaimHints(
     const blockers = dependencyBlockers(graph, state, ref, block, taskId);
     const baseReady = blockReadyWithoutProjectBlockers(graph, state, ref);
     const projectBlocker = projectBlockerReason(projectGuard, taskId);
+    const blockedByProject = projectBlockers(projectGuard, taskId);
     const ready = baseReady && defaultClaimLockReason === null && projectBlocker === null;
     const parallelSafe = block?.type !== "review" && !!graph.parallelSafeByBlockRef.get(ref);
     const dispatchable = projectBlocker === null && canDispatchImplementationBlock(graph, state, ref);
@@ -90,6 +91,7 @@ export function buildClaimHints(
       readyReason,
       blockedByBlocks: blockers.blockedByBlocks,
       blockedByTasks: blockers.blockedByTasks,
+      blockedByProject,
       parallelSafe,
       sequentialOnly: block?.type === "review" || !parallelSafe,
       recommendedCommand: ready ? `planweave claim ${ref}` : null,

@@ -4,6 +4,7 @@ import type {
   ClaimResult,
   ClaimScope,
   CompiledExecutionGraph,
+  FeedbackEnvelopeState,
   PlanPackageManifest,
   RuntimeState,
   ValidationIssue
@@ -22,6 +23,8 @@ import {
   blockDependenciesCompleted,
   blockInScope,
   claimResultForBlock,
+  activeOpenFeedback,
+  feedbackInScope,
   normalizeClaimScope,
   taskDependenciesSatisfied,
   validateClaimScope
@@ -35,6 +38,7 @@ export type ClaimCandidate = {
 export type ClaimReadiness = {
   scope: ClaimScope;
   invalidScope: ClaimResult | null;
+  claimOrder: ClaimOrder;
   defaultClaimLockReason: string | null;
   claimHints: ClaimHint[];
   nextClaimable: string[];
@@ -49,6 +53,25 @@ export type ClaimReadiness = {
   firstBlockedResult: Extract<ClaimResult, { kind: "blocked" }> | null;
   warnings: ValidationIssue[];
 };
+
+export type ClaimOrder =
+  | { kind: "blocked"; result: Extract<ClaimResult, { kind: "blocked" }> | Extract<ClaimResult, { kind: "none" }> }
+  | {
+      kind: "feedback";
+      feedbackId: string;
+      feedback: FeedbackEnvelopeState;
+      taskId: string;
+      result: Extract<ClaimResult, { kind: "feedback" }>;
+    }
+  | {
+      kind: "currentReview";
+      ref: string;
+      reason: "current" | "feedback_resolved";
+      clearCurrentFeedback: boolean;
+      result: Extract<ClaimResult, { kind: "block" }>;
+    }
+  | { kind: "currentBlock"; ref: string; result: Extract<ClaimResult, { kind: "block" }> }
+  | { kind: "ready" };
 
 export type BuildClaimReadinessInput = {
   graph: CompiledExecutionGraph;
@@ -137,6 +160,94 @@ function firstBlockedResult(
   return ref ? { kind: "blocked", ref, reason: state.blocks[ref]?.blockedReason ?? `Block '${ref}' is blocked.` } : null;
 }
 
+function blockedByClaimType(ref: string, reason: string): ClaimOrder {
+  return { kind: "blocked", result: { kind: "blocked", ref, reason } };
+}
+
+function buildClaimOrder(input: {
+  graph: CompiledExecutionGraph;
+  state: RuntimeState;
+  scope: ClaimScope;
+  blockType?: BlockType;
+  projectGuard: ProjectGraphClaimGuard;
+}): ClaimOrder {
+  const openFeedback = activeOpenFeedback(input.state);
+  if (openFeedback.length > 1) {
+    return { kind: "blocked", result: { kind: "blocked", reason: "Multiple open feedback envelopes exist; resolve or dismiss one before continuing." } };
+  }
+  if (openFeedback.length === 1) {
+    const [feedbackId, feedback] = openFeedback[0];
+    if (!feedbackInScope(feedback, input.graph, input.scope)) {
+      return { kind: "blocked", result: { kind: "none", reason: "no_claimable_blocks_in_scope" } };
+    }
+    const taskId = input.graph.blockTaskByRef.get(feedback.sourceReviewBlockRef);
+    if (!taskId) {
+      throw new Error(`Feedback '${feedbackId}' points to an unknown review block.`);
+    }
+    const projectBlocker = projectBlockerReason(input.projectGuard, taskId);
+    if (projectBlocker) {
+      return { kind: "blocked", result: { kind: "blocked", ref: feedback.sourceReviewBlockRef, reason: projectBlocker } };
+    }
+    return { kind: "feedback", feedbackId, feedback, taskId, result: { kind: "feedback", content: feedback.content } };
+  }
+
+  const inProgressReview = input.graph.blockRefsInManifestOrder.find((ref) => {
+    const block = input.graph.blocksByRef.get(ref);
+    return block?.type === "review" && input.state.blocks[ref]?.status === "in_progress";
+  });
+  if (inProgressReview && input.state.currentFeedbackId) {
+    if (input.blockType && input.blockType !== "review") {
+      return blockedByClaimType(inProgressReview, "A review block is in progress outside the selected claim type.");
+    }
+    const currentFeedback = input.state.feedback[input.state.currentFeedbackId];
+    if (currentFeedback?.status === "resolved") {
+      if (!blockInScope(inProgressReview, input.graph, input.scope)) {
+        return { kind: "blocked", result: { kind: "blocked", ref: inProgressReview, reason: "A review block is in progress outside the selected Auto Run scope." } };
+      }
+      return {
+        kind: "currentReview",
+        ref: inProgressReview,
+        reason: "feedback_resolved",
+        clearCurrentFeedback: true,
+        result: claimCandidate(inProgressReview, input.graph, "feedback_resolved").result
+      };
+    }
+  }
+  if (inProgressReview) {
+    if (input.blockType && input.blockType !== "review") {
+      return blockedByClaimType(inProgressReview, "A review block is in progress outside the selected claim type.");
+    }
+    if (!blockInScope(inProgressReview, input.graph, input.scope)) {
+      return { kind: "blocked", result: { kind: "blocked", ref: inProgressReview, reason: "A review block is in progress outside the selected Auto Run scope." } };
+    }
+    const reason = input.state.blocks[inProgressReview]?.pendingFeedbackId ? "feedback_resolved" : "current";
+    return {
+      kind: "currentReview",
+      ref: inProgressReview,
+      reason,
+      clearCurrentFeedback: false,
+      result: claimCandidate(inProgressReview, input.graph, reason).result
+    };
+  }
+
+  const current = input.graph.blockRefsInManifestOrder.find((ref) => {
+    const block = input.graph.blocksByRef.get(ref);
+    return input.state.blocks[ref]?.status === "in_progress" && block?.type !== "review";
+  });
+  if (current) {
+    const currentBlock = input.graph.blocksByRef.get(current);
+    if (input.blockType && currentBlock?.type !== input.blockType) {
+      return blockedByClaimType(current, "A block is in progress outside the selected claim type.");
+    }
+    if (!blockInScope(current, input.graph, input.scope)) {
+      return { kind: "blocked", result: { kind: "blocked", ref: current, reason: "A block is in progress outside the selected Auto Run scope." } };
+    }
+    return { kind: "currentBlock", ref: current, result: claimCandidate(current, input.graph, "current").result };
+  }
+
+  return { kind: "ready" };
+}
+
 export function buildClaimReadiness(input: BuildClaimReadinessInput): ClaimReadiness {
   const scope = normalizeClaimScope(input.scope);
   const projectGuard = input.projectGuard ?? noProjectGraphBlockers;
@@ -167,6 +278,7 @@ export function buildClaimReadiness(input: BuildClaimReadinessInput): ClaimReadi
   return {
     scope,
     invalidScope,
+    claimOrder: buildClaimOrder({ graph: input.graph, state: input.state, scope, blockType: input.blockType, projectGuard }),
     defaultClaimLockReason,
     claimHints,
     nextClaimable,

@@ -46,7 +46,6 @@ type WorkspaceTabsProps = {
   graph: DesktopGraphViewModel | null;
   executionPlan: DesktopProjectExecutionPlan | null;
   handleAutoRunClick: () => Promise<void>;
-  handleBlockSelect: (ref: string, canvasId?: string | null) => Promise<void>;
   handleOpenBlockInspector: (ref: string, canvasId?: string | null) => Promise<void>;
   handleConnect: (connection: Connection) => Promise<void>;
   handleEdgesDelete: (deletedEdges: Edge[]) => Promise<void>;

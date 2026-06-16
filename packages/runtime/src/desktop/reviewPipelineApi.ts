@@ -1,11 +1,14 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-import { parseBlockRef } from "../graph/compileTaskGraph.js";
-import { writeJsonFile } from "../json.js";
+import { readFile } from "node:fs/promises";
+import { commitPlanPackageGraphMutation } from "../graph/editGraph.js";
+import {
+  buildPlanPackageManifestChangeMutation,
+  removePromptSideEffect,
+  writePromptSideEffects,
+  type PlanPackageGraphMutationSideEffect
+} from "../graph/mutation.js";
 import { compileTaskGraph } from "../graph/compileTaskGraph.js";
 import { loadPackage } from "../package/loadPackage.js";
 import { resolvePackagePath } from "../package/resolvePackagePath.js";
-import { manifestSchema } from "../schema/manifest.js";
 import type {
   GraphEditResult,
   ManifestBlock,
@@ -13,8 +16,7 @@ import type {
   ManifestTaskNode,
   PackageWorkspaceRef,
   PlanPackageManifest,
-  ReviewTriggerCondition,
-  ValidationIssue
+  ReviewTriggerCondition
 } from "../types.js";
 import type { DesktopReviewPipeline, DesktopReviewPipelineStepInput, DesktopUpdateReviewPipelineInput } from "./types.js";
 
@@ -58,44 +60,6 @@ function promptPath(taskId: string, blockId: string): string {
 
 function normalizeTrigger(value: ReviewTriggerCondition | undefined): ReviewTriggerCondition {
   return value ?? "after_required_work_completed";
-}
-
-function issue(code: string, message: string, path?: string): ValidationIssue {
-  return { code, message, path };
-}
-
-function validationIssues(manifest: PlanPackageManifest): ValidationIssue[] {
-  const parsed = manifestSchema.safeParse(manifest);
-  if (!parsed.success) {
-    return parsed.error.issues.map((item) =>
-      issue("manifest_schema_invalid", item.message, item.path.length > 0 ? item.path.join(".") : "manifest.json")
-    );
-  }
-  return compileTaskGraph(manifest).diagnostics.errors;
-}
-
-function graphEditResult(manifest: PlanPackageManifest, affectedTasks: string[], diagnostics: ValidationIssue[] = []): GraphEditResult {
-  const graph = compileTaskGraph(manifest);
-  const allDiagnostics = [...diagnostics, ...graph.diagnostics.errors];
-  return {
-    ok: allDiagnostics.length === 0,
-    affectedTasks: [...new Set(affectedTasks)],
-    diagnostics: allDiagnostics,
-    graph
-  };
-}
-
-async function writeReviewPipelineManifest(options: {
-  manifestFile: string;
-  manifest: PlanPackageManifest;
-  affectedTasks: string[];
-}): Promise<GraphEditResult> {
-  const diagnostics = validationIssues(options.manifest);
-  if (diagnostics.length > 0) {
-    return graphEditResult(options.manifest, options.affectedTasks, diagnostics);
-  }
-  await writeJsonFile(options.manifestFile, options.manifest);
-  return graphEditResult(options.manifest, options.affectedTasks);
 }
 
 function normalizeStep(options: {
@@ -214,26 +178,22 @@ export async function updateReviewPipeline(
     },
     nodes: manifest.nodes.map((node) => (node.type === "task" && node.id === taskId ? nextTask : node))
   };
-  const result = await writeReviewPipelineManifest({
-    manifestFile: workspace.manifestFile,
-    manifest: nextManifest,
-    affectedTasks: [task.id]
-  });
-  if (!result.ok) {
-    return result;
-  }
-
+  const sideEffects: PlanPackageGraphMutationSideEffect[] = [];
   const nextIds = new Set(nextReviewBlocks.map((block) => block.id));
   for (const block of reviewBlocks(task)) {
     if (!nextIds.has(block.id)) {
-      await rm(await resolvePackagePath(workspace.packageDir, block.prompt), { force: true });
+      sideEffects.push(removePromptSideEffect(block.prompt));
     }
   }
   for (const [index, block] of nextReviewBlocks.entries()) {
     const promptMarkdown = input.steps[index]?.promptMarkdown.trim() || defaultPrompt(block.title);
-    const path = await resolvePackagePath(workspace.packageDir, block.prompt, { forWrite: true });
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, promptMarkdown.endsWith("\n") ? promptMarkdown : `${promptMarkdown}\n`, "utf8");
+    sideEffects.push(...writePromptSideEffects(block.prompt, promptMarkdown.endsWith("\n") ? promptMarkdown : `${promptMarkdown}\n`));
   }
-  return result;
+  return commitPlanPackageGraphMutation({
+    projectRoot,
+    mutation: buildPlanPackageManifestChangeMutation(manifest, nextManifest, {
+      affectedTasks: [task.id],
+      sideEffects
+    })
+  });
 }

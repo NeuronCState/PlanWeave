@@ -9,6 +9,7 @@ const fallbackTaskNodeSize = {
 
 type TaskFocusFlow = Pick<ReactFlowInstance<AppFlowNode, Edge>, "getNode" | "setCenter">;
 type TaskFocusNode = Pick<AppFlowNode, "id" | "type" | "position" | "width" | "height" | "measured">;
+type TaskFocusRequest = { taskId: string; version: number };
 
 export function focusTaskNode(flowInstance: TaskFocusFlow | null, nodes: TaskFocusNode[], taskId: string | null): boolean {
   if (!flowInstance || !taskId) {
@@ -31,15 +32,18 @@ export function useTaskNodeFocus({
   activeView,
   flowInstance,
   nodes,
+  taskFocusRequest,
   selectedTaskPanelId
 }: {
   activeView: AppView;
   flowInstance: ReactFlowInstance<AppFlowNode, Edge> | null;
   nodes: AppFlowNode[];
+  taskFocusRequest?: TaskFocusRequest | null;
   selectedTaskPanelId: string | null;
 }) {
   const lastFocusedTaskId = useRef<string | null>(null);
-  const [focusRequest, setFocusRequest] = useState<{ taskId: string; version: number } | null>(null);
+  const consumedTaskFocusRequest = useRef<TaskFocusRequest | null>(null);
+  const [focusRequest, setFocusRequest] = useState<TaskFocusRequest | null>(null);
 
   const requestTaskFocus = useCallback((taskId: string | null) => {
     if (!taskId) {
@@ -62,21 +66,41 @@ export function useTaskNodeFocus({
   );
 
   useEffect(() => {
+    if (!taskFocusRequest) {
+      consumedTaskFocusRequest.current = null;
+    }
+    if (!selectedTaskPanelId) {
+      lastFocusedTaskId.current = null;
+    }
     if (activeView !== "graph") {
       return;
     }
-    const taskId = focusRequest?.taskId ?? selectedTaskPanelId;
+    const externalFocusRequest =
+      taskFocusRequest &&
+      (
+        consumedTaskFocusRequest.current?.taskId !== taskFocusRequest.taskId ||
+        consumedTaskFocusRequest.current.version !== taskFocusRequest.version
+      )
+        ? taskFocusRequest
+        : null;
+    const activeFocusRequest = externalFocusRequest ?? focusRequest;
+    const taskId = activeFocusRequest?.taskId ?? selectedTaskPanelId;
     if (!taskId) {
       lastFocusedTaskId.current = null;
       return;
     }
-    if (!focusRequest && lastFocusedTaskId.current === taskId) {
+    if (!activeFocusRequest && lastFocusedTaskId.current === taskId) {
       return;
     }
-    if (runTaskFocus(taskId) && focusRequest?.taskId === taskId) {
-      setFocusRequest(null);
+    if (runTaskFocus(taskId)) {
+      if (externalFocusRequest?.taskId === taskId) {
+        consumedTaskFocusRequest.current = externalFocusRequest;
+      }
+      if (focusRequest?.taskId === taskId) {
+        setFocusRequest(null);
+      }
     }
-  }, [activeView, focusRequest, runTaskFocus, selectedTaskPanelId]);
+  }, [activeView, focusRequest, runTaskFocus, selectedTaskPanelId, taskFocusRequest]);
 
   return { requestTaskFocus };
 }

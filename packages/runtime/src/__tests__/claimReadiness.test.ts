@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { claimNext } from "../taskManager/claimScheduler.js";
 import { buildClaimReadiness } from "../taskManager/claimReadiness.js";
 import { loadRuntime } from "../taskManager/runtimeContext.js";
 import { basicManifest, createTestWorkspace } from "./promptTestHelpers.js";
@@ -28,6 +29,7 @@ describe("claim readiness", () => {
     const readiness = buildClaimReadiness({
       ...context,
       projectGuard: {
+        blockersForTask: (taskId) => (taskId === "T-001" ? ["canvas:upstream"] : []),
         blockerReasonForTask: (taskId) => (taskId === "T-001" ? "Project graph blockers are not complete: canvas:upstream." : null)
       }
     });
@@ -40,6 +42,7 @@ describe("claim readiness", () => {
     });
     expect(readiness.claimHints.find((hint) => hint.ref === "T-001#B-001")).toMatchObject({
       ready: false,
+      blockedByProject: ["canvas:upstream"],
       statusReason: "Project graph blockers are not complete: canvas:upstream."
     });
   });
@@ -51,5 +54,23 @@ describe("claim readiness", () => {
     const readiness = buildClaimReadiness(context);
 
     expect(readiness.parallelBatchRefs).toEqual(["T-001#B-001", "T-002#B-001"]);
+  });
+
+  it("derives current in-progress claim order through the readiness interface", async () => {
+    const { root } = await createTestWorkspace();
+    await claimNext({ projectRoot: root });
+    const context = await loadRuntime({ projectRoot: root });
+
+    const readiness = buildClaimReadiness(context);
+
+    expect(readiness.claimOrder).toMatchObject({
+      kind: "currentBlock",
+      ref: "T-001#B-001",
+      result: {
+        kind: "block",
+        ref: "T-001#B-001",
+        reason: "current"
+      }
+    });
   });
 });

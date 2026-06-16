@@ -151,7 +151,6 @@ describe("desktop renderer hook interfaces", () => {
     renderHook(() =>
       useDesktopProject({
         setError: vi.fn(),
-        setSelectedTaskPanelId: vi.fn(),
         updateSettings
       })
     );
@@ -199,7 +198,6 @@ describe("desktop renderer hook interfaces", () => {
     renderHook(() =>
       useDesktopProject({
         setError: vi.fn(),
-        setSelectedTaskPanelId: vi.fn(),
         updateSettings: vi.fn()
       })
     );
@@ -235,7 +233,6 @@ describe("desktop renderer hook interfaces", () => {
     const { result } = renderHook(() =>
       useDesktopProject({
         setError,
-        setSelectedTaskPanelId: vi.fn(),
         updateSettings: vi.fn()
       })
     );
@@ -265,7 +262,6 @@ describe("desktop renderer hook interfaces", () => {
     const { result } = renderHook(() =>
       useDesktopProject({
         setError,
-        setSelectedTaskPanelId: vi.fn(),
         updateSettings: vi.fn()
       })
     );
@@ -306,14 +302,11 @@ describe("desktop renderer hook interfaces", () => {
 
     const clearSelectedBlockRecords = vi.fn();
     const loadProject = vi.fn().mockResolvedValue(undefined);
-    const setAutoRunState = vi.fn();
     const setActiveView = vi.fn();
     const setBlockInspectorOpen = vi.fn();
     const setError = vi.fn();
-    const setSelectedTaskPanelId = vi.fn();
     const setSelectedBlock = vi.fn();
     const setSelectedRunRecord = vi.fn();
-    const requestTaskFocus = vi.fn();
     const selectBlock = vi.fn().mockResolvedValue(undefined);
     const projectState = {
       expandedProjectId: null,
@@ -337,14 +330,11 @@ describe("desktop renderer hook interfaces", () => {
         clearSelectedBlockRecords,
         language: "zh-CN",
         projectState,
-        requestTaskFocus,
         selectBlock,
         setActiveView,
-        setAutoRunState,
         setBlockInspectorOpen,
         setError,
         setSelectedBlock,
-        setSelectedTaskPanelId,
         setSelectedRunRecord
       })
     );
@@ -359,7 +349,7 @@ describe("desktop renderer hook interfaces", () => {
     expect(clearSelectedBlockRecords).toHaveBeenCalled();
     expect(loadProject).toHaveBeenCalledWith(project, "canvas-main");
     expect(bridge.getLatestAutoRunSummary).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
-    expect(setAutoRunState).toHaveBeenCalledWith(expect.objectContaining({ runId: "RUN-001" }));
+    expect(result.current.autoRunState).toEqual(expect.objectContaining({ runId: "RUN-001" }));
   });
 
   it("coordinates task and inspector opening through Desktop Project Session actions", async () => {
@@ -373,9 +363,12 @@ describe("desktop renderer hook interfaces", () => {
     const { useDesktopProjectSession } = await import("../renderer/hooks/useDesktopProjectSession");
 
     const setActiveView = vi.fn();
-    const setSelectedTaskPanelId = vi.fn();
-    const requestTaskFocus = vi.fn();
-    const selectBlock = vi.fn().mockResolvedValue(undefined);
+    const selectBlock = vi.fn().mockResolvedValue({ taskId: "T-ALPHA" });
+    const clearSelectedBlockRecords = vi.fn();
+    const setBlockInspectorOpen = vi.fn();
+    const setError = vi.fn();
+    const setSelectedBlock = vi.fn();
+    const setSelectedRunRecord = vi.fn();
     const projectState = {
       expandedProjectId: null,
       graph: null,
@@ -395,18 +388,15 @@ describe("desktop renderer hook interfaces", () => {
 
     const { result } = renderHook(() =>
       useDesktopProjectSession({
-        clearSelectedBlockRecords: vi.fn(),
+        clearSelectedBlockRecords,
         language: "zh-CN",
         projectState,
-        requestTaskFocus,
         selectBlock,
         setActiveView,
-        setAutoRunState: vi.fn(),
-        setBlockInspectorOpen: vi.fn(),
-        setError: vi.fn(),
-        setSelectedBlock: vi.fn(),
-        setSelectedTaskPanelId,
-        setSelectedRunRecord: vi.fn()
+        setBlockInspectorOpen,
+        setError,
+        setSelectedBlock,
+        setSelectedRunRecord
       })
     );
 
@@ -414,16 +404,16 @@ describe("desktop renderer hook interfaces", () => {
       result.current.selectTaskPanel("T-ALPHA");
     });
 
-    expect(setSelectedTaskPanelId).toHaveBeenCalledWith("T-ALPHA");
+    await waitFor(() => expect(result.current.selectedTaskPanelId).toBe("T-ALPHA"));
+    expect(result.current.taskFocusRequest).toEqual({ taskId: "T-ALPHA", version: 1 });
     expect(setActiveView).toHaveBeenCalledWith("graph");
-    expect(requestTaskFocus).toHaveBeenCalledWith("T-ALPHA");
 
     await act(async () => {
       await result.current.openTaskInspector("T-BETA", "canvas-alt");
     });
 
-    expect(setSelectedTaskPanelId).toHaveBeenCalledWith("T-BETA");
-    expect(requestTaskFocus).toHaveBeenCalledWith("T-BETA");
+    expect(result.current.selectedTaskPanelId).toBe("T-BETA");
+    expect(result.current.taskFocusRequest).toEqual({ taskId: "T-BETA", version: 2 });
     expect(bridge.openTaskInspectorWindow).toHaveBeenCalledWith({
       taskId: "T-BETA",
       canvas: { projectRoot: project.rootPath, canvasId: "canvas-alt" },
@@ -435,6 +425,7 @@ describe("desktop renderer hook interfaces", () => {
     });
 
     expect(selectBlock).toHaveBeenCalledWith("B-001", "canvas-main");
+    expect(result.current.selectedTaskPanelId).toBe("T-ALPHA");
     expect(bridge.openBlockInspectorWindow).toHaveBeenCalledWith({
       blockRef: "B-001",
       canvas: { projectRoot: project.rootPath, canvasId: "canvas-main" },

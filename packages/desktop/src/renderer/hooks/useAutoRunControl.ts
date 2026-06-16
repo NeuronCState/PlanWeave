@@ -7,27 +7,30 @@ import type { AutoRunScopeMode, FloatingControlDrag, FloatingControlPosition } f
 import { clamp } from "../viewHelpers";
 
 type UseAutoRunControlArgs = {
+  autoRunState: DesktopAutoRunState | null;
   onAutoRunStateRefresh?: (state: DesktopAutoRunState) => Promise<void>;
   selectedCanvasId: string | null;
   selectedBlock: DesktopBlockDetail | null;
   selectedProject: DesktopProjectSummary | null;
   selectedTaskPanelId: string | null;
   setError: (message: string | null) => void;
+  setAutoRunState: (state: DesktopAutoRunState | null) => void;
   t: ReturnType<typeof createTranslator>;
   tmuxMonitoringEnabled: boolean;
 };
 
 export function useAutoRunControl({
+  autoRunState,
   onAutoRunStateRefresh,
   selectedCanvasId,
   selectedBlock,
   selectedProject,
   selectedTaskPanelId,
   setError,
+  setAutoRunState,
   t,
   tmuxMonitoringEnabled
 }: UseAutoRunControlArgs) {
-  const [autoRunState, setAutoRunState] = useState<DesktopAutoRunState | null>(null);
   const [autoRunScopeMode, setAutoRunScopeMode] = useState<AutoRunScopeMode>("project");
   const [miniRunPanelOpen, setMiniRunPanelOpen] = useState(false);
   const [autoRunControlPosition, setAutoRunControlPosition] = useState<FloatingControlPosition | null>(null);

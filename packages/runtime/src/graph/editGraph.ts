@@ -1,5 +1,6 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { affectedTaskIdsForManifestChange } from "./affectedTasks.js";
 import { compileTaskGraph } from "./compileTaskGraph.js";
 import { writeJsonFile } from "../json.js";
 import { loadPackage } from "../package/loadPackage.js";
@@ -84,96 +85,6 @@ export async function commitPlanPackageGraphMutation(options: {
   await applyMutationSideEffects(workspace.packageDir, options.mutation.sideEffects);
   await writeManifest(options.projectRoot, options.mutation.nextManifest);
   return result(options.mutation.nextManifest, options.mutation.affectedTasks);
-}
-
-function affectedTaskIdsForNode(manifest: PlanPackageManifest, nodeId: string): string[] {
-  const graph = compileTaskGraph(manifest);
-  if (graph.tasksById.has(nodeId)) {
-    return [nodeId];
-  }
-  return manifest.edges
-    .filter((edge) => edge.from === nodeId || edge.to === nodeId)
-    .flatMap((edge) => [edge.from, edge.to])
-    .filter((id) => graph.tasksById.has(id));
-}
-
-function nodeChanged(left: ManifestNode | undefined, right: ManifestNode | undefined): boolean {
-  return JSON.stringify(left ?? null) !== JSON.stringify(right ?? null);
-}
-
-function addTaskDependents(graph: CompiledTaskGraph, taskId: string, affected: Set<string>): void {
-  const stack = [taskId];
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (!current || affected.has(current)) {
-      continue;
-    }
-    affected.add(current);
-    stack.push(...(graph.taskDependentsByTask.get(current) ?? []));
-  }
-}
-
-function affectedTaskIdsForEdge(edge: ManifestEdge, graph: CompiledTaskGraph, affected: Set<string>): void {
-  if (edge.type === "depends_on") {
-    if (graph.tasksById.has(edge.from)) {
-      addTaskDependents(graph, edge.from, affected);
-    }
-    return;
-  }
-  if (graph.tasksById.has(edge.from)) {
-    affected.add(edge.from);
-  }
-  if (graph.tasksById.has(edge.to)) {
-    affected.add(edge.to);
-  }
-}
-
-function affectedTaskIdsForManifestChange(
-  before: PlanPackageManifest,
-  after: PlanPackageManifest,
-  beforeGraph: CompiledTaskGraph,
-  afterGraph: CompiledTaskGraph
-): string[] {
-  const affected = new Set<string>();
-  const beforeNodes = new Map(before.nodes.map((node) => [node.id, node]));
-  const afterNodes = new Map(after.nodes.map((node) => [node.id, node]));
-  const nodeIds = new Set([...beforeNodes.keys(), ...afterNodes.keys()]);
-  for (const nodeId of nodeIds) {
-    const beforeNode = beforeNodes.get(nodeId);
-    const afterNode = afterNodes.get(nodeId);
-    if (!nodeChanged(beforeNode, afterNode)) {
-      continue;
-    }
-    if (beforeGraph.tasksById.has(nodeId)) {
-      addTaskDependents(beforeGraph, nodeId, affected);
-    }
-    if (afterGraph.tasksById.has(nodeId)) {
-      addTaskDependents(afterGraph, nodeId, affected);
-    }
-    if (!beforeGraph.tasksById.has(nodeId) && !afterGraph.tasksById.has(nodeId)) {
-      for (const edge of [...before.edges, ...after.edges].filter((edge) => edge.from === nodeId || edge.to === nodeId)) {
-        affectedTaskIdsForEdge(edge, beforeGraph, affected);
-        affectedTaskIdsForEdge(edge, afterGraph, affected);
-      }
-    }
-  }
-
-  const beforeEdges = new Map(before.edges.map((edge) => [`${edge.from}\u0000${edge.type}\u0000${edge.to}`, edge]));
-  const afterEdges = new Map(after.edges.map((edge) => [`${edge.from}\u0000${edge.type}\u0000${edge.to}`, edge]));
-  const edgeKeys = new Set([...beforeEdges.keys(), ...afterEdges.keys()]);
-  for (const key of edgeKeys) {
-    if (beforeEdges.has(key) && afterEdges.has(key)) {
-      continue;
-    }
-    const edge = beforeEdges.get(key) ?? afterEdges.get(key);
-    if (!edge) {
-      continue;
-    }
-    affectedTaskIdsForEdge(edge, beforeGraph, affected);
-    affectedTaskIdsForEdge(edge, afterGraph, affected);
-  }
-
-  return [...affected].filter((taskId) => beforeGraph.tasksById.has(taskId) || afterGraph.tasksById.has(taskId));
 }
 
 export async function addNode(options: {

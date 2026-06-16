@@ -1,6 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { act, cleanup, renderHook } from "@testing-library/react";
+import { useState } from "react";
 import type { DesktopAutoRunState, DesktopBlockDetail, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDesktopBridgeMock } from "./desktopBridgeMock";
@@ -80,10 +81,12 @@ describe("auto run control hook", () => {
 
     const { result } = renderHook(() =>
       useAutoRunControl({
+        autoRunState: null,
         selectedCanvasId: "canvas-main",
         selectedBlock,
         selectedProject: project,
         selectedTaskPanelId: null,
+        setAutoRunState: vi.fn(),
         setError: vi.fn(),
         t: createTranslator("zh-CN"),
         tmuxMonitoringEnabled: true
@@ -133,17 +136,20 @@ describe("auto run control hook", () => {
     vi.resetModules();
     const { useAutoRunControl } = await import("../renderer/hooks/useAutoRunControl");
 
-    const { result } = renderHook(() =>
-      useAutoRunControl({
+    const { result } = renderHook(() => {
+      const [autoRunStateValue, setAutoRunState] = useState<DesktopAutoRunState | null>(null);
+      return useAutoRunControl({
+        autoRunState: autoRunStateValue,
         selectedCanvasId: "canvas-main",
         selectedBlock: null,
         selectedProject: project,
         selectedTaskPanelId: null,
+        setAutoRunState,
         setError: vi.fn(),
         t: createTranslator("zh-CN"),
         tmuxMonitoringEnabled: false
-      })
-    );
+      });
+    });
 
     await act(async () => {
       result.current.setAutoRunState(blockedState);
@@ -186,18 +192,21 @@ describe("auto run control hook", () => {
     const { useAutoRunControl } = await import("../renderer/hooks/useAutoRunControl");
     const onAutoRunStateRefresh = vi.fn().mockResolvedValue(undefined);
 
-    const { result } = renderHook(() =>
-      useAutoRunControl({
+    const { result } = renderHook(() => {
+      const [autoRunStateValue, setAutoRunState] = useState<DesktopAutoRunState | null>(null);
+      return useAutoRunControl({
+        autoRunState: autoRunStateValue,
         onAutoRunStateRefresh,
         selectedCanvasId: "canvas-main",
         selectedBlock: null,
         selectedProject: project,
         selectedTaskPanelId: null,
+        setAutoRunState,
         setError: vi.fn(),
         t: createTranslator("zh-CN"),
         tmuxMonitoringEnabled: true
-      })
-    );
+      });
+    });
 
     await act(async () => {
       await result.current.handleAutoRunClick();
@@ -229,18 +238,21 @@ describe("auto run control hook", () => {
     const { useAutoRunControl } = await import("../renderer/hooks/useAutoRunControl");
     const onAutoRunStateRefresh = vi.fn().mockResolvedValue(undefined);
 
-    const { result } = renderHook(() =>
-      useAutoRunControl({
+    const { result } = renderHook(() => {
+      const [autoRunStateValue, setAutoRunState] = useState<DesktopAutoRunState | null>(null);
+      return useAutoRunControl({
+        autoRunState: autoRunStateValue,
         onAutoRunStateRefresh,
         selectedCanvasId: "canvas-main",
         selectedBlock: null,
         selectedProject: project,
         selectedTaskPanelId: null,
+        setAutoRunState,
         setError: vi.fn(),
         t: createTranslator("zh-CN"),
         tmuxMonitoringEnabled: true
-      })
-    );
+      });
+    });
 
     await act(async () => {
       result.current.setAutoRunState(pausedState);

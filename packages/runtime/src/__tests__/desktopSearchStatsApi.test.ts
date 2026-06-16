@@ -318,9 +318,7 @@ describe("desktop search and statistics API", () => {
     await writeJsonFile(brokenWorkspace.manifestFile, invalidManifest);
 
     await expect(getStatistics(root)).rejects.toThrow(`Canvas '${brokenCanvas.canvasId}' execution snapshot failed`);
-    await expect(getTodoGroups(root)).resolves.toMatchObject({
-      ready: [expect.objectContaining({ canvasId: "default", ref: "T-001#B-001" })]
-    });
+    await expect(getTodoGroups(root)).rejects.toThrow(`Canvas '${brokenCanvas.canvasId}' execution snapshot failed`);
     await expect(searchProject(root, "T-001 task prompt", { kinds: ["prompt"] })).resolves.toEqual([
       expect.objectContaining({ canvasId: "default", ref: "T-001" })
     ]);

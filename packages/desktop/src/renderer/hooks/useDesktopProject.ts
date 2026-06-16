@@ -13,7 +13,6 @@ import type { DesktopUiSettings } from "../types";
 
 export type UseDesktopProjectArgs = {
   setError: (message: string | null) => void;
-  setSelectedTaskPanelId: (taskId: string | null) => void;
   updateSettings: (patch: Partial<DesktopUiSettings>) => void;
 };
 
@@ -33,7 +32,6 @@ function errorMessage(caught: unknown): string {
 
 export function useDesktopProject({
   setError,
-  setSelectedTaskPanelId,
   updateSettings
 }: UseDesktopProjectArgs) {
   const [projects, setProjects] = useState<DesktopProjectSummary[]>([]);
@@ -57,7 +55,6 @@ export function useDesktopProject({
       setSelectedProject(project);
       setSelectedCanvasId(canvasId);
       setExpandedProjectId(project.projectId);
-      setSelectedTaskPanelId(null);
       setError(null);
       setGraph(null);
       setLayout(null);
@@ -94,7 +91,7 @@ export function useDesktopProject({
       }
       updateSettings({ runtimePath: project.workspaceRoot });
     },
-    [setError, setSelectedTaskPanelId, updateSettings]
+    [setError, updateSettings]
   );
 
   useEffect(() => {
@@ -205,7 +202,6 @@ export function useDesktopProject({
       setSelectedProject(null);
       setSelectedCanvasId(null);
       setExpandedProjectId(null);
-      setSelectedTaskPanelId(null);
       setGraph(null);
       setLayout(null);
       setTodoGroups(null);
@@ -214,7 +210,7 @@ export function useDesktopProject({
       setProjectPromptMarkdown(null);
       setProjectPromptPolicy(null);
     },
-    [loadProject, selectedProject?.projectId, setSelectedTaskPanelId]
+    [loadProject, selectedProject?.projectId]
   );
 
   return {

@@ -1,5 +1,9 @@
 import { parseBlockRef } from "./compileTaskGraph.js";
-import type { PlanPackageGraphMutation, PlanPackageGraphMutationSideEffect } from "./mutation.js";
+import {
+  buildPlanPackageManifestChangeMutation,
+  writePromptSideEffects,
+  type PlanPackageGraphMutation
+} from "./mutation.js";
 import type {
   BlockType,
   ManifestBlock,
@@ -129,10 +133,6 @@ function ensureBlockFieldCompatibility(block: ManifestBlock, input: PlanPackageB
   }
 }
 
-function promptSideEffect(packagePath: string, markdown: string | undefined): PlanPackageGraphMutationSideEffect[] {
-  return markdown === undefined ? [] : [{ kind: "writePrompt", packagePath, markdown }];
-}
-
 export function buildPlanPackageTaskFieldEditMutation(
   manifest: PlanPackageManifest,
   input: PlanPackageTaskFieldEditInput
@@ -160,11 +160,12 @@ export function buildPlanPackageTaskFieldEditMutation(
     throw new Error("edit-task requires at least one field to update.");
   }
   return {
+    ...buildPlanPackageManifestChangeMutation(manifest, replaceTask(manifest, nextTask), {
+      affectedTasks: input.promptMarkdown === undefined ? [] : [input.taskId],
+      sideEffects: writePromptSideEffects(nextTask.prompt, input.promptMarkdown)
+    }),
     taskId: input.taskId,
-    updatedFields,
-    affectedTasks: [input.taskId],
-    nextManifest: replaceTask(manifest, nextTask),
-    sideEffects: promptSideEffect(nextTask.prompt, input.promptMarkdown)
+    updatedFields
   };
 }
 
@@ -212,13 +213,14 @@ export function buildPlanPackageBlockFieldEditMutation(
     blocks: task.blocks.map((item) => (item.id === blockId ? nextBlock : item))
   };
   return {
+    ...buildPlanPackageManifestChangeMutation(manifest, replaceTask(manifest, nextTask), {
+      affectedTasks: input.promptMarkdown === undefined ? [] : [taskId],
+      sideEffects: writePromptSideEffects(nextBlock.prompt, input.promptMarkdown)
+    }),
     blockRef: input.blockRef,
     taskId,
     blockId,
     blockType: block.type,
-    updatedFields,
-    affectedTasks: [taskId],
-    nextManifest: replaceTask(manifest, nextTask),
-    sideEffects: promptSideEffect(nextBlock.prompt, input.promptMarkdown)
+    updatedFields
   };
 }

@@ -267,11 +267,13 @@ describe("desktop graph read API", () => {
     const snapshot = await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
 
     expect(snapshot.graph?.tasks.map((task) => task.taskId)).toEqual(["T-001"]);
-    expect(snapshot.todoGroups).not.toBeNull();
-    expect(snapshot.executionPlan).not.toBeNull();
+    expect(snapshot.todoGroups).toBeNull();
+    expect(snapshot.executionPlan).toBeNull();
     expect(snapshot.statistics).toBeNull();
-    expect(snapshot.errors).toEqual([
+    expect(snapshot.errors).toEqual(expect.arrayContaining([
+      expect.stringContaining(`todoGroups: Canvas '${brokenCanvas.canvasId}' execution snapshot failed`),
+      expect.stringContaining(`executionPlan: Canvas '${brokenCanvas.canvasId}' execution snapshot failed`),
       expect.stringContaining(`statistics: Canvas '${brokenCanvas.canvasId}' execution snapshot failed`)
-    ]);
+    ]));
   });
 });

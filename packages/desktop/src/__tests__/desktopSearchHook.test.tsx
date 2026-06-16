@@ -29,9 +29,8 @@ function searchArgs() {
     loadProject: vi.fn().mockResolvedValue(undefined),
     selectedCanvasId: "canvas-main",
     selectedProject: project,
-    setActiveView: vi.fn(),
     setError: vi.fn(),
-    setSelectedTaskPanelId: vi.fn()
+    selectTaskPanel: vi.fn()
   };
 }
 

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DesktopProjectSummary, DesktopSearchFilters, DesktopSearchResult, DesktopSearchResultKind } from "@planweave-ai/runtime";
 import { bridge } from "../bridge";
 import { searchNavigationTarget } from "../components/SearchResultList";
-import type { AppView } from "../types";
 
 export type DesktopSearchCanvasScope = "all" | "current";
 
@@ -14,9 +13,8 @@ type UseDesktopSearchArgs = {
   loadProject: (project: DesktopProjectSummary, canvasId?: string | null) => Promise<void>;
   selectedCanvasId: string | null;
   selectedProject: DesktopProjectSummary | null;
-  setActiveView: (view: AppView) => void;
   setError: (message: string | null) => void;
-  setSelectedTaskPanelId: (taskId: string | null) => void;
+  selectTaskPanel: (taskId: string | null) => void;
 };
 
 function normalizeSearchResultKinds(kinds: DesktopSearchResultKind[]): DesktopSearchResultKind[] {
@@ -30,9 +28,8 @@ export function useDesktopSearch({
   loadProject,
   selectedCanvasId,
   selectedProject,
-  setActiveView,
   setError,
-  setSelectedTaskPanelId
+  selectTaskPanel
 }: UseDesktopSearchArgs) {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -115,8 +112,7 @@ export function useDesktopSearch({
       }
       const target = searchNavigationTarget(result);
       if (target.kind === "task") {
-        setSelectedTaskPanelId(target.ref);
-        setActiveView("graph");
+        selectTaskPanel(target.ref);
         return;
       }
       if (target.kind === "block") {
@@ -127,7 +123,7 @@ export function useDesktopSearch({
         await handleOpenRunRecord(target.recordId, result.canvasId ?? selectedCanvasId);
       }
     },
-    [handleBlockSelect, handleOpenRunRecord, loadProject, selectedCanvasId, selectedProject, setActiveView, setSelectedTaskPanelId]
+    [handleBlockSelect, handleOpenRunRecord, loadProject, selectedCanvasId, selectedProject, selectTaskPanel]
   );
 
   return {

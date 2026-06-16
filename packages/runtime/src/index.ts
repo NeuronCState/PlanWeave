@@ -56,10 +56,12 @@ export { consumeAutoRunClaim } from "./autoRun/contract.js";
 export type { AutoRunDecision, AutoRunExecutorAdapter } from "./autoRun/contract.js";
 export {
   createCodexExecAdapter,
+  createClaudeCodeExecAdapter,
   createExecutorAdapter,
   createLocalReviewAdapter,
   createManualExecutorAdapter,
   createOpencodeExecAdapter,
+  createPiExecAdapter,
   listExecutorProfiles,
   testExecutorProfile
 } from "./autoRun/executors.js";

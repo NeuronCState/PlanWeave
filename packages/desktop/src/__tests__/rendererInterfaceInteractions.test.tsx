@@ -56,6 +56,10 @@ const settings: DesktopUiSettings = {
     opencode: {
       enabled: false,
       fullAccess: false
+    },
+    pi: {
+      enabled: false,
+      fullAccess: false
     }
   }
 };

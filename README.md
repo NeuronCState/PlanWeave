@@ -18,7 +18,7 @@
   <img alt="language" src="https://img.shields.io/badge/language-TypeScript-3178c6?style=for-the-badge" />
   <img alt="runtime" src="https://img.shields.io/badge/runtime-Node.js-43853d?style=for-the-badge" />
   <img alt="desktop" src="https://img.shields.io/badge/desktop-Electron-47848f?style=for-the-badge" />
-  <img alt="agents" src="https://img.shields.io/badge/agents-Codex%20%7C%20OpenCode-6f42c1?style=for-the-badge" />
+  <img alt="agents" src="https://img.shields.io/badge/agents-Codex%20%7C%20Claude%20Code%20%7C%20OpenCode%20%7C%20Pi-6f42c1?style=for-the-badge" />
 </p>
 
 
@@ -34,7 +34,7 @@ Your project is represented as a graph of task nodes and block documents. Each f
 - **Files are nodes, documents are blocks**: the graph is not a decoration on top of chat. It is the project model.
 - **Graph-friendly by default**: task flow, dependencies, review loops, and execution status are visible and editable.
 - **Global context for agents**: agents can see the wider task graph, not only the current prompt fragment.
-- **Per-node and per-block agent routing**: use Codex for one block, OpenCode for another, and local review scripts where deterministic checks are enough.
+- **Per-node and per-block agent routing**: use Codex for one block, Claude Code, OpenCode, or Pi for another, and local review scripts where deterministic checks are enough.
 - **Full auto-run workflow**: PlanWeave can claim blocks, run agents, collect reports, handle review feedback, and continue the task flow.
 - **Review and feedback as first-class work**: review blocks can produce structured feedback that returns to implementation blocks.
 - **Desktop and CLI support**: use the visual Electron canvas or drive the same runtime from the terminal.
@@ -69,7 +69,9 @@ planweave --help
 PlanWeave supports executor profiles, so different blocks can run through different agents or local commands. A typical graph can mix:
 
 - Codex execution for implementation work.
+- Claude Code execution for non-interactive terminal agent runs.
 - OpenCode execution for blocks that should run in an OpenCode session.
+- Pi execution for non-interactive terminal agent runs.
 - Local review commands for deterministic validation.
 - Review-feedback loops that continue automatically when feedback is enabled.
 

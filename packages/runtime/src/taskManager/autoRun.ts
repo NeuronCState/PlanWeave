@@ -44,7 +44,7 @@ function errorMessage(error: unknown): string {
 }
 
 function isExecutorAdapter(value: unknown): value is ExecutorProfile["adapter"] {
-  return value === "manual" || value === "codex-exec" || value === "opencode-exec" || value === "local-review";
+  return value === "manual" || value === "codex-exec" || value === "opencode-exec" || value === "claude-code-exec" || value === "pi-exec" || value === "local-review";
 }
 
 async function latestRunId(runRoot: string): Promise<string | null> {

@@ -29,7 +29,7 @@ describe("desktop graph read API", () => {
 
     expect(graph.projectId).toBe(init.workspace.id);
     expect(graph.projectTitle).toBe("Test Plan");
-    expect(graph.executorOptions).toEqual(expect.arrayContaining(["default", "manual", "codex-auto", "codex-reviewer"]));
+    expect(graph.executorOptions).toEqual(expect.arrayContaining(["default", "manual", "codex-auto", "codex-reviewer", "claude-code-auto", "pi-auto"]));
     expect(graph.edges).toEqual([]);
     expect(graph.tasks[0]).toMatchObject({
       taskId: "T-001",

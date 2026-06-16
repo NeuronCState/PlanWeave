@@ -49,6 +49,20 @@ export type OpencodeExecExecutorProfile = {
   timeoutMs?: number;
 };
 
+export type ClaudeCodeExecExecutorProfile = {
+  adapter: "claude-code-exec";
+  command: string;
+  args: string[];
+  timeoutMs?: number;
+};
+
+export type PiExecExecutorProfile = {
+  adapter: "pi-exec";
+  command: string;
+  args: string[];
+  timeoutMs?: number;
+};
+
 export type LocalReviewExecutorProfile = {
   adapter: "local-review";
   command: string;
@@ -57,7 +71,13 @@ export type LocalReviewExecutorProfile = {
   timeoutMs?: number;
 };
 
-export type ExecutorProfile = ManualExecutorProfile | CodexExecExecutorProfile | OpencodeExecExecutorProfile | LocalReviewExecutorProfile;
+export type ExecutorProfile =
+  | ManualExecutorProfile
+  | CodexExecExecutorProfile
+  | OpencodeExecExecutorProfile
+  | ClaudeCodeExecExecutorProfile
+  | PiExecExecutorProfile
+  | LocalReviewExecutorProfile;
 
 export type ExecutorProfileSummary = ExecutorProfile & {
   name: string;

@@ -46,6 +46,10 @@ export const defaultDesktopSettings: DesktopUiSettings = {
     opencode: {
       enabled: false,
       fullAccess: false
+    },
+    pi: {
+      enabled: false,
+      fullAccess: false
     }
   }
 };
@@ -88,6 +92,10 @@ export function mergeDesktopSettings(current: DesktopUiSettings, patch: Partial<
       opencode: {
         ...current.agents.opencode,
         ...patch.agents?.opencode
+      },
+      pi: {
+        ...current.agents.pi,
+        ...patch.agents?.pi
       }
     }
   };

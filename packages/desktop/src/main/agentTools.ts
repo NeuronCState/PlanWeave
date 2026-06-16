@@ -27,6 +27,14 @@ const agentProfiles: DesktopAgentCliProfile[] = [
     versionArgs: ["--version"],
     execArgs: ["run", "-"],
     fullAccessArgs: ["run", "--permission", "full-access", "-"]
+  },
+  {
+    kind: "pi",
+    name: "Pi",
+    command: "pi",
+    versionArgs: ["--version"],
+    execArgs: ["-p"],
+    fullAccessArgs: ["-p"]
   }
 ];
 

@@ -1,30 +1,38 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { loadPackage, resolvePackageWorkspace } from "../package/loadPackage.js";
-import { canvasCommandFlagForWorkspace } from "../taskManager/canvasCommandScope.js";
 import type {
-  ClaimResult,
   ExecutorAdapter,
   ExecutorProfile,
   ExecutorProfileSummary,
   ManifestTaskNode,
   PackageWorkspaceRef
 } from "../types.js";
-import { runCodexBlock, runCodexFeedback } from "./codexExecutor.js";
-import { execWithStdin, nextRunId, prepareBlockRun, type BlockClaim } from "./executorShared.js";
-import { runLocalReviewBlock, runLocalReviewFeedback } from "./localReviewExecutor.js";
-import { runOpencodeBlock, runOpencodeFeedback } from "./opencodeExecutor.js";
+import { claudeCodeIntegration } from "./claudeCodeIntegration.js";
+import { codexIntegration } from "./codexIntegration.js";
+import { execWithStdin, type BlockClaim } from "./executorShared.js";
+import type { ExecutorIntegration, ExecutorRuntimeOptions } from "./executorIntegration.js";
+import { localReviewIntegration } from "./localReviewIntegration.js";
+import { manualIntegration } from "./manualExecutor.js";
+import { opencodeIntegration } from "./opencodeIntegration.js";
+import { piIntegration } from "./piIntegration.js";
 
-type ExecutorRuntimeOptions = {
-  tmuxEnabled?: boolean;
-};
+const executorIntegrations: ExecutorIntegration[] = [
+  manualIntegration,
+  codexIntegration,
+  opencodeIntegration,
+  claudeCodeIntegration,
+  piIntegration,
+  localReviewIntegration
+];
 
-const builtinExecutors: Record<string, ExecutorProfile> = {
-  default: { adapter: "manual" },
-  manual: { adapter: "manual" },
-  "codex-auto": { adapter: "codex-exec", command: "codex", args: ["exec", "-"] },
-  "codex-reviewer": { adapter: "codex-exec", command: "codex", args: ["exec", "-"], role: "reviewer" }
-};
+const builtinExecutors: Record<string, ExecutorProfile> = Object.assign({}, ...executorIntegrations.map((integration) => integration.builtinProfiles));
+
+function integrationForAdapter(adapter: ExecutorProfile["adapter"]): ExecutorIntegration {
+  const integration = executorIntegrations.find((item) => item.adapter === adapter);
+  if (!integration) {
+    throw new Error(`Executor adapter '${adapter}' is not supported.`);
+  }
+  return integration;
+}
 
 function taskNodeForClaim(manifest: Awaited<ReturnType<typeof loadPackage>>["manifest"], claim: BlockClaim): ManifestTaskNode {
   const node = manifest.nodes.find((item) => item.type === "task" && item.id === claim.taskId);
@@ -80,36 +88,14 @@ function createProfiledAdapter(options: {
       if (options.expectedAdapter && profile.adapter !== options.expectedAdapter) {
         throw new Error(`Executor profile '${name}' is '${profile.adapter}', not '${options.expectedAdapter}'.`);
       }
-      if (profile.adapter === "manual") {
-        const workspace = await resolvePackageWorkspace(options.projectRoot);
-        const run = await prepareBlockRun({
-          projectRoot: options.projectRoot,
-          claim,
-          executorName: name,
-          profile,
-          prompt
-        });
-        const canvasFlag = await canvasCommandFlagForWorkspace(workspace);
-        return {
-          kind: "manual",
-          executor: name,
-          adapter: "manual",
-          promptPath: run.promptPath,
-          runDir: run.runDir,
-          runId: run.runId,
-          nextCommand:
-            claim.blockType === "review"
-              ? `planweave submit-review${canvasFlag} ${claim.ref} --result <review-result.json>`
-              : `planweave submit-result${canvasFlag} ${claim.ref} --report <report.md>`
-        };
-      }
-      if (profile.adapter === "codex-exec") {
-        return runCodexBlock({ projectRoot: options.projectRoot, claim, prompt, executorName: name, profile, tmuxEnabled: options.runtime?.tmuxEnabled });
-      }
-      if (profile.adapter === "opencode-exec") {
-        return runOpencodeBlock({ projectRoot: options.projectRoot, claim, prompt, executorName: name, profile, tmuxEnabled: options.runtime?.tmuxEnabled });
-      }
-      return runLocalReviewBlock({ projectRoot: options.projectRoot, claim, prompt, executorName: name, profile, tmuxEnabled: options.runtime?.tmuxEnabled });
+      return integrationForAdapter(profile.adapter).runBlock({
+        projectRoot: options.projectRoot,
+        claim,
+        prompt,
+        executorName: name,
+        profile,
+        runtime: options.runtime
+      });
     },
     async runFeedback({ claim }) {
       const { manifest, workspace } = await loadPackage(options.projectRoot);
@@ -121,54 +107,13 @@ function createProfiledAdapter(options: {
       if (options.expectedAdapter && profile.adapter !== options.expectedAdapter) {
         throw new Error(`Executor profile '${name}' is '${profile.adapter}', not '${options.expectedAdapter}'.`);
       }
-      if (profile.adapter === "manual") {
-        const canvasFlag = await canvasCommandFlagForWorkspace(workspace);
-        const feedbackRoot = join(workspace.resultsDir, "feedback-runs");
-        const runId = await nextRunId(feedbackRoot);
-        const runDir = join(feedbackRoot, runId);
-        await mkdir(runDir, { recursive: true });
-        const promptPath = join(runDir, "feedback.md");
-        await writeFile(promptPath, claim.content, "utf8");
-        return {
-          kind: "manual",
-          executor: name,
-          adapter: "manual",
-          promptPath,
-          runDir,
-          runId,
-          nextCommand: `planweave submit-feedback${canvasFlag} --report <report.md>`
-        };
-      }
-      if (profile.adapter === "codex-exec") {
-        return runCodexFeedback({
-          projectRoot: workspace.rootPath,
-          planweaveHome: workspace.planweaveHome,
-          workspaceResultsDir: workspace.resultsDir,
-          claim,
-          executorName: name,
-          profile,
-          tmuxEnabled: options.runtime?.tmuxEnabled
-        });
-      }
-      if (profile.adapter === "opencode-exec") {
-        return runOpencodeFeedback({
-          projectRoot: workspace.rootPath,
-          planweaveHome: workspace.planweaveHome,
-          workspaceResultsDir: workspace.resultsDir,
-          claim,
-          executorName: name,
-          profile,
-          tmuxEnabled: options.runtime?.tmuxEnabled
-        });
-      }
-      return runLocalReviewFeedback({
-        projectRoot: workspace.rootPath,
-        planweaveHome: workspace.planweaveHome,
-        workspaceResultsDir: workspace.resultsDir,
+      return integrationForAdapter(profile.adapter).runFeedback({
+        projectRoot: options.projectRoot,
+        workspace,
         claim,
         executorName: name,
         profile,
-        tmuxEnabled: options.runtime?.tmuxEnabled
+        runtime: options.runtime
       });
     }
   };
@@ -184,6 +129,14 @@ export function createCodexExecAdapter(options: { projectRoot: PackageWorkspaceR
 
 export function createOpencodeExecAdapter(options: { projectRoot: PackageWorkspaceRef; executorName?: string; runtime?: ExecutorRuntimeOptions }): ExecutorAdapter {
   return createProfiledAdapter({ ...options, expectedAdapter: "opencode-exec" });
+}
+
+export function createClaudeCodeExecAdapter(options: { projectRoot: PackageWorkspaceRef; executorName?: string; runtime?: ExecutorRuntimeOptions }): ExecutorAdapter {
+  return createProfiledAdapter({ ...options, expectedAdapter: "claude-code-exec" });
+}
+
+export function createPiExecAdapter(options: { projectRoot: PackageWorkspaceRef; executorName?: string; runtime?: ExecutorRuntimeOptions }): ExecutorAdapter {
+  return createProfiledAdapter({ ...options, expectedAdapter: "pi-exec" });
 }
 
 export function createLocalReviewAdapter(options: { projectRoot: PackageWorkspaceRef; executorName?: string; runtime?: ExecutorRuntimeOptions }): ExecutorAdapter {

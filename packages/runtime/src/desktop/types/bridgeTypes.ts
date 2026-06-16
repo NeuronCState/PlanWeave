@@ -41,7 +41,7 @@ import type {
   DesktopAutoRunState
 } from "./runTypes.js";
 
-export type DesktopAgentKind = "codex" | "claude-code" | "opencode";
+export type DesktopAgentKind = "codex" | "claude-code" | "opencode" | "pi";
 
 export type DesktopAgentCliProfile = {
   kind: DesktopAgentKind;

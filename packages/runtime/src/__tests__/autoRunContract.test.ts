@@ -125,6 +125,16 @@ describe("Auto Run contract", () => {
           command: "opencode",
           args: ["run", "-"]
         },
+        "claude-code": {
+          adapter: "claude-code-exec",
+          command: "claude",
+          args: ["-p"]
+        },
+        pi: {
+          adapter: "pi-exec",
+          command: "pi",
+          args: ["-p"]
+        },
         "local-review": {
           adapter: "local-review",
           command: "node",
@@ -165,6 +175,8 @@ describe("Auto Run contract", () => {
     expect(parsed.execution.defaultExecutor).toBe("codex-auto");
     expect(parsed.executors.manual.adapter).toBe("manual");
     expect(parsed.executors.opencode.adapter).toBe("opencode-exec");
+    expect(parsed.executors["claude-code"].adapter).toBe("claude-code-exec");
+    expect(parsed.executors.pi.adapter).toBe("pi-exec");
     expect(parsed.executors["local-review"].adapter).toBe("local-review");
     const task = parsed.nodes[0];
     expect(task.type).toBe("task");
@@ -662,6 +674,8 @@ describe("Auto Run contract", () => {
       expect.arrayContaining([
         expect.objectContaining({ name: "manual", adapter: "manual", source: "builtin" }),
         expect.objectContaining({ name: "codex-auto", adapter: "codex-exec", source: "builtin" }),
+        expect.objectContaining({ name: "claude-code-auto", adapter: "claude-code-exec", source: "builtin" }),
+        expect.objectContaining({ name: "pi-auto", adapter: "pi-exec", source: "builtin" }),
         expect.objectContaining({ name: "project-codex", adapter: "codex-exec", source: "package" })
       ])
     );

@@ -24,7 +24,8 @@ describe("desktop agent tool detection", () => {
     expect(agents.map((agent) => ({ command: agent.command, installed: agent.installed, version: agent.version }))).toEqual([
       { command: "codex", installed: true, version: "codex 1.2.3" },
       { command: "claude", installed: true, version: "claude 1.2.3" },
-      { command: "opencode", installed: true, version: "opencode 1.2.3" }
+      { command: "opencode", installed: true, version: "opencode 1.2.3" },
+      { command: "pi", installed: true, version: "pi 1.2.3" }
     ]);
     expect(execFileMock).toHaveBeenCalledWith(
       "codex",

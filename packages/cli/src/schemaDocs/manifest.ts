@@ -17,6 +17,18 @@ const executorProfileSchema = {
     sandbox: '"read-only" | "workspace-write" | "danger-full-access", optional',
     timeoutMs: "positive integer, optional"
   },
+  "claude-code-exec": {
+    adapter: "claude-code-exec",
+    command: "string, non-empty",
+    args: 'string[], default: ["-p"]',
+    timeoutMs: "positive integer, optional"
+  },
+  "pi-exec": {
+    adapter: "pi-exec",
+    command: "string, non-empty",
+    args: 'string[], default: ["-p"]',
+    timeoutMs: "positive integer, optional"
+  },
   "local-review": {
     adapter: "local-review",
     command: "string, non-empty",
@@ -36,7 +48,7 @@ export const manifestSchemaDocument: SchemaDocument = {
     version: "plan-package/v1",
     project: { title: "string, non-empty", description: "string" },
     execution: {
-      defaultExecutor: "string, optional; must be default/manual/codex-auto/codex-reviewer or a key in executors",
+      defaultExecutor: "string, optional; must be default/manual/codex-auto/codex-reviewer/claude-code-auto/pi-auto or a key in executors",
       parallel: { enabled: "boolean", maxConcurrent: "positive integer" }
     },
     review: { maxFeedbackCycles: "non-negative integer, default: 1", completionPolicy: "strict" },

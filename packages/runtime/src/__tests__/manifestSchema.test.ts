@@ -63,6 +63,16 @@ describe("plan-package/v1 manifest schema", () => {
         command: "opencode",
         args: ["run", "-"]
       },
+      "claude-code": {
+        adapter: "claude-code-exec",
+        command: "claude",
+        args: ["-p"]
+      },
+      pi: {
+        adapter: "pi-exec",
+        command: "pi",
+        args: ["-p"]
+      },
       "local-review": {
         adapter: "local-review",
         command: "node",
@@ -87,6 +97,8 @@ describe("plan-package/v1 manifest schema", () => {
     expect(result.data?.executors?.["codex-auto"]?.timeoutMs).toBe(120000);
     expect(result.data?.executors?.["codex-reviewer"]?.role).toBe("reviewer");
     expect(result.data?.executors?.opencode?.adapter).toBe("opencode-exec");
+    expect(result.data?.executors?.["claude-code"]?.adapter).toBe("claude-code-exec");
+    expect(result.data?.executors?.pi?.adapter).toBe("pi-exec");
     expect(result.data?.executors?.["local-review"]?.adapter).toBe("local-review");
   });
 

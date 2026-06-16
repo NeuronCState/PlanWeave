@@ -45,6 +45,22 @@ const executorProfileSchema = z.discriminatedUnion("adapter", [
     .strict(),
   z
     .object({
+      adapter: z.literal("claude-code-exec"),
+      command: z.string().min(1),
+      args: z.array(z.string()).default(["-p"]),
+      timeoutMs: z.number().int().positive().optional()
+    })
+    .strict(),
+  z
+    .object({
+      adapter: z.literal("pi-exec"),
+      command: z.string().min(1),
+      args: z.array(z.string()).default(["-p"]),
+      timeoutMs: z.number().int().positive().optional()
+    })
+    .strict(),
+  z
+    .object({
       adapter: z.literal("local-review"),
       command: z.string().min(1),
       args: z.array(z.string()).default([]),
@@ -156,7 +172,7 @@ export const manifestSchema = z
         path: [key]
       });
     }
-    const knownExecutors = new Set(["default", "manual", "codex-auto", "codex-reviewer", ...Object.keys(manifest.executors ?? {})]);
+    const knownExecutors = new Set(["default", "manual", "codex-auto", "codex-reviewer", "claude-code-auto", "pi-auto", ...Object.keys(manifest.executors ?? {})]);
     if (manifest.execution.defaultExecutor && !knownExecutors.has(manifest.execution.defaultExecutor)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

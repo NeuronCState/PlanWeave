@@ -84,7 +84,7 @@ function numberField(metadata: Record<string, unknown>, key: string): number | n
 
 function adapterField(metadata: Record<string, unknown>): ExecutorProfile["adapter"] | null {
   const value = metadata.adapter;
-  return value === "manual" || value === "codex-exec" || value === "opencode-exec" || value === "local-review" ? value : null;
+  return value === "manual" || value === "codex-exec" || value === "opencode-exec" || value === "claude-code-exec" || value === "pi-exec" || value === "local-review" ? value : null;
 }
 
 function runOrderValue(record: DesktopBlockRunRecordSummary): string {

@@ -9,6 +9,7 @@ import type {
   DesktopGraphViewModel,
   DesktopLayout,
   DesktopProjectExecutionPlan,
+  DesktopProjectSnapshot,
   DesktopSearchFilters,
   DesktopSearchResult,
   DesktopStatistics,
@@ -89,6 +90,7 @@ export type DesktopBridgeApi = {
   getCanvasMapLayout(projectRoot: string): Promise<DesktopCanvasMapLayout>;
   saveCanvasMapLayout(projectRoot: string, layout: DesktopCanvasMapLayout): Promise<DesktopCanvasMapLayout>;
   resetCanvasMapLayout(projectRoot: string): Promise<DesktopCanvasMapLayout>;
+  getDesktopProjectSnapshot(ref: DesktopCanvasReference): Promise<DesktopProjectSnapshot>;
   getGraphViewModel(ref: DesktopCanvasReference): Promise<DesktopGraphViewModel>;
   getTaskDetail(ref: DesktopCanvasReference, taskId: string): Promise<DesktopTaskDetail>;
   getBlockDetail(ref: DesktopCanvasReference, blockRef: string): Promise<DesktopBlockDetail>;

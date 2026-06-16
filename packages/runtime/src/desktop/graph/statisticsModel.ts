@@ -1,10 +1,9 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { loadPackage } from "../../package/loadPackage.js";
-import { getExecutionStatus } from "../../taskManager/index.js";
-import type { PackageWorkspaceRef } from "../../types.js";
+import type { ExecutionStatus } from "../../taskManager/executionStatus.js";
+import type { ProjectWorkspace } from "../../types.js";
 import type { DesktopStatistics } from "../types.js";
-import { mapProjectTaskCanvases } from "./projectCanvasAggregation.js";
+import { loadProjectTodoContext, type ProjectTodoContext } from "./todoModel.js";
 
 async function listResultFiles(root: string): Promise<string[]> {
   try {
@@ -43,9 +42,11 @@ type StatisticsParts = {
   reviewBlockCount: number;
 };
 
-async function getStatisticsForWorkspace(projectRoot: PackageWorkspaceRef): Promise<StatisticsParts> {
-  const { workspace } = await loadPackage(projectRoot);
-  const status = await getExecutionStatus({ projectRoot });
+function errorMessage(caught: unknown): string {
+  return caught instanceof Error ? caught.message : String(caught);
+}
+
+async function implementationDurationsForWorkspace(workspace: ProjectWorkspace): Promise<number[]> {
   const implementationDurations: number[] = [];
   for (const file of await listResultFiles(workspace.resultsDir)) {
     const relativePath = toPosixPath(relative(workspace.resultsDir, file));
@@ -59,6 +60,10 @@ async function getStatisticsForWorkspace(projectRoot: PackageWorkspaceRef): Prom
       implementationDurations.push(finishedAt - startedAt);
     }
   }
+  return implementationDurations;
+}
+
+function statisticsPartsFromStatus(status: ExecutionStatus, implementationDurations: number[]): StatisticsParts {
   const reviewBlockCount = status.blocks.filter((block) => block.type === "review").length;
   const reviewPassedCount = status.blocks.filter((block) => block.type === "review" && block.completionReason === "passed").length;
   const feedbackEnvelopeCount = Object.values(status.counts.feedback).reduce((sum, count) => sum + count, 0);
@@ -85,8 +90,7 @@ async function getStatisticsForWorkspace(projectRoot: PackageWorkspaceRef): Prom
   };
 }
 
-export async function getStatistics(projectRoot: string): Promise<DesktopStatistics> {
-  const parts = await mapProjectTaskCanvases(projectRoot, ({ workspace }) => getStatisticsForWorkspace(workspace));
+function mergeStatisticsParts(parts: StatisticsParts[]): DesktopStatistics {
   const totals = parts.reduce(
     (sum, part) => ({
       taskTotal: sum.taskTotal + part.stats.taskTotal,
@@ -132,4 +136,30 @@ export async function getStatistics(projectRoot: string): Promise<DesktopStatist
     reworkCount: totals.reworkCount,
     estimatedRemainingBlocks: totals.estimatedRemainingBlocks
   };
+}
+
+export async function buildStatisticsFromProjectTodoContext(context: ProjectTodoContext): Promise<DesktopStatistics> {
+  const parts: StatisticsParts[] = [];
+  for (const canvasId of context.aggregation.orderedCanvasIds) {
+    const canvas = context.aggregation.canvasesById.get(canvasId);
+    const snapshot = context.snapshotsByCanvas.get(canvasId);
+    if (!canvas) {
+      throw new Error(`Canvas '${canvasId}' is missing from project aggregation.`);
+    }
+    if (!snapshot) {
+      throw new Error(`Canvas '${canvasId}' execution snapshot is missing.`);
+    }
+    if (snapshot.error) {
+      throw new Error(`Canvas '${canvasId}' execution snapshot failed: ${errorMessage(snapshot.error)}`);
+    }
+    if (!snapshot.status) {
+      throw new Error(`Canvas '${canvasId}' execution status is unavailable.`);
+    }
+    parts.push(statisticsPartsFromStatus(snapshot.status, await implementationDurationsForWorkspace(canvas.workspace)));
+  }
+  return mergeStatisticsParts(parts);
+}
+
+export async function getStatistics(projectRoot: string): Promise<DesktopStatistics> {
+  return buildStatisticsFromProjectTodoContext(await loadProjectTodoContext(projectRoot));
 }

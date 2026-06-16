@@ -23,6 +23,7 @@ export {
   addTaskNode,
   createTaskDraft,
   getBlockDetail,
+  getDesktopProjectSnapshot,
   getGraphViewModel,
   getProjectExecutionPlan,
   getStatistics,

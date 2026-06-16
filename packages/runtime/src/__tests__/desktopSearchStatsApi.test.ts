@@ -72,6 +72,38 @@ describe("desktop search and statistics API", () => {
     expect(graph.tasks.find((task) => task.taskId === "T-001")?.executorLabel).toBe("Mixed");
   });
 
+  it("searches only the requested task canvas when canvasId is filtered", async () => {
+    const { root } = await createTestWorkspace();
+    const secondCanvas = await createTaskCanvas(root, { name: "Search-only canvas" });
+    const secondWorkspace = await resolveTaskCanvasWorkspace(root, secondCanvas.canvasId);
+    const secondManifest = basicManifest();
+    const firstTask = secondManifest.nodes.find((node) => node.type === "task" && node.id === "T-001");
+    if (firstTask?.type !== "task") {
+      throw new Error("Fixture task missing.");
+    }
+    firstTask.title = "Unique downstream task";
+    await writeJsonFile(secondWorkspace.manifestFile, secondManifest);
+    await writePromptFiles(secondWorkspace.packageDir, secondManifest);
+
+    await expect(searchProject(root, "Unique downstream task", { canvasId: "default" })).resolves.toEqual([]);
+    await expect(searchProject(root, "Unique downstream task", { canvasId: secondCanvas.canvasId })).resolves.toEqual([
+      expect.objectContaining({
+        canvasId: secondCanvas.canvasId,
+        canvasName: "Search-only canvas",
+        kind: "task",
+        ref: "T-001"
+      })
+    ]);
+    await expect(searchProject(root, "Unique downstream task")).resolves.toEqual([
+      expect.objectContaining({
+        canvasId: secondCanvas.canvasId,
+        canvasName: "Search-only canvas",
+        kind: "task",
+        ref: "T-001"
+      })
+    ]);
+  });
+
   it("summarizes canvas phases and ready queues in registry order", async () => {
     const { root } = await createTestWorkspace();
     const secondCanvas = await createTaskCanvas(root, { name: "Follow-up canvas" });
@@ -285,10 +317,7 @@ describe("desktop search and statistics API", () => {
     invalidManifest.nodes[0].blocks[0].type = "check";
     await writeJsonFile(brokenWorkspace.manifestFile, invalidManifest);
 
-    await expect(getStatistics(root)).resolves.toMatchObject({
-      taskTotal: 1,
-      blockTotal: 2
-    });
+    await expect(getStatistics(root)).rejects.toThrow(`Canvas '${brokenCanvas.canvasId}' execution snapshot failed`);
     await expect(getTodoGroups(root)).resolves.toMatchObject({
       ready: [expect.objectContaining({ canvasId: "default", ref: "T-001#B-001" })]
     });

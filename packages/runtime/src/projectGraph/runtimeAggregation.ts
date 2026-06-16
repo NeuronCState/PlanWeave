@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { compileTaskGraph } from "../graph/compileTaskGraph.js";
 import { loadPackage } from "../package/loadPackage.js";
 import { ensureStateForManifest, readState } from "../state.js";
-import type { ProjectWorkspace, TaskStatus, ValidationIssue } from "../types.js";
+import type { CompiledExecutionGraph, ProjectWorkspace, RuntimeState, TaskStatus, ValidationIssue } from "../types.js";
 import { compileProjectGraph } from "./compileProjectGraph.js";
 import { loadProjectGraph, loadProjectGraphForWorkspace } from "./loadProjectGraph.js";
 import { projectCanvasWorkspace } from "./projectGraphWorkspace.js";
@@ -32,11 +32,27 @@ export type ProjectCanvasRuntimeAggregationContext = {
   notes: string[];
 };
 
+type ProjectCanvasRuntimeAggregationOptions = {
+  loadRuntimeSnapshot?: (workspace: ProjectWorkspace, canvasId: string) => Promise<ProjectCanvasRuntimeSnapshot>;
+};
+
 function emptyRuntimeSnapshot(): ProjectCanvasRuntimeSnapshot {
   return {
     taskCount: 0,
     taskStatusById: new Map(),
     complete: false
+  };
+}
+
+export function runtimeSnapshotFromGraphState(
+  graph: Pick<CompiledExecutionGraph, "taskNodesInManifestOrder">,
+  state: RuntimeState
+): ProjectCanvasRuntimeSnapshot {
+  const taskStatusById = new Map(graph.taskNodesInManifestOrder.map((taskId) => [taskId, state.tasks[taskId]?.status ?? "planned"]));
+  return {
+    taskCount: graph.taskNodesInManifestOrder.length,
+    taskStatusById,
+    complete: graph.taskNodesInManifestOrder.every((taskId) => state.tasks[taskId]?.status === "implemented")
   };
 }
 
@@ -79,16 +95,12 @@ async function canvasRuntimeSnapshot(workspace: ProjectWorkspace): Promise<Proje
   const { manifest } = await loadPackage(workspace);
   const graph = compileTaskGraph(manifest);
   const state = ensureStateForManifest(manifest, await readState(workspace.stateFile));
-  const taskStatusById = new Map(graph.taskNodesInManifestOrder.map((taskId) => [taskId, state.tasks[taskId]?.status ?? "planned"]));
-  return {
-    taskCount: graph.taskNodesInManifestOrder.length,
-    taskStatusById,
-    complete: graph.taskNodesInManifestOrder.every((taskId) => state.tasks[taskId]?.status === "implemented")
-  };
+  return runtimeSnapshotFromGraphState(graph, state);
 }
 
 export async function loadProjectCanvasRuntimeAggregation(
-  projectRootOrWorkspace: string | ProjectWorkspace
+  projectRootOrWorkspace: string | ProjectWorkspace,
+  options: ProjectCanvasRuntimeAggregationOptions = {}
 ): Promise<ProjectCanvasRuntimeAggregationContext> {
   const loaded = typeof projectRootOrWorkspace === "string"
     ? await loadProjectGraph(projectRootOrWorkspace)
@@ -119,7 +131,7 @@ export async function loadProjectCanvasRuntimeAggregation(
     }
     let runtimeSnapshot = emptyRuntimeSnapshot();
     try {
-      runtimeSnapshot = await canvasRuntimeSnapshot(workspace);
+      runtimeSnapshot = await (options.loadRuntimeSnapshot ?? canvasRuntimeSnapshot)(workspace, canvasId);
     } catch (caught) {
       notes.push(`Error: ${canvasId}: ${caught instanceof Error ? caught.message : String(caught)}`);
     }

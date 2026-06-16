@@ -8,6 +8,7 @@ import type {
   ValidationIssue
 } from "../../types.js";
 import type { PromptSourceSummary } from "../../taskManager/promptRenderer.js";
+import type { ProjectPromptPolicy } from "../../projectPromptPolicy.js";
 
 export type DesktopTaskException = {
   ref: string;
@@ -207,10 +208,22 @@ export type DesktopStatistics = {
   estimatedRemainingBlocks: number;
 };
 
+export type DesktopProjectSnapshot = {
+  projectPromptMarkdown: string | null;
+  projectPromptPolicy: ProjectPromptPolicy | null;
+  graph: DesktopGraphViewModel | null;
+  layout: DesktopLayout | null;
+  todoGroups: DesktopTodoGroups | null;
+  executionPlan: DesktopProjectExecutionPlan | null;
+  statistics: DesktopStatistics | null;
+  errors: string[];
+};
+
 export type DesktopSearchResultKind = "task" | "block" | "prompt" | "run_record" | "review_attempt" | "feedback";
 
 export type DesktopSearchFilters = {
   kinds?: DesktopSearchResultKind[];
+  canvasId?: string | null;
 };
 
 export type DesktopSearchResult = {

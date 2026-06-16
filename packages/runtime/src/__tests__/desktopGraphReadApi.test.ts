@@ -1,13 +1,20 @@
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getBlockDetail,
+  createTaskCanvas,
+  getDesktopLayout,
+  getDesktopProjectSnapshot,
   getGraphViewModel,
+  getProjectExecutionPlan,
+  getStatistics,
   getTaskDetail,
   getTaskExecutionOrder,
   getTodoGroups,
+  resolveTaskCanvasWorkspace,
   readProjectPrompt,
+  readProjectPromptPolicy,
   updateProjectPromptPolicy,
   updateProjectPrompt,
   updateBlockPrompt,
@@ -211,5 +218,60 @@ describe("desktop graph read API", () => {
         needsChangesReturnsTo: ["T-001#B-001"]
       }
     });
+  });
+
+  it("returns a desktop project snapshot aligned with standalone read APIs", async () => {
+    const { root } = await createTestWorkspace();
+    await updateProjectPrompt(root, "Project snapshot prompt.\n");
+    await updateProjectPromptPolicy(root, { includeGlobalPrompt: false });
+
+    const snapshot = await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
+
+    expect(snapshot.errors).toEqual([]);
+    await expect(readProjectPrompt(root)).resolves.toBe(snapshot.projectPromptMarkdown);
+    await expect(readProjectPromptPolicy(root)).resolves.toEqual(snapshot.projectPromptPolicy);
+    await expect(getGraphViewModel(root)).resolves.toEqual(snapshot.graph);
+    await expect(getDesktopLayout(root)).resolves.toEqual(snapshot.layout);
+    await expect(getTodoGroups(root)).resolves.toEqual(snapshot.todoGroups);
+    await expect(getProjectExecutionPlan(root)).resolves.toEqual(snapshot.executionPlan);
+    await expect(getStatistics(root)).resolves.toEqual(snapshot.statistics);
+  });
+
+  it("keeps snapshot fields when one first-screen part fails", async () => {
+    const { root, init } = await createTestWorkspace();
+    await mkdir(join(init.workspace.workspaceRoot, "desktop"), { recursive: true });
+    await writeFile(join(init.workspace.workspaceRoot, "desktop", "layout.json"), "{", "utf8");
+
+    const snapshot = await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
+
+    expect(snapshot.projectPromptMarkdown).toContain("# Project Prompt");
+    expect(snapshot.projectPromptPolicy).toEqual({ includeGlobalPrompt: true });
+    expect(snapshot.graph?.tasks.map((task) => task.taskId)).toEqual(["T-001"]);
+    expect(snapshot.layout).toBeNull();
+    expect(snapshot.todoGroups).not.toBeNull();
+    expect(snapshot.executionPlan).not.toBeNull();
+    expect(snapshot.statistics).not.toBeNull();
+    expect(snapshot.errors).toEqual([
+      expect.stringContaining("layout:")
+    ]);
+  });
+
+  it("reports statistics errors when a canvas execution snapshot fails", async () => {
+    const { root } = await createTestWorkspace();
+    const brokenCanvas = await createTaskCanvas(root, { name: "Broken imported canvas" });
+    const brokenWorkspace = await resolveTaskCanvasWorkspace(root, brokenCanvas.canvasId);
+    const invalidManifest = basicManifest() as unknown as { nodes: Array<{ blocks: Array<Record<string, unknown>> }> };
+    invalidManifest.nodes[0].blocks[0].type = "check";
+    await writeJsonFile(brokenWorkspace.manifestFile, invalidManifest);
+
+    const snapshot = await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
+
+    expect(snapshot.graph?.tasks.map((task) => task.taskId)).toEqual(["T-001"]);
+    expect(snapshot.todoGroups).not.toBeNull();
+    expect(snapshot.executionPlan).not.toBeNull();
+    expect(snapshot.statistics).toBeNull();
+    expect(snapshot.errors).toEqual([
+      expect.stringContaining(`statistics: Canvas '${brokenCanvas.canvasId}' execution snapshot failed`)
+    ]);
   });
 });

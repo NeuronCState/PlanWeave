@@ -199,7 +199,17 @@ export function App() {
     taskDraft
   } = useTaskDraft({ loadProject: openProjectInSession, selectedCanvasId, selectedProject, setActiveView, setError });
 
-  const { handleSearchResultOpen, searchQuery, searchResults, setSearchQuery } = useDesktopSearch({
+  const {
+    desktopSearchResultKinds: searchResultKinds,
+    handleSearchResultOpen,
+    searchCanvasScope,
+    searchQuery,
+    searchResults,
+    selectedSearchResultKinds,
+    setSearchCanvasScope,
+    setSearchQuery,
+    setSearchResultKindEnabled
+  } = useDesktopSearch({
     handleBlockSelect: handleOpenBlockInspector,
     handleOpenRunRecord,
     loadProject: openProjectInSession,
@@ -553,15 +563,19 @@ export function App() {
           reviewPipeline={reviewPipeline}
           reviewTaskId={reviewTaskId}
           saveReviewPipeline={saveReviewPipeline}
+          searchCanvasScope={searchCanvasScope}
           searchQuery={searchQuery}
+          searchResultKinds={searchResultKinds}
           searchResults={searchResults}
           selectedBlockPresent={Boolean(selectedBlock)}
           selectedCanvasId={selectedCanvasId}
           selectedProject={selectedProject}
+          selectedSearchResultKinds={selectedSearchResultKinds}
           selectedTaskPanelId={selectedTaskPanelId}
           setActiveView={setActiveView}
           setError={setError}
           setAutoRunScopeMode={setAutoRunScopeMode}
+          setSearchCanvasScope={setSearchCanvasScope}
           setFlowInstance={setFlowInstance}
           setMiniRunPanelOpen={setMiniRunPanelOpen}
           setNewTaskMode={setNewTaskMode}
@@ -571,6 +585,7 @@ export function App() {
           setReviewDefaultCyclesDraft={setReviewDefaultCyclesDraft}
           setReviewTaskId={setReviewTaskId}
           setSearchQuery={setSearchQuery}
+          setSearchResultKindEnabled={setSearchResultKindEnabled}
           settings={settings}
           startAutoRunControlDrag={startAutoRunControlDrag}
           statistics={statistics}

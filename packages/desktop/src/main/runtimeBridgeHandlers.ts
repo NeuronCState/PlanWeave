@@ -13,6 +13,7 @@ import {
   getCanvasGraphViewModel,
   getCanvasMapLayout,
   getDesktopLayout,
+  getDesktopProjectSnapshot,
   getDirtyPromptRefs,
   getFeedbackRecords,
   getGraphViewModel,
@@ -112,6 +113,7 @@ export function registerRuntimeBridgeHandlers(): void {
   ipcMain.handle(desktopBridgeInvokeChannels.getCanvasMapLayout, (_event, projectRoot: string) => getCanvasMapLayout(projectRoot));
   ipcMain.handle(desktopBridgeInvokeChannels.saveCanvasMapLayout, (_event, projectRoot: string, layout: DesktopCanvasMapLayout) => saveCanvasMapLayout(projectRoot, layout));
   ipcMain.handle(desktopBridgeInvokeChannels.resetCanvasMapLayout, (_event, projectRoot: string) => resetCanvasMapLayout(projectRoot));
+  ipcMain.handle(desktopBridgeInvokeChannels.getDesktopProjectSnapshot, (_event, ref: DesktopCanvasReference) => getDesktopProjectSnapshot(ref));
   ipcMain.handle(desktopBridgeInvokeChannels.getGraphViewModel, async (_event, ref: DesktopCanvasReference) => getGraphViewModel(await resolveDesktopCanvasReference(ref)));
   ipcMain.handle(desktopBridgeInvokeChannels.getTaskDetail, async (_event, ref: DesktopCanvasReference, taskId: string) => getTaskDetail(await resolveDesktopCanvasReference(ref), taskId));
   ipcMain.handle(desktopBridgeInvokeChannels.getBlockDetail, async (_event, ref: DesktopCanvasReference, blockRef: string) => getBlockDetail(await resolveDesktopCanvasReference(ref), blockRef));

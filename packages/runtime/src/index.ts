@@ -98,6 +98,7 @@ export {
   getCanvasGraphViewModel,
   getCanvasMapLayout,
   getDesktopLayout,
+  getDesktopProjectSnapshot,
   getDirtyPromptRefs,
   getFeedbackRecords,
   getGraphViewModel,

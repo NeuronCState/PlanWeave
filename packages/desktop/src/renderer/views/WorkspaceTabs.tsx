@@ -15,12 +15,14 @@ import type {
   DesktopReviewPipeline,
   DesktopReviewPipelineStepInput,
   DesktopSearchResult,
+  DesktopSearchResultKind,
   DesktopStatistics,
   DesktopTaskDraft,
   DesktopTaskDraftMode,
   DesktopTodoGroups
 } from "@planweave-ai/runtime";
 import type { createTranslator, Language } from "../i18n";
+import type { DesktopSearchCanvasScope } from "../hooks/useDesktopSearch";
 import type { AppNodeTypes } from "../graph/flowModel";
 import type { AppFlowNode, AppView, AutoRunScopeMode, DesktopUiSettings, NotificationItem } from "../types";
 import { CanvasMapView } from "./CanvasMapView";
@@ -77,15 +79,19 @@ type WorkspaceTabsProps = {
   reviewPipeline: DesktopReviewPipeline | null;
   reviewTaskId: string | null;
   saveReviewPipeline: () => Promise<void>;
+  searchCanvasScope: DesktopSearchCanvasScope;
   searchQuery: string;
+  searchResultKinds: DesktopSearchResultKind[];
   searchResults: DesktopSearchResult[];
   selectedBlockPresent: boolean;
   selectedCanvasId: string | null;
   selectedProject: DesktopProjectSummary | null;
+  selectedSearchResultKinds: DesktopSearchResultKind[];
   selectedTaskPanelId: string | null;
   setActiveView: Dispatch<SetStateAction<AppView>>;
   setError: (message: string | null) => void;
   setAutoRunScopeMode: Dispatch<SetStateAction<AutoRunScopeMode>>;
+  setSearchCanvasScope: Dispatch<SetStateAction<DesktopSearchCanvasScope>>;
   setFlowInstance: Dispatch<SetStateAction<ReactFlowInstance<AppFlowNode, Edge> | null>>;
   setMiniRunPanelOpen: Dispatch<SetStateAction<boolean>>;
   setNewTaskMode: Dispatch<SetStateAction<DesktopTaskDraftMode>>;
@@ -95,6 +101,7 @@ type WorkspaceTabsProps = {
   setReviewDefaultCyclesDraft: Dispatch<SetStateAction<number>>;
   setReviewTaskId: Dispatch<SetStateAction<string | null>>;
   setSearchQuery: Dispatch<SetStateAction<string>>;
+  setSearchResultKindEnabled: (kind: DesktopSearchResultKind, enabled: boolean) => void;
   settings: DesktopUiSettings;
   startAutoRunControlDrag: (event: PointerEvent<HTMLButtonElement>) => void;
   statistics: DesktopStatistics | null;

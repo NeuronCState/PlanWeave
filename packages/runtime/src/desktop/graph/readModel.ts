@@ -1,13 +1,19 @@
 import { parseBlockRef } from "../../graph/compileTaskGraph.js";
-import { compilePackageGraph, compileTaskGraph } from "../../graph/compileTaskGraph.js";
+import { compileTaskGraph } from "../../graph/compileTaskGraph.js";
 import { loadPackage } from "../../package/loadPackage.js";
 import { resolvePackagePath } from "../../package/resolvePackagePath.js";
-import { readState } from "../../state.js";
 import { getExecutionStatus, renderPromptSurface } from "../../taskManager/index.js";
-import { listExecutorProfiles } from "../../autoRun/executors.js";
+import { buildExecutionStatus, type ExecutionStatus } from "../../taskManager/executionStatus.js";
+import { loadRuntime, type RuntimeContext } from "../../taskManager/runtimeContext.js";
+import { listExecutorProfilesForManifest } from "../../autoRun/executors.js";
 import type { PackageWorkspaceRef, ValidationIssue } from "../../types.js";
 import type { DesktopBlockDetail, DesktopBlockPreview, DesktopGraphViewModel, DesktopTaskDetail, DesktopTaskException, DesktopTaskExecutionOrder } from "../types.js";
 import { exceptionForBlock, executorLabel, getBlock, getTask, promptPreview, readOptionalFile, sortBlockRefsForTask } from "./graphHelpers.js";
+
+export type DesktopGraphViewModelContext = RuntimeContext & {
+  status: ExecutionStatus;
+  executorOptions: string[];
+};
 
 function appendDiagnostic(diagnostics: ValidationIssue[], diagnostic: ValidationIssue | null): void {
   if (!diagnostic) {
@@ -19,14 +25,23 @@ function appendDiagnostic(diagnostics: ValidationIssue[], diagnostic: Validation
   diagnostics.push(diagnostic);
 }
 
-export async function getGraphViewModel(projectRoot: PackageWorkspaceRef): Promise<DesktopGraphViewModel> {
-  const { workspace, manifest } = await loadPackage(projectRoot);
-  const graph = await compilePackageGraph(manifest, workspace.packageDir);
-  const state = await readState(workspace.stateFile);
-  const status = await getExecutionStatus({ projectRoot });
+export async function loadDesktopGraphViewModelContext(projectRoot: PackageWorkspaceRef): Promise<DesktopGraphViewModelContext> {
+  const runtime = await loadRuntime({ projectRoot });
+  return buildDesktopGraphViewModelContext(runtime, await buildExecutionStatus(runtime));
+}
+
+export function buildDesktopGraphViewModelContext(runtime: RuntimeContext, status: ExecutionStatus): DesktopGraphViewModelContext {
+  return {
+    ...runtime,
+    status,
+    executorOptions: listExecutorProfilesForManifest(runtime.manifest).map((profile) => profile.name)
+  };
+}
+
+export async function buildGraphViewModel(context: DesktopGraphViewModelContext): Promise<DesktopGraphViewModel> {
+  const { workspace, manifest, graph, state, status, executorOptions } = context;
   const statusByBlock = new Map(status.blocks.map((block) => [block.ref, block]));
   const dirtyPromptRefs = new Set<string>();
-  const executorOptions = (await listExecutorProfiles({ projectRoot })).map((profile) => profile.name);
   const diagnostics = [...graph.diagnostics.errors];
 
   const tasks = await Promise.all(
@@ -96,6 +111,10 @@ export async function getGraphViewModel(projectRoot: PackageWorkspaceRef): Promi
     diagnostics,
     dirtyPromptRefs: [...dirtyPromptRefs]
   };
+}
+
+export async function getGraphViewModel(projectRoot: PackageWorkspaceRef): Promise<DesktopGraphViewModel> {
+  return buildGraphViewModel(await loadDesktopGraphViewModelContext(projectRoot));
 }
 
 export async function getTaskDetail(projectRoot: PackageWorkspaceRef, taskId: string): Promise<DesktopTaskDetail> {

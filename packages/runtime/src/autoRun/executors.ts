@@ -4,7 +4,8 @@ import type {
   ExecutorProfile,
   ExecutorProfileSummary,
   ManifestTaskNode,
-  PackageWorkspaceRef
+  PackageWorkspaceRef,
+  PlanPackageManifest
 } from "../types.js";
 import { claudeCodeIntegration } from "./claudeCodeIntegration.js";
 import { codexIntegration } from "./codexIntegration.js";
@@ -34,7 +35,7 @@ function integrationForAdapter(adapter: ExecutorProfile["adapter"]): ExecutorInt
   return integration;
 }
 
-function taskNodeForClaim(manifest: Awaited<ReturnType<typeof loadPackage>>["manifest"], claim: BlockClaim): ManifestTaskNode {
+function taskNodeForClaim(manifest: PlanPackageManifest, claim: BlockClaim): ManifestTaskNode {
   const node = manifest.nodes.find((item) => item.type === "task" && item.id === claim.taskId);
   if (node?.type !== "task") {
     throw new Error(`Task '${claim.taskId}' does not exist.`);
@@ -42,7 +43,7 @@ function taskNodeForClaim(manifest: Awaited<ReturnType<typeof loadPackage>>["man
   return node;
 }
 
-function resolveBlockExecutorName(manifest: Awaited<ReturnType<typeof loadPackage>>["manifest"], claim: BlockClaim, override?: string): string {
+function resolveBlockExecutorName(manifest: PlanPackageManifest, claim: BlockClaim, override?: string): string {
   const task = taskNodeForClaim(manifest, claim);
   const block = task.blocks.find((item) => item.id === claim.blockId);
   if (!block) {
@@ -51,7 +52,7 @@ function resolveBlockExecutorName(manifest: Awaited<ReturnType<typeof loadPackag
   return override ?? block.executor ?? task.executor ?? manifest.execution.defaultExecutor ?? "default";
 }
 
-function profilesByName(manifest: Awaited<ReturnType<typeof loadPackage>>["manifest"]): Record<string, ExecutorProfile> {
+function profilesByName(manifest: PlanPackageManifest): Record<string, ExecutorProfile> {
   return {
     ...builtinExecutors,
     ...(manifest.executors ?? {})
@@ -147,8 +148,7 @@ export function createExecutorAdapter(options: { projectRoot: PackageWorkspaceRe
   return createProfiledAdapter(options);
 }
 
-export async function listExecutorProfiles(options: { projectRoot: PackageWorkspaceRef }): Promise<ExecutorProfileSummary[]> {
-  const { manifest } = await loadPackage(options.projectRoot);
+export function listExecutorProfilesForManifest(manifest: PlanPackageManifest): ExecutorProfileSummary[] {
   const packageProfiles = manifest.executors ?? {};
   const summaries: ExecutorProfileSummary[] = Object.entries(builtinExecutors).map(([name, profile]) => ({
     name,
@@ -165,6 +165,11 @@ export async function listExecutorProfiles(options: { projectRoot: PackageWorksp
     }
   }
   return summaries;
+}
+
+export async function listExecutorProfiles(options: { projectRoot: PackageWorkspaceRef }): Promise<ExecutorProfileSummary[]> {
+  const { manifest } = await loadPackage(options.projectRoot);
+  return listExecutorProfilesForManifest(manifest);
 }
 
 export async function testExecutorProfile(options: { projectRoot: PackageWorkspaceRef; executorName: string }): Promise<{

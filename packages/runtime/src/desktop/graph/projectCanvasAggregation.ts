@@ -3,6 +3,7 @@ import {
   loadProjectCanvasRuntimeAggregation,
   projectBlockersForTask,
   projectGraphDiagnosticNote,
+  runtimeSnapshotFromGraphState,
   type ProjectCanvasRuntimeAggregationContext,
   type ProjectCanvasRuntimeContext,
   type ProjectCanvasRuntimeSnapshot
@@ -27,7 +28,11 @@ export type ProjectCanvasAggregationContext = Omit<ProjectCanvasRuntimeAggregati
 };
 
 export type { ProjectCanvasRuntimeSnapshot };
-export { projectBlockersForTask };
+export { projectBlockersForTask, runtimeSnapshotFromGraphState };
+
+type ProjectCanvasAggregationOptions = {
+  loadRuntimeSnapshot?: (workspace: ProjectWorkspace, canvasId: string) => Promise<ProjectCanvasRuntimeSnapshot>;
+};
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -60,8 +65,11 @@ export function projectCanvasDiagnosticNote(diagnostic: ValidationIssue): string
   return projectGraphDiagnosticNote(diagnostic);
 }
 
-export async function loadProjectCanvasAggregation(projectRootOrWorkspace: string | ProjectWorkspace): Promise<ProjectCanvasAggregationContext> {
-  const runtime = await loadProjectCanvasRuntimeAggregation(projectRootOrWorkspace);
+export async function loadProjectCanvasAggregation(
+  projectRootOrWorkspace: string | ProjectWorkspace,
+  options: ProjectCanvasAggregationOptions = {}
+): Promise<ProjectCanvasAggregationContext> {
+  const runtime = await loadProjectCanvasRuntimeAggregation(projectRootOrWorkspace, options);
   const canvases: ProjectCanvasAggregationCanvas[] = [];
   const canvasesById = new Map<string, ProjectCanvasAggregationCanvas>();
 

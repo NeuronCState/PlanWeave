@@ -1,16 +1,16 @@
-import { compileTaskGraph } from "../../graph/compileTaskGraph.js";
-import { loadPackage } from "../../package/loadPackage.js";
-import { getExecutionStatus } from "../../taskManager/index.js";
-import type { PackageWorkspaceRef } from "../../types.js";
+import { buildExecutionStatus, type ExecutionStatus } from "../../taskManager/executionStatus.js";
+import { createProjectGraphClaimGuardFromAggregation } from "../../taskManager/projectGraphClaimGuard.js";
+import { loadRuntime, type RuntimeContext } from "../../taskManager/runtimeContext.js";
 import type { DesktopProjectExecutionPhase, DesktopProjectExecutionPlan, DesktopTodoGroups, DesktopTodoItem } from "../types.js";
 import { getBlock } from "./graphHelpers.js";
 import {
   loadProjectCanvasAggregation,
   projectBlockersForTask,
+  runtimeSnapshotFromGraphState,
   type ProjectCanvasAggregationContext
 } from "./projectCanvasAggregation.js";
 
-function emptyTodoGroups(): DesktopTodoGroups {
+export function emptyTodoGroups(): DesktopTodoGroups {
   return {
     planned: [],
     ready: [],
@@ -23,13 +23,15 @@ function emptyTodoGroups(): DesktopTodoGroups {
   };
 }
 
-async function getTodoGroupsForWorkspace(
-  projectRoot: PackageWorkspaceRef,
+type CanvasTodoRuntimeContext = RuntimeContext & {
+  status: ExecutionStatus;
+};
+
+function buildTodoGroupsForRuntime(
+  context: CanvasTodoRuntimeContext,
   canvasMeta?: { canvasId: string; canvasName: string }
-): Promise<DesktopTodoGroups> {
-  const { manifest } = await loadPackage(projectRoot);
-  const graph = compileTaskGraph(manifest);
-  const status = await getExecutionStatus({ projectRoot });
+): DesktopTodoGroups {
+  const { graph, status } = context;
   const taskStatusById = new Map(status.tasks.map((task) => [task.taskId, task.status]));
   const claimHintByRef = new Map(status.claimHints.map((hint) => [hint.ref, hint]));
   const groups = emptyTodoGroups();
@@ -80,34 +82,48 @@ function executionPhaseFromGroups(
   };
 }
 
-type CanvasExecutionSnapshot = {
+export type CanvasExecutionSnapshot = {
   groups: DesktopTodoGroups;
   taskCount: number;
+  runtime: RuntimeContext | null;
+  status: ExecutionStatus | null;
+  error: unknown | null;
 };
 
-type ProjectTodoContext = {
+export type ProjectTodoContext = {
   aggregation: ProjectCanvasAggregationContext;
   snapshotsByCanvas: Map<string, CanvasExecutionSnapshot>;
 };
 
 async function canvasExecutionSnapshot(
   aggregation: ProjectCanvasAggregationContext,
-  canvasId: string
+  canvasId: string,
+  runtime: RuntimeContext | undefined
 ): Promise<CanvasExecutionSnapshot> {
   const canvas = aggregation.canvasesById.get(canvasId);
   if (!canvas) {
     return {
       groups: emptyTodoGroups(),
-      taskCount: 0
+      taskCount: 0,
+      runtime: null,
+      status: null,
+      error: new Error(`Project canvas '${canvasId}' is missing from aggregation.`)
     };
   }
-  const groups = await getTodoGroupsForWorkspace(canvas.workspace, {
+  const canvasRuntime = runtime ?? await loadRuntime({ projectRoot: canvas.workspace });
+  const status = await buildExecutionStatus(canvasRuntime, {
+    claimGuard: createProjectGraphClaimGuardFromAggregation(canvasRuntime, aggregation)
+  });
+  const groups = buildTodoGroupsForRuntime({ ...canvasRuntime, status }, {
     canvasId,
     canvasName: canvas.canvasName
   });
   return {
     groups,
-    taskCount: canvas.runtimeSnapshot.taskCount
+    taskCount: canvasRuntime.graph.taskNodesInManifestOrder.length,
+    runtime: canvasRuntime,
+    status,
+    error: null
   };
 }
 
@@ -135,25 +151,35 @@ function applyProjectBlockers(
   return { groups: next, blockedReadyCount };
 }
 
-async function getProjectTodoContext(projectRoot: string): Promise<ProjectTodoContext> {
-  const aggregation = await loadProjectCanvasAggregation(projectRoot);
+export async function loadProjectTodoContext(projectRoot: string): Promise<ProjectTodoContext> {
+  const runtimesByCanvas = new Map<string, RuntimeContext>();
+  const aggregation = await loadProjectCanvasAggregation(projectRoot, {
+    loadRuntimeSnapshot: async (workspace, canvasId) => {
+      const runtime = await loadRuntime({ projectRoot: workspace });
+      runtimesByCanvas.set(canvasId, runtime);
+      return runtimeSnapshotFromGraphState(runtime.graph, runtime.state);
+    }
+  });
   const snapshotsByCanvas = new Map<string, CanvasExecutionSnapshot>();
 
   for (const canvasId of aggregation.orderedCanvasIds) {
     try {
-      snapshotsByCanvas.set(canvasId, await canvasExecutionSnapshot(aggregation, canvasId));
-    } catch {
+      snapshotsByCanvas.set(canvasId, await canvasExecutionSnapshot(aggregation, canvasId, runtimesByCanvas.get(canvasId)));
+    } catch (error) {
       snapshotsByCanvas.set(canvasId, {
         groups: emptyTodoGroups(),
-        taskCount: 0
+        taskCount: 0,
+        runtime: null,
+        status: null,
+        error
       });
     }
   }
   return { aggregation, snapshotsByCanvas };
 }
 
-export async function getTodoGroups(projectRoot: string): Promise<DesktopTodoGroups> {
-  const { aggregation, snapshotsByCanvas } = await getProjectTodoContext(projectRoot);
+export function buildTodoGroupsFromContext(context: ProjectTodoContext): DesktopTodoGroups {
+  const { aggregation, snapshotsByCanvas } = context;
   const groups = emptyTodoGroups();
   for (const canvasId of aggregation.orderedCanvasIds) {
     const snapshot = snapshotsByCanvas.get(canvasId);
@@ -168,8 +194,12 @@ export async function getTodoGroups(projectRoot: string): Promise<DesktopTodoGro
   return groups;
 }
 
-export async function getProjectExecutionPlan(projectRoot: string): Promise<DesktopProjectExecutionPlan> {
-  const { aggregation, snapshotsByCanvas } = await getProjectTodoContext(projectRoot);
+export async function getTodoGroups(projectRoot: string): Promise<DesktopTodoGroups> {
+  return buildTodoGroupsFromContext(await loadProjectTodoContext(projectRoot));
+}
+
+export function buildProjectExecutionPlanFromContext(context: ProjectTodoContext): DesktopProjectExecutionPlan {
+  const { aggregation, snapshotsByCanvas } = context;
   const phases = aggregation.orderedCanvasIds.flatMap((canvasId, index) => {
     const canvas = aggregation.canvasesById.get(canvasId);
     const snapshot = snapshotsByCanvas.get(canvasId);
@@ -184,4 +214,8 @@ export async function getProjectExecutionPlan(projectRoot: string): Promise<Desk
     readyQueue: phases.flatMap((phase) => phase.readyQueue),
     notes: aggregation.notes
   };
+}
+
+export async function getProjectExecutionPlan(projectRoot: string): Promise<DesktopProjectExecutionPlan> {
+  return buildProjectExecutionPlanFromContext(await loadProjectTodoContext(projectRoot));
 }

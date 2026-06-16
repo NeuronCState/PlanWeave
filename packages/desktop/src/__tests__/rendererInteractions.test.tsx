@@ -16,7 +16,14 @@ import { createTranslator } from "../renderer/i18n";
 import { ProjectSidebar } from "../renderer/sidebar/ProjectSidebar";
 import { NotificationsView } from "../renderer/views/NotificationsView";
 import { orderProjectsByPinnedIds } from "../renderer/settings";
-import type { DesktopBlockDetail, DesktopGraphViewModel, DesktopProjectSummary, DesktopRunRecord, DesktopSearchResult, DesktopTodoItem } from "@planweave-ai/runtime";
+import type {
+  DesktopBlockDetail,
+  DesktopGraphViewModel,
+  DesktopProjectSummary,
+  DesktopRunRecord,
+  DesktopSearchResult,
+  DesktopTodoItem
+} from "@planweave-ai/runtime";
 
 afterEach(() => {
   cleanup();

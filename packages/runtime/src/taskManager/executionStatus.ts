@@ -6,8 +6,8 @@ import type {
   PackageWorkspaceRef
 } from "../types.js";
 import { buildClaimReadiness } from "./claimReadiness.js";
-import { createProjectGraphClaimGuard } from "./projectGraphClaimGuard.js";
-import { loadRuntime } from "./runtimeContext.js";
+import { createProjectGraphClaimGuard, type ProjectGraphClaimGuard } from "./projectGraphClaimGuard.js";
+import { loadRuntime, type RuntimeContext } from "./runtimeContext.js";
 import { getBlock, isActiveFeedbackStatus } from "./selectors.js";
 
 function statusReasonForBlock(blockState: BlockState | undefined): string | null {
@@ -20,8 +20,10 @@ function statusReasonForBlock(blockState: BlockState | undefined): string | null
   return blockState?.blockedReason ?? blockState?.divergenceReason ?? null;
 }
 
-export async function getExecutionStatus(options: { projectRoot: PackageWorkspaceRef; session?: ExecutionGraphSession }) {
-  const context = await loadRuntime(options);
+export async function buildExecutionStatus(
+  context: RuntimeContext,
+  options: { claimGuard?: ProjectGraphClaimGuard } = {}
+) {
   const { workspace, manifest, graph, state } = context;
   const taskCounts = Object.fromEntries(["planned", "ready", "in_progress", "implemented"].map((status) => [status, 0])) as Record<
     "planned" | "ready" | "in_progress" | "implemented",
@@ -45,7 +47,7 @@ export async function getExecutionStatus(options: { projectRoot: PackageWorkspac
   }
   const currentFeedbackId =
     state.currentFeedbackId && isActiveFeedbackStatus(state.feedback[state.currentFeedbackId]?.status) ? state.currentFeedbackId : null;
-  const readiness = buildClaimReadiness({ graph, manifest, state, projectGuard: await createProjectGraphClaimGuard(context) });
+  const readiness = buildClaimReadiness({ graph, manifest, state, projectGuard: options.claimGuard ?? await createProjectGraphClaimGuard(context) });
   return {
     projectId: workspace.id,
     projectRoot: workspace.rootPath,
@@ -97,4 +99,10 @@ export async function getExecutionStatus(options: { projectRoot: PackageWorkspac
     orphanState: [],
     orphanResults: []
   };
+}
+
+export type ExecutionStatus = Awaited<ReturnType<typeof buildExecutionStatus>>;
+
+export async function getExecutionStatus(options: { projectRoot: PackageWorkspaceRef; session?: ExecutionGraphSession }): Promise<ExecutionStatus> {
+  return buildExecutionStatus(await loadRuntime(options));
 }

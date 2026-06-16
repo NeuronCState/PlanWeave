@@ -7,7 +7,7 @@ import { readState } from "../../state.js";
 import type { PackageWorkspaceRef } from "../../types.js";
 import type { DesktopSearchFilters, DesktopSearchResult, DesktopSearchResultKind } from "../types.js";
 import { blockRef, getTask, promptPreview, readOptionalFile } from "./graphHelpers.js";
-import { mapProjectTaskCanvases } from "./projectCanvasAggregation.js";
+import { loadProjectCanvasAggregation, mapProjectTaskCanvases } from "./projectCanvasAggregation.js";
 
 async function listResultFiles(root: string): Promise<string[]> {
   try {
@@ -130,6 +130,18 @@ async function searchWorkspace(
 }
 
 export async function searchProject(projectRoot: string, query: string, filters: DesktopSearchFilters = {}): Promise<DesktopSearchResult[]> {
+  if (typeof filters.canvasId === "string") {
+    const aggregation = await loadProjectCanvasAggregation(projectRoot);
+    const canvas = aggregation.canvasesById.get(filters.canvasId);
+    if (!canvas) {
+      throw new Error(`Task canvas '${filters.canvasId}' does not exist.`);
+    }
+    if (canvas.canvas.diagnostics.some((diagnostic) => diagnostic.code === "manifest_schema" || diagnostic.code === "manifest_read_failed")) {
+      return [];
+    }
+    return searchWorkspace(canvas.workspace, query, filters, { canvasId: canvas.canvasId, canvasName: canvas.canvasName });
+  }
+
   const results: DesktopSearchResult[] = [];
   const canvasResults = await mapProjectTaskCanvases(projectRoot, ({ canvasId, canvasName, workspace }) =>
     searchWorkspace(workspace, query, filters, { canvasId, canvasName })

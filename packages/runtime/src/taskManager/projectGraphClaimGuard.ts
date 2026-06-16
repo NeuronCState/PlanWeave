@@ -2,7 +2,8 @@ import {
   currentProjectCanvasForWorkspace,
   loadProjectCanvasRuntimeAggregation,
   projectBlockerReasonForTask,
-  projectGraphDiagnosticNote
+  projectGraphDiagnosticNote,
+  type ProjectCanvasRuntimeAggregationContext
 } from "../projectGraph/runtimeAggregation.js";
 import type { ValidationIssue } from "../types.js";
 import type { RuntimeContext } from "./runtimeContext.js";
@@ -19,8 +20,10 @@ function issueDisplayName(issue: ValidationIssue): string {
   return projectGraphDiagnosticNote(issue);
 }
 
-export async function createProjectGraphClaimGuard(context: RuntimeContext): Promise<ProjectGraphClaimGuard> {
-  const aggregation = await loadProjectCanvasRuntimeAggregation(context.workspace);
+export function createProjectGraphClaimGuardFromAggregation(
+  context: RuntimeContext,
+  aggregation: ProjectCanvasRuntimeAggregationContext
+): ProjectGraphClaimGuard {
   if (aggregation.loaded.source !== "project_graph") {
     return noProjectGraphBlockers;
   }
@@ -41,4 +44,8 @@ export async function createProjectGraphClaimGuard(context: RuntimeContext): Pro
   return {
     blockerReasonForTask: (taskId: string) => projectBlockerReasonForTask(aggregation, currentCanvas.canvasId, taskId)
   };
+}
+
+export async function createProjectGraphClaimGuard(context: RuntimeContext): Promise<ProjectGraphClaimGuard> {
+  return createProjectGraphClaimGuardFromAggregation(context, await loadProjectCanvasRuntimeAggregation(context.workspace));
 }

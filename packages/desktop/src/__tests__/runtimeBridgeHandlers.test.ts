@@ -16,6 +16,7 @@ const electronMock = vi.hoisted(() => {
 });
 
 const runtimeMock = vi.hoisted(() => ({
+  getDesktopProjectSnapshot: vi.fn(async (ref: unknown) => ({ ref })),
   getGraphViewModel: vi.fn(async (workspace: unknown) => ({ workspace })),
   resolveProjectCanvasWorkspace: vi.fn(async (projectRoot: string, canvasId: string) => ({
     projectRoot,
@@ -43,6 +44,7 @@ vi.mock("@planweave-ai/runtime", async () => {
   const actual = await vi.importActual<typeof import("@planweave-ai/runtime")>("@planweave-ai/runtime");
   return {
     ...actual,
+    getDesktopProjectSnapshot: runtimeMock.getDesktopProjectSnapshot,
     getGraphViewModel: runtimeMock.getGraphViewModel,
     resolveProjectCanvasWorkspace: runtimeMock.resolveProjectCanvasWorkspace,
     resolveTaskCanvasWorkspace: runtimeMock.resolveTaskCanvasWorkspace
@@ -53,6 +55,7 @@ describe("runtime bridge handlers", () => {
   beforeEach(() => {
     electronMock.handlers.clear();
     electronMock.ipcMain.handle.mockClear();
+    runtimeMock.getDesktopProjectSnapshot.mockClear();
     runtimeMock.getGraphViewModel.mockClear();
     runtimeMock.resolveProjectCanvasWorkspace.mockClear();
     runtimeMock.resolveTaskCanvasWorkspace.mockClear();
@@ -74,6 +77,20 @@ describe("runtime bridge handlers", () => {
       canvasId: "canvas-a",
       source: "task"
     });
+  });
+
+  it("passes desktop project snapshot requests to runtime without pre-resolving the canvas", async () => {
+    const { registerRuntimeBridgeHandlers } = await import("../main/runtimeBridgeHandlers");
+    registerRuntimeBridgeHandlers();
+
+    const handler = electronMock.handlers.get(desktopBridgeInvokeChannels.getDesktopProjectSnapshot);
+    expect(handler).toBeDefined();
+
+    const ref = { projectRoot: "/tmp/project", canvasId: "canvas-a" };
+    await handler?.(null, ref);
+
+    expect(runtimeMock.resolveTaskCanvasWorkspace).not.toHaveBeenCalled();
+    expect(runtimeMock.getDesktopProjectSnapshot).toHaveBeenCalledWith(ref);
   });
 
   it("registers handlers for every desktop bridge invoke channel", async () => {

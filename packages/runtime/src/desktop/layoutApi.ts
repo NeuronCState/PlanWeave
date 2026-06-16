@@ -161,6 +161,10 @@ function issue(code: string, message: string, path?: string): ValidationIssue {
 
 export async function getDesktopLayout(projectRoot: PackageWorkspaceRef): Promise<DesktopLayout> {
   const { workspace, manifest } = await loadPackage(projectRoot);
+  return getDesktopLayoutForPackage(workspace, manifest);
+}
+
+export async function getDesktopLayoutForPackage(workspace: ProjectWorkspace, manifest: PlanPackageManifest): Promise<DesktopLayout> {
   const path = layoutPathForWorkspace(workspace);
   if (!(await exists(path))) {
     return defaultLayout(workspace.id);

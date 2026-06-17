@@ -275,7 +275,7 @@ describe("STEP-1 CLI contract", () => {
 
   it("operates a non-default canvas in a formal multi-canvas project", async () => {
     const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
-    const root = await mkdtemp(join(tmpdir(), "planweave-project-"));
+    const root = await mkdtemp(join(tmpdir(), "planweave project-"));
     const env = withoutInitCwd({ ...process.env, PLANWEAVE_HOME: home });
     const rootArgs = ["--project-root", root];
     const init = JSON.parse((await planweave([...rootArgs, "init", "--json"], env)).stdout);
@@ -339,7 +339,8 @@ describe("STEP-1 CLI contract", () => {
     };
     expect(desktopRunStatusJson.explanation.nextAction.command).toBeNull();
     const desktopRunStatusText = (await planweave([...rootArgs, "run-status", "--canvas", "desktop"], env)).stdout;
-    expect(desktopRunStatusText).toContain("next command: planweave run --canvas desktop");
+    expect(desktopRunStatusText).toContain(`next command: planweave --project-root '${root}' run --canvas desktop`);
+    expect(desktopRunStatusText).not.toContain("next command: planweave run --canvas desktop");
     expect(desktopRunStatusText).not.toContain("next command: planweave run\n");
     expect(JSON.parse((await planweave([...rootArgs, "claim-next", "--canvas", "desktop"], env)).stdout)).toMatchObject({
       kind: "block",

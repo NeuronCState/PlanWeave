@@ -39,3 +39,7 @@ export function resolveCliProjectRoot(): string {
   }
   return process.cwd();
 }
+
+export function explicitCliProjectRoot(): string | null {
+  return projectRootOverride === undefined ? null : trimProjectRoot(projectRootOverride, "--project-root");
+}

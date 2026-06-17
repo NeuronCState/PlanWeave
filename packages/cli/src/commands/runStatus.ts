@@ -1,9 +1,16 @@
 import type { Command } from "commander";
 import { getAutoRunStatus } from "@planweave-ai/runtime";
 import { addCanvasOption, resolveCliCanvasId, resolveCliPackageWorkspace, type CanvasCommandOptions } from "../cliWorkspace.js";
+import { explicitCliProjectRoot } from "../projectRoot.js";
 
-function formatRunCommand(canvasId: string | null): string {
-  return ["planweave", "run", ...(canvasId ? ["--canvas", canvasId] : [])].join(" ");
+function shellQuoteArg(value: string): string {
+  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function formatRunCommand(options: CanvasCommandOptions): string {
+  const canvasId = resolveCliCanvasId(options);
+  const projectRoot = explicitCliProjectRoot();
+  return ["planweave", ...(projectRoot ? ["--project-root", projectRoot] : []), "run", ...(canvasId ? ["--canvas", canvasId] : [])].map(shellQuoteArg).join(" ");
 }
 
 export function registerRunStatusCommand(program: Command): void {
@@ -23,7 +30,7 @@ export function registerRunStatusCommand(program: Command): void {
       console.log(`phase: ${status.explanation.phase}`);
       console.log(`latest record: ${status.explanation.latestRecordId ?? "none"}${status.explanation.latestRecordPath ? ` (${status.explanation.latestRecordPath})` : ""}`);
       console.log(`next action: ${status.explanation.nextAction.message}`);
-      const nextCommand = status.explanation.nextAction.command ?? (status.explanation.nextAction.kind === "start" ? formatRunCommand(resolveCliCanvasId(options)) : null);
+      const nextCommand = status.explanation.nextAction.command ?? (status.explanation.nextAction.kind === "start" ? formatRunCommand(options) : null);
       if (nextCommand) {
         console.log(`next command: ${nextCommand}`);
       }

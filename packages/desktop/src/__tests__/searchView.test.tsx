@@ -15,21 +15,70 @@ const searchResultKinds: DesktopSearchResultKind[] = ["task", "block", "prompt",
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("SearchView", () => {
+  function stubResizeObserver() {
+    class ResizeObserverMock {
+      disconnect = vi.fn();
+      observe = vi.fn();
+      unobserve = vi.fn();
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+  }
+
+  it("explains that search depends on project data when no project is open", async () => {
+    stubResizeObserver();
+    const handleOpenProject = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <SearchView
+        handleOpenProject={handleOpenProject}
+        handleSearchResultOpen={vi.fn().mockResolvedValue(undefined)}
+        searchCanvasScope="all"
+        searchQuery=""
+        searchResultKinds={searchResultKinds}
+        searchResults={[]}
+        selectedCanvasId={null}
+        selectedProject={null}
+        selectedSearchResultKinds={searchResultKinds}
+        setSearchCanvasScope={vi.fn()}
+        setSearchQuery={vi.fn()}
+        setSearchResultKindEnabled={vi.fn()}
+        t={createTranslator("en")}
+      />
+    );
+
+    expect(screen.getByText("Open a project to search")).toBeInTheDocument();
+    expect(screen.getByText(/Search can find tasks, blocks, prompts/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Open Project" }));
+
+    expect(handleOpenProject).toHaveBeenCalledTimes(1);
+  });
+
   it("updates result kind and canvas scope controls through props", async () => {
+    stubResizeObserver();
     function SearchHarness() {
       const [selectedKinds, setSelectedKinds] = useState<DesktopSearchResultKind[]>(searchResultKinds);
       const [scope, setScope] = useState<DesktopSearchCanvasScope>("all");
       return (
         <SearchView
+          handleOpenProject={vi.fn().mockResolvedValue(undefined)}
           handleSearchResultOpen={vi.fn().mockResolvedValue(undefined)}
           searchCanvasScope={scope}
           searchQuery=""
           searchResultKinds={searchResultKinds}
           searchResults={[]}
           selectedCanvasId="canvas-main"
+          selectedProject={{
+            projectId: "P-001",
+            name: "Demo",
+            rootPath: "/tmp/demo",
+            workspaceRoot: "/tmp/demo",
+            activeCanvasId: "canvas-main",
+            taskCanvases: []
+          }}
           selectedSearchResultKinds={selectedKinds}
           setSearchCanvasScope={setScope}
           setSearchQuery={vi.fn()}

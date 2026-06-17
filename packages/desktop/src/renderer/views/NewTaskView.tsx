@@ -13,6 +13,7 @@ type NewTaskViewProps = {
   confirmTaskDraft: () => Promise<void>;
   generateTaskDraft: () => Promise<void>;
   graph: DesktopGraphViewModel | null;
+  handleOpenProject: () => Promise<void>;
   newTaskMode: DesktopTaskDraftMode;
   newTaskTargetId: string | null;
   newTaskText: string;
@@ -29,6 +30,7 @@ export function NewTaskView({
   confirmTaskDraft,
   generateTaskDraft,
   graph,
+  handleOpenProject,
   newTaskMode,
   newTaskTargetId,
   newTaskText,
@@ -40,12 +42,13 @@ export function NewTaskView({
   t,
   taskDraft
 }: NewTaskViewProps) {
+  const hasProject = Boolean(selectedProject);
   return (
     <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_360px] gap-4">
       <Card className="min-h-0">
         <CardHeader>
           <CardTitle>{t("authoring")}</CardTitle>
-          <CardDescription>{t("taskInputHint")}</CardDescription>
+          <CardDescription>{hasProject ? t("taskInputHint") : t("newTaskNoProjectHint")}</CardDescription>
         </CardHeader>
         <CardContent>
           <FieldGroup>
@@ -89,11 +92,11 @@ export function NewTaskView({
               <FieldDescription>{t("taskInputHint")}</FieldDescription>
             </Field>
             <div className="flex gap-2">
-              <Button data-testid="new-task-generate-draft" onClick={() => void generateTaskDraft()}>
+              <Button data-testid="new-task-generate-draft" disabled={!hasProject || !newTaskText.trim()} onClick={() => void generateTaskDraft()}>
                 {t("generateDraft")}
               </Button>
-              <Button variant="outline" onClick={() => setActiveView("graph")}>
-                {t("skipToCanvas")}
+              <Button variant="outline" onClick={() => void (hasProject ? setActiveView("graph") : handleOpenProject())}>
+                {hasProject ? t("skipToCanvas") : t("openProject")}
               </Button>
             </div>
           </FieldGroup>
@@ -125,7 +128,7 @@ export function NewTaskView({
               ))}
             </div>
           </ScrollArea>
-          <Button data-testid="new-task-confirm-write" disabled={!taskDraft} onClick={() => void confirmTaskDraft()}>
+          <Button data-testid="new-task-confirm-write" disabled={!hasProject || !taskDraft} onClick={() => void confirmTaskDraft()}>
             {t("confirmWrite")}
           </Button>
         </CardContent>

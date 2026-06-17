@@ -419,4 +419,33 @@ describe("desktop renderer interface interactions", () => {
     await userEvent.click(screen.getByRole("option", { name: "Selected Task" }));
     expect(setAutoRunScopeMode).toHaveBeenCalledWith("selectedTask");
   });
+
+  it("keeps Auto Run visible but disabled when no project is open", () => {
+    render(
+      <FloatingAutoRunControl
+        autoRunScopeMode="project"
+        autoRunState={null}
+        dirtyPromptCount={0}
+        handleAutoRunClick={vi.fn().mockResolvedValue(undefined)}
+        handleRevealPathInFinder={vi.fn().mockResolvedValue(undefined)}
+        miniRunPanelOpen={false}
+        moveAutoRunControl={vi.fn()}
+        refreshPackageFiles={vi.fn().mockResolvedValue(undefined)}
+        selectedBlockPresent={false}
+        selectedProject={null}
+        selectedTaskPanelId={null}
+        setAutoRunScopeMode={vi.fn()}
+        setMiniRunPanelOpen={vi.fn()}
+        startAutoRunControlDrag={vi.fn()}
+        stopAutoRunClick={vi.fn().mockResolvedValue(undefined)}
+        stopAutoRunControlDrag={vi.fn()}
+        style={{ right: 24, bottom: 24 }}
+        t={t}
+      />
+    );
+
+    expect(screen.getByText("Open a project before running Auto Run.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Auto Run" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Sync file changes" })).toBeDisabled();
+  });
 });

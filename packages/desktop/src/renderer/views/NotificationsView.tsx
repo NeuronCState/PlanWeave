@@ -20,6 +20,7 @@ export function NotificationsView({ notificationItems, onMarkNotificationRead, t
         <div className="text-sm text-muted-foreground">
           {notificationItems.length > 0 ? `${t("unreadNotifications")}: ${unreadCount} / ${notificationItems.length}` : t("noNotificationsFiltered")}
         </div>
+        <div className="text-sm text-muted-foreground">{t("notificationRulesHint")}</div>
       </div>
       <div className="flex flex-col gap-2">
         {notificationItems.length === 0 ? <div className="text-sm text-muted-foreground">{t("noNotifications")}</div> : null}

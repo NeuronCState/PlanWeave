@@ -10,6 +10,7 @@ import type {
 } from "@planweave-ai/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDesktopBridgeMock } from "./desktopBridgeMock";
+import { createTranslator } from "../renderer/i18n";
 import { useVisibleGraphTasks } from "../renderer/hooks/useVisibleGraphTasks";
 import type { DesktopUiSettings } from "../renderer/types";
 
@@ -151,6 +152,7 @@ describe("desktop renderer hook interfaces", () => {
     renderHook(() =>
       useDesktopProject({
         setError: vi.fn(),
+        t: createTranslator("en"),
         updateSettings
       })
     );
@@ -162,6 +164,26 @@ describe("desktop renderer hook interfaces", () => {
     expect(bridge.getTodoGroups).not.toHaveBeenCalled();
     expect(bridge.watchPackageFiles).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
     expect(updateSettings).toHaveBeenCalledWith({ runtimePath: project.workspaceRoot });
+  });
+
+  it("reports a visible error when project folder selection is unavailable", async () => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
+    const setError = vi.fn();
+    const { result } = renderHook(() =>
+      useDesktopProject({
+        setError,
+        t: createTranslator("en"),
+        updateSettings: vi.fn()
+      })
+    );
+
+    await act(async () => {
+      await result.current.handleOpenProject();
+    });
+
+    expect(setError).toHaveBeenCalledWith("Project folder selection is only available in the desktop app. Please open PlanWeave Desktop and choose a project root.");
   });
 
   it("opens the active task canvas when project summaries include one", async () => {
@@ -198,6 +220,7 @@ describe("desktop renderer hook interfaces", () => {
     renderHook(() =>
       useDesktopProject({
         setError: vi.fn(),
+        t: createTranslator("en"),
         updateSettings: vi.fn()
       })
     );
@@ -233,6 +256,7 @@ describe("desktop renderer hook interfaces", () => {
     const { result } = renderHook(() =>
       useDesktopProject({
         setError,
+        t: createTranslator("en"),
         updateSettings: vi.fn()
       })
     );
@@ -262,6 +286,7 @@ describe("desktop renderer hook interfaces", () => {
     const { result } = renderHook(() =>
       useDesktopProject({
         setError,
+        t: createTranslator("en"),
         updateSettings: vi.fn()
       })
     );

@@ -15,6 +15,7 @@ import { TodoGroupCard } from "../renderer/components/TodoGroupCard";
 import { createTranslator } from "../renderer/i18n";
 import { ProjectSidebar } from "../renderer/sidebar/ProjectSidebar";
 import { NotificationsView } from "../renderer/views/NotificationsView";
+import { StatisticsView } from "../renderer/views/StatisticsView";
 import { orderProjectsByPinnedIds } from "../renderer/settings";
 import type {
   DesktopBlockDetail,
@@ -503,6 +504,18 @@ describe("desktop renderer component interactions", () => {
     await userEvent.click(screen.getByRole("button", { name: "标记为已读: 最新记录" }));
 
     expect(onMarkNotificationRead).toHaveBeenCalledWith("latest-record:/tmp/record.json");
+  });
+
+  it("shows a project-opening empty state for statistics when no project is selected", async () => {
+    const handleOpenProject = vi.fn().mockResolvedValue(undefined);
+
+    render(<StatisticsView handleOpenProject={handleOpenProject} selectedProject={null} statistics={null} t={createTranslator("en")} />);
+
+    expect(screen.getByText("Open a project to view statistics")).toBeInTheDocument();
+    expect(screen.getByText(/task completion, block totals/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Open Project" }));
+
+    expect(handleOpenProject).toHaveBeenCalledTimes(1);
   });
 
   it("renders settings rows as switch controls", async () => {

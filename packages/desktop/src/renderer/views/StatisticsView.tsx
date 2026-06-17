@@ -1,10 +1,14 @@
 import type { DesktopStatistics } from "@planweave-ai/runtime";
+import { FolderOpenIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { createTranslator } from "../i18n";
 import { formatElapsed, formatPercent } from "../viewHelpers";
 
 type StatisticsViewProps = {
+  handleOpenProject: () => Promise<void>;
+  selectedProject: unknown | null;
   statistics: DesktopStatistics | null;
   t: ReturnType<typeof createTranslator>;
 };
@@ -27,9 +31,26 @@ const toneDot: Record<Tone, string> = {
   rose: "bg-rose-500"
 };
 
-export function StatisticsView({ statistics, t }: StatisticsViewProps) {
+export function StatisticsView({ handleOpenProject, selectedProject, statistics, t }: StatisticsViewProps) {
   if (!statistics) {
-    return null;
+    if (selectedProject) {
+      return null;
+    }
+    return (
+      <div className="flex h-full items-center justify-center">
+        <section className="flex max-w-xl flex-col gap-4 rounded-lg border bg-card p-5 text-card-foreground shadow-sm">
+          <div className="flex flex-col gap-2">
+            <div className="text-base font-medium">{t("statisticsNoProjectTitle")}</div>
+            <div className="text-sm text-muted-foreground">{t("statisticsNoProjectDescription")}</div>
+          </div>
+          <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">{t("statisticsNoProjectMetrics")}</div>
+          <Button className="w-fit" variant="outline" onClick={() => void handleOpenProject()}>
+            <FolderOpenIcon data-icon="inline-start" />
+            {t("openProject")}
+          </Button>
+        </section>
+      </div>
+    );
   }
 
   const implementedPercent = clampPercent(statistics.implementedRatio * 100);

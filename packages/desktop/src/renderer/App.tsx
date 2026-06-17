@@ -29,6 +29,7 @@ import { useRuntimeTools } from "./hooks/useRuntimeTools";
 import { useTaskNodeFocus } from "./hooks/useTaskNodeFocus";
 import { CollapsedSidebarControls, RightPaletteSidebar } from "./AppSidebars";
 import { AppSettingsRoute } from "./AppSettingsRoute";
+import { AppErrorBanner } from "./components/AppErrorBanner";
 
 export function App() {
   const [settings, setSettings] = useState<DesktopUiSettings>(() => loadDesktopSettings());
@@ -40,7 +41,6 @@ export function App() {
   const [, setBlockInspectorOpen] = useState(false);
   const { agentDetectionRefreshing, agentDetections, executorOptions, refreshAgentDetections } = useDetectedAgents();
   const { refreshRuntimeTools, runtimeTools } = useRuntimeTools();
-  const [, setProjectPath] = useState(settings.runtimePath);
   const [lastFileChange, setLastFileChange] = useState<DesktopPackageFileChangeEvent | null>(null);
   const [fileSyncDiagnostics, setFileSyncDiagnostics] = useState<string[]>([]);
   const [dirtyPromptRefs, setDirtyPromptRefs] = useState<string[]>([]);
@@ -57,6 +57,7 @@ export function App() {
 
   const desktopProject = useDesktopProject({
     setError,
+    t,
     updateSettings
   });
   const {
@@ -462,29 +463,33 @@ export function App() {
     },
     [settings.readNotificationIds, updateSettings]
   );
+  const settingsRouteProps = {
+    graph,
+    agents: agentDetections,
+    agentDetectionRefreshing,
+    language,
+    refreshAgentDetections,
+    refreshRuntimeTools,
+    runtimeTools,
+    projects: orderedProjects,
+    selectedProject,
+    loadProject: openProjectInSession,
+    setActiveView,
+    settings,
+    projectPromptMarkdown,
+    projectPromptPolicy,
+    t,
+    updateProjectPrompt,
+    updateProjectPromptPolicy,
+    updateSettings
+  };
 
   if (activeView === "settings") {
     return (
-      <AppSettingsRoute
-        graph={graph}
-        agents={agentDetections}
-        agentDetectionRefreshing={agentDetectionRefreshing}
-        language={language}
-        refreshAgentDetections={refreshAgentDetections}
-        refreshRuntimeTools={refreshRuntimeTools}
-        runtimeTools={runtimeTools}
-        projects={orderedProjects}
-        selectedProject={selectedProject}
-        loadProject={openProjectInSession}
-        setActiveView={setActiveView}
-        settings={settings}
-        projectPromptMarkdown={projectPromptMarkdown}
-        projectPromptPolicy={projectPromptPolicy}
-        t={t}
-        updateProjectPrompt={updateProjectPrompt}
-        updateProjectPromptPolicy={updateProjectPromptPolicy}
-        updateSettings={updateSettings}
-      />
+      <div className="relative h-screen min-h-0 overflow-hidden bg-background text-foreground">
+        <AppSettingsRoute {...settingsRouteProps} />
+        <AppErrorBanner message={error} onDismiss={() => setError(null)} t={t} />
+      </div>
     );
   }
 
@@ -579,7 +584,6 @@ export function App() {
           setNewTaskMode={setNewTaskMode}
           setNewTaskTargetId={setNewTaskTargetId}
           setNewTaskText={setNewTaskText}
-          setProjectPath={setProjectPath}
           setReviewDefaultCyclesDraft={setReviewDefaultCyclesDraft}
           setReviewTaskId={setReviewTaskId}
           setSearchQuery={setSearchQuery}
@@ -615,6 +619,7 @@ export function App() {
         setRightSidebarCollapsed={setRightSidebarCollapsed}
         t={t}
       />
+      <AppErrorBanner message={error} onDismiss={() => setError(null)} t={t} />
     </div>
   );
 }

@@ -9,10 +9,12 @@ import type {
   ProjectPromptPolicy
 } from "@planweave-ai/runtime";
 import { bridge, desktopCanvasReference } from "../bridge";
+import type { createTranslator } from "../i18n";
 import type { DesktopUiSettings } from "../types";
 
 export type UseDesktopProjectArgs = {
   setError: (message: string | null) => void;
+  t: ReturnType<typeof createTranslator>;
   updateSettings: (patch: Partial<DesktopUiSettings>) => void;
 };
 
@@ -32,6 +34,7 @@ function errorMessage(caught: unknown): string {
 
 export function useDesktopProject({
   setError,
+  t,
   updateSettings
 }: UseDesktopProjectArgs) {
   const [projects, setProjects] = useState<DesktopProjectSummary[]>([]);
@@ -168,6 +171,7 @@ export function useDesktopProject({
 
   const handleOpenProject = useCallback(async () => {
     if (!bridge) {
+      setError(t("openProjectBridgeUnavailable"));
       return;
     }
     try {
@@ -179,9 +183,9 @@ export function useDesktopProject({
       setProjects((items) => (items.some((item) => item.projectId === project.projectId) ? items : [...items, project]));
       await loadProject(project);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      setError(`${t("openProjectFailedHint")}\n${errorMessage(caught)}`);
     }
-  }, [loadProject, setError]);
+  }, [loadProject, setError, t]);
 
   const removeProject = useCallback(
     async (project: DesktopProjectSummary) => {

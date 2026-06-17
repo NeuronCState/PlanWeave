@@ -113,6 +113,8 @@ export function GraphView({
               {t("noProject")}
             </div>
             <div className="text-sm text-muted-foreground">{t("openProjectHint")}</div>
+            <div className="text-sm text-muted-foreground">{t("openProjectSecondaryHint")}</div>
+            <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">{t("exampleProjectHint")}</div>
             <Button className="w-fit" variant="outline" onClick={handleOpenProject}>
               <FolderOpenIcon data-icon="inline-start" />
               {t("openProject")}

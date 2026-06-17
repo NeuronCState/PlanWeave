@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { DesktopSearchResult, DesktopSearchResultKind } from "@planweave-ai/runtime";
+import type { DesktopProjectSummary, DesktopSearchResult, DesktopSearchResultKind } from "@planweave-ai/runtime";
+import { FolderOpenIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -8,12 +9,14 @@ import type { DesktopSearchCanvasScope } from "../hooks/useDesktopSearch";
 import type { createTranslator } from "../i18n";
 
 type SearchViewProps = {
+  handleOpenProject: () => Promise<void>;
   handleSearchResultOpen: (result: DesktopSearchResult) => Promise<void>;
   searchCanvasScope: DesktopSearchCanvasScope;
   searchQuery: string;
   searchResultKinds: DesktopSearchResultKind[];
   searchResults: DesktopSearchResult[];
   selectedCanvasId: string | null;
+  selectedProject: DesktopProjectSummary | null;
   selectedSearchResultKinds: DesktopSearchResultKind[];
   setSearchCanvasScope: Dispatch<SetStateAction<DesktopSearchCanvasScope>>;
   setSearchQuery: Dispatch<SetStateAction<string>>;
@@ -41,12 +44,14 @@ function searchKindLabel(kind: DesktopSearchResultKind, t: ReturnType<typeof cre
 }
 
 export function SearchView({
+  handleOpenProject,
   handleSearchResultOpen,
   searchCanvasScope,
   searchQuery,
   searchResultKinds,
   searchResults,
   selectedCanvasId,
+  selectedProject,
   selectedSearchResultKinds,
   setSearchCanvasScope,
   setSearchQuery,
@@ -54,6 +59,8 @@ export function SearchView({
   t
 }: SearchViewProps) {
   const selectedKinds = new Set(selectedSearchResultKinds);
+  const hasProject = Boolean(selectedProject);
+  const hasQuery = Boolean(searchQuery.trim());
   return (
     <div className="flex flex-col gap-3">
       <div className="text-sm font-medium">{t("query")}</div>
@@ -101,9 +108,23 @@ export function SearchView({
             {t("searchScopeCurrentCanvas")}
           </Button>
         </div>
+        {!selectedCanvasId ? <div className="text-xs text-muted-foreground">{t("searchNoCanvasHint")}</div> : null}
       </div>
       <ScrollArea className="h-[520px]">
-        <SearchResultList results={searchResults} targetMissingLabel={t("searchTargetMissing")} onOpenResult={handleSearchResultOpen} />
+        {!hasProject ? (
+          <div className="flex flex-col gap-3 rounded-lg border bg-card p-4 text-card-foreground">
+            <div className="text-sm font-medium">{t("searchNoProjectTitle")}</div>
+            <div className="text-sm text-muted-foreground">{t("searchNoProjectDescription")}</div>
+            <Button className="w-fit" variant="outline" onClick={() => void handleOpenProject()}>
+              <FolderOpenIcon data-icon="inline-start" />
+              {t("openProject")}
+            </Button>
+          </div>
+        ) : !hasQuery ? (
+          <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">{t("searchEmptyHint")}</div>
+        ) : (
+          <SearchResultList results={searchResults} targetMissingLabel={t("searchTargetMissing")} onOpenResult={handleSearchResultOpen} />
+        )}
       </ScrollArea>
     </div>
   );

@@ -61,6 +61,7 @@ export function FloatingAutoRunControl({
   t
 }: FloatingAutoRunControlProps) {
   const canStop = autoRunState ? ["running", "pausing", "paused", "manual", "blocked", "failed"].includes(autoRunState.phase) : false;
+  const hasProject = Boolean(selectedProject);
 
   return (
     <div className="absolute flex items-center gap-2 rounded-xl border bg-background p-2 shadow-lg" data-auto-run-control style={style}>
@@ -75,7 +76,13 @@ export function FloatingAutoRunControl({
       >
         <MoveIcon data-icon="inline-start" />
       </Button>
-      <Button size="icon-sm" variant={dirtyPromptCount ? "outline" : "ghost"} aria-label={t("syncFiles")} onClick={() => void refreshPackageFiles()}>
+      <Button
+        size="icon-sm"
+        variant={dirtyPromptCount ? "outline" : "ghost"}
+        aria-label={t("syncFiles")}
+        disabled={!hasProject}
+        onClick={() => void refreshPackageFiles()}
+      >
         <RefreshCwIcon data-icon="inline-start" />
       </Button>
       <ContextMenu>
@@ -87,6 +94,7 @@ export function FloatingAutoRunControl({
                   size="icon-lg"
                   variant={autoRunState?.phase === "blocked" || autoRunState?.phase === "failed" ? "destructive" : "default"}
                   aria-label={t("autoRun")}
+                  disabled={!hasProject}
                   onClick={() => void handleAutoRunClick()}
                 >
                   {autoRunState?.phase === "running" ? (
@@ -101,7 +109,7 @@ export function FloatingAutoRunControl({
               <PopoverContent align="end" className="w-96">
                 <PopoverHeader>
                   <PopoverTitle>{t("miniRunPanel")}</PopoverTitle>
-                  <PopoverDescription>{selectedProject?.name ?? t("noProject")}</PopoverDescription>
+                  <PopoverDescription>{selectedProject?.name ?? t("autoRunNoProjectHint")}</PopoverDescription>
                 </PopoverHeader>
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center justify-between gap-2">
@@ -152,11 +160,11 @@ export function FloatingAutoRunControl({
         <ContextMenuContent>
           <ContextMenuLabel>{t("autoRunScope")}</ContextMenuLabel>
           <ContextMenuRadioGroup value={autoRunScopeMode} onValueChange={(value) => setAutoRunScopeMode(value as AutoRunScopeMode)}>
-            <ContextMenuRadioItem value="project">{t("projectScope")}</ContextMenuRadioItem>
-            <ContextMenuRadioItem disabled={!selectedTaskPanelId && !selectedBlockPresent} value="selectedTask">
+            <ContextMenuRadioItem disabled={!hasProject} value="project">{t("projectScope")}</ContextMenuRadioItem>
+            <ContextMenuRadioItem disabled={!hasProject || (!selectedTaskPanelId && !selectedBlockPresent)} value="selectedTask">
               {t("selectedTaskScope")}
             </ContextMenuRadioItem>
-            <ContextMenuRadioItem disabled={!selectedBlockPresent} value="selectedBlock">
+            <ContextMenuRadioItem disabled={!hasProject || !selectedBlockPresent} value="selectedBlock">
               {t("selectedBlockScope")}
             </ContextMenuRadioItem>
           </ContextMenuRadioGroup>
@@ -169,8 +177,9 @@ export function FloatingAutoRunControl({
           <SquareIcon data-icon="inline-start" />
         </Button>
       ) : null}
+      {!hasProject ? <span className="max-w-[180px] text-xs text-muted-foreground">{t("autoRunNoProjectHint")}</span> : null}
       <Select value={autoRunScopeMode} onValueChange={(value) => setAutoRunScopeMode(value as AutoRunScopeMode)}>
-        <SelectTrigger className="h-9 w-36">
+        <SelectTrigger className="h-9 w-36" disabled={!hasProject}>
           <SelectValue aria-label={t("autoRunScope")} />
         </SelectTrigger>
         <SelectContent>

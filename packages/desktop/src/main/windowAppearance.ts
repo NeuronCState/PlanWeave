@@ -37,7 +37,36 @@ export function windowBackgroundColor(appearance: WindowMaterialSettings["appear
   return shouldUseDarkWindowBackground(appearance) ? darkWindowBackground : lightWindowBackground;
 }
 
+let liquidGlassActive = false;
+
+// Apply the macOS 26 (Tahoe) NSGlassEffectView so the real liquid-glass
+// material backs translucent shell surfaces. The addon falls back to legacy
+// vibrancy internally on older systems. Imported lazily so unit tests (which
+// mock electron but not this native addon) never load the binary.
+export async function applyLiquidGlassToWindow(window: BrowserWindow): Promise<void> {
+  if (process.platform !== "darwin") {
+    return;
+  }
+  try {
+    const { default: liquidGlass } = await import("electron-liquid-glass");
+    const viewId = liquidGlass.addView(window.getNativeWindowHandle(), { cornerRadius: 12 });
+    if (viewId >= 0) {
+      liquidGlassActive = true;
+      window.setBackgroundColor(materialWindowBackground);
+    }
+  } catch (error) {
+    console.error("Failed to apply liquid glass:", error instanceof Error ? error.message : String(error));
+  }
+}
+
 export function applyWindowMaterial(window: BrowserWindow, settings: WindowMaterialSettings): void {
+  if (process.platform === "darwin" && liquidGlassActive) {
+    // Native liquid glass owns the macOS window background. The renderer's
+    // `data-window-material` flag decides whether shell surfaces reveal it,
+    // so there is no native vibrancy to toggle here.
+    window.setBackgroundColor(materialWindowBackground);
+    return;
+  }
   const materialEnabled = settings.enabled && getWindowMaterialCapabilities().supported;
   window.setBackgroundColor(windowBackgroundColor(settings.appearance, materialEnabled));
   if (process.platform === "darwin") {

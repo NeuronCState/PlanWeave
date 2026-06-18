@@ -238,6 +238,15 @@ function normalizeDesktopSettingsPatch(value: unknown): Partial<DesktopUiSetting
   return patch;
 }
 
+const materialDefaultMigrationKey = "planweave.desktop.material-default-macos.v1";
+
+function isMacOs(): boolean {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  return /Macintosh|Mac OS X/i.test(navigator.userAgent);
+}
+
 export function loadDesktopSettings(): DesktopUiSettings {
   if (typeof window === "undefined") {
     return defaultDesktopSettings;
@@ -245,10 +254,20 @@ export function loadDesktopSettings(): DesktopUiSettings {
   try {
     const raw = window.localStorage.getItem(desktopSettingsKey);
     if (!raw) {
-      return defaultDesktopSettings;
+      window.localStorage.setItem(materialDefaultMigrationKey, "1");
+      return mergeDesktopSettings(defaultDesktopSettings, {
+        windowMaterial: { enabled: isMacOs() }
+      });
     }
     const parsed: unknown = JSON.parse(raw);
-    return mergeDesktopSettings(defaultDesktopSettings, normalizeDesktopSettingsPatch(parsed));
+    const merged = mergeDesktopSettings(defaultDesktopSettings, normalizeDesktopSettingsPatch(parsed));
+    // One-time migration: existing macOS users adopt the glass window material
+    // once. After this runs we never force it again, so a later manual opt-out sticks.
+    if (isMacOs() && !window.localStorage.getItem(materialDefaultMigrationKey)) {
+      window.localStorage.setItem(materialDefaultMigrationKey, "1");
+      return mergeDesktopSettings(merged, { windowMaterial: { enabled: true } });
+    }
+    return merged;
   } catch {
     return defaultDesktopSettings;
   }

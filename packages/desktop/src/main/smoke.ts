@@ -206,15 +206,15 @@ async function runRendererManualSmoke(window: BrowserWindow): Promise<Record<str
       const waitForWindowMaterialState = async () => {
         for (let attempt = 0; attempt < 50; attempt += 1) {
           const rootHasMaterial = document.documentElement.dataset.windowMaterial === "true";
-          const shell = document.querySelector(".bg-app-shell");
-          const backgroundColor = shell instanceof HTMLElement ? window.getComputedStyle(shell).backgroundColor : "";
-          const shellHasAlpha = /(?:rgba|rgb|oklch|color)\\([^)]*(?:,\\s*0\\.|\\/\\s*0\\.)/.test(backgroundColor);
-          if (rootHasMaterial && shellHasAlpha) {
+          const sidebar = document.querySelector(".bg-app-sidebar");
+          const backgroundColor = sidebar instanceof HTMLElement ? window.getComputedStyle(sidebar).backgroundColor : "";
+          const sidebarHasAlpha = /(?:rgba|rgb|oklch|color)\\([^)]*(?:,\\s*0\\.|\\/\\s*0\\.)/.test(backgroundColor);
+          if (rootHasMaterial && sidebarHasAlpha) {
             return backgroundColor;
           }
           await wait(100);
         }
-        throw new Error("Window material did not apply a root state and alpha shell surface.");
+        throw new Error("Window material did not apply a root state and an alpha sidebar surface.");
       };
 
       const covered = [];
@@ -255,7 +255,11 @@ async function runRendererManualSmoke(window: BrowserWindow): Promise<Record<str
       if (!(materialSwitch instanceof HTMLElement)) {
         throw new Error("Enhanced window material switch was not visible.");
       }
-      await clickElement(materialSwitch);
+      // The window material defaults on for macOS, so only toggle when it is off
+      // to land in the enabled state instead of blindly flipping it back off.
+      if (materialSwitch.getAttribute("aria-checked") !== "true") {
+        await clickElement(materialSwitch);
+      }
       await waitForWindowMaterialState();
       covered.push("enable-window-material");
       await clickByTestId("settings-nav-components");

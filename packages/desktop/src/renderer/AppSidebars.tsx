@@ -45,7 +45,7 @@ export function RightPaletteSidebar({
           onPointerDown={onResizeStart}
         />
       ) : null}
-      <div className="app-drag-region flex h-11 shrink-0 items-center justify-end border-b border-border/80 bg-app-topbar/95 px-2">
+      <div className="app-drag-region flex h-11 shrink-0 items-center justify-end border-b border-border/80 bg-app-topbar px-2">
         <Button className="app-no-drag" size="icon-sm" variant="ghost" aria-label={t("collapseSidebar")} onClick={() => setRightSidebarCollapsed(true)}>
           <PanelRightCloseIcon data-icon="inline-start" />
         </Button>
@@ -65,7 +65,7 @@ export function CollapsedSidebarControls({
   return (
     <>
       {leftSidebarCollapsed ? (
-        <div className="app-drag-region absolute left-0 top-0 z-20 flex h-11 w-[280px] items-center border-b border-border/80 bg-app-topbar/95 px-3 pl-[124px] text-text">
+        <div className="app-drag-region absolute left-0 top-0 z-20 flex h-11 w-[280px] items-center border-b border-border/80 bg-app-topbar px-3 pl-[124px] text-text">
           <div className="app-no-drag flex items-center gap-1">
             <Button size="icon-sm" variant="ghost" aria-label={t("expandSidebar")} onClick={() => setLeftSidebarCollapsed(false)}>
               <PanelLeftOpenIcon data-icon="inline-start" />
@@ -75,7 +75,7 @@ export function CollapsedSidebarControls({
         </div>
       ) : null}
       {rightSidebarCollapsed ? (
-        <div className="app-drag-region absolute right-0 top-0 z-30 flex h-11 w-11 items-center justify-center border-b border-l border-border/80 bg-app-topbar/95 text-text">
+        <div className="app-drag-region absolute right-0 top-0 z-30 flex h-11 w-11 items-center justify-center border-b border-l border-border/80 bg-app-topbar text-text">
           <Button className="app-no-drag" size="icon-sm" variant="ghost" aria-label={t("expandSidebar")} onClick={() => setRightSidebarCollapsed(false)}>
             <PanelRightCloseIcon data-icon="inline-start" />
           </Button>

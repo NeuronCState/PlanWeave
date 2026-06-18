@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Event as ElectronEvent, WebContentsConsoleMessageEventParams } from "electron";
 import { runSmokeCheck } from "./smoke.js";
-import { windowBackgroundColor } from "./windowAppearance.js";
+import { applyLiquidGlassToWindow, windowBackgroundColor } from "./windowAppearance.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -12,6 +12,9 @@ function rendererEntry(): string {
 }
 
 export async function createWindow(options: { isDev: boolean; isSmoke: boolean }): Promise<BrowserWindow> {
+  // macOS liquid glass requires a transparent window so the NSGlassEffectView
+  // behind the web contents can blend with whatever sits behind the window.
+  const isMac = process.platform === "darwin";
   const window = new BrowserWindow({
     width: 1360,
     height: 860,
@@ -21,7 +24,8 @@ export async function createWindow(options: { isDev: boolean; isSmoke: boolean }
     title: "PlanWeave Desktop",
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 14, y: 14 },
-    backgroundColor: windowBackgroundColor("system"),
+    transparent: isMac,
+    backgroundColor: isMac ? "#00000000" : windowBackgroundColor("system"),
     webPreferences: {
       preload: join(__dirname, "..", "preload", "preload.js"),
       contextIsolation: true,
@@ -29,6 +33,13 @@ export async function createWindow(options: { isDev: boolean; isSmoke: boolean }
       sandbox: false
     }
   });
+
+  if (isMac) {
+    // Transparent windows can hide the traffic-light controls; force them back.
+    window.setWindowButtonVisibility?.(true);
+  }
+
+  await applyLiquidGlassToWindow(window);
 
   if (options.isSmoke) {
     window.webContents.on("console-message", (details: ElectronEvent<WebContentsConsoleMessageEventParams>) => {

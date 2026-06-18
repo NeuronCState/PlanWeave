@@ -6,8 +6,10 @@ import { loadPackage } from "../package/loadPackage.js";
 import { resolveTaskCanvasWorkspace } from "./canvasApi.js";
 import type { ProjectWorkspace } from "../types.js";
 import type { DesktopAutoRunEventListener, DesktopAutoRunOptions, DesktopAutoRunScope, DesktopAutoRunState } from "./types.js";
-import { appendAutoRunEvent, autoRunRoot, cloneAutoRunState, createAutoRunEvent, nextRunId, now, writeAutoRunState } from "./runStateStore.js";
+import { appendAutoRunEvent, autoRunRoot, cloneAutoRunState, createAutoRunEvent, now } from "./runStateStore.js";
+import { listPersistedAutoRunStates, nextPersistedAutoRunId, writePersistedAutoRunState } from "./runStateRepository.js";
 import { claimRef, claimScope, executorName, latestStatus, outputSummary, phaseAfterStep, terminalPatch } from "./runStepState.js";
+import { invalidateDesktopProjectProjection } from "./graph/projectProjectionModel.js";
 
 const runs = new Map<string, DesktopAutoRunState>();
 const runWorkspaces = new Map<string, ProjectWorkspace>();
@@ -31,7 +33,7 @@ async function setState(runId: string, patch: Partial<DesktopAutoRunState>, even
   if (immediateVisibility) {
     runs.set(runId, next);
   }
-  await writeAutoRunState(next);
+  await writePersistedAutoRunState(next);
   let changedEventType: string | null = null;
   if (eventType || previousPhase !== next.phase) {
     const resolvedEventType = eventType ?? "phase_change";
@@ -109,6 +111,7 @@ async function runLoop(runId: string): Promise<void> {
           scope: claimScope(current.scope),
           tmuxEnabled: current.options.tmuxEnabled
         });
+        invalidateDesktopProjectProjection(current.projectRoot);
         const { record, warnings } = await latestStatus(workspace);
         const patch = terminalPatch(step, warnings);
         const afterStep = runs.get(runId);
@@ -159,6 +162,32 @@ function launchRunLoop(runId: string): void {
   void runLoop(runId);
 }
 
+function canRehydratePersistedRun(state: DesktopAutoRunState): boolean {
+  return state.phase === "paused" || state.phase === "manual";
+}
+
+function isRunIdConflictProtected(state: DesktopAutoRunState): boolean {
+  return state.phase === "running" || state.phase === "pausing" || state.phase === "paused" || state.phase === "manual";
+}
+
+function assertRunIdMatchesExistingTarget(state: DesktopAutoRunState): void {
+  const existing = runs.get(state.runId);
+  if (!existing || !isRunIdConflictProtected(existing) || (existing.projectRoot === state.projectRoot && existing.canvasId === state.canvasId)) {
+    return;
+  }
+  throw new Error(
+    `Auto Run '${state.runId}' already belongs to project '${existing.projectRoot}' canvas '${existing.canvasId ?? "default"}'.`
+  );
+}
+
+function rehydratePersistedRun(state: DesktopAutoRunState, workspace: ProjectWorkspace): DesktopAutoRunState {
+  const rehydrated = state.phase === "paused" ? withExplanation(state) : state;
+  assertRunIdMatchesExistingTarget(rehydrated);
+  runs.set(rehydrated.runId, rehydrated);
+  runWorkspaces.set(rehydrated.runId, workspace);
+  return rehydrated;
+}
+
 export async function startAutoRun(
   projectRoot: string,
   canvasId: string | null | undefined,
@@ -168,7 +197,12 @@ export async function startAutoRun(
 ): Promise<DesktopAutoRunState> {
   const workspace = await resolveTaskCanvasWorkspace(projectRoot, canvasId);
   const resetReviews = await resetMaxCycleReviewsForRetry({ projectRoot: workspace, scope: claimScope(scope) });
-  const runId = nextRunId();
+  const runId = await nextPersistedAutoRunId(workspace, {
+    isReserved: (candidateRunId) => {
+      const existing = runs.get(candidateRunId);
+      return activeLoops.has(candidateRunId) || (existing ? isRunIdConflictProtected(existing) : false);
+    }
+  });
   const root = autoRunRoot(workspace, runId);
   const timestamp = now();
   const state = withExplanation({
@@ -194,7 +228,7 @@ export async function startAutoRun(
   });
   runs.set(runId, state);
   runWorkspaces.set(runId, workspace);
-  await writeAutoRunState(state);
+  await writePersistedAutoRunState(state);
   await appendAutoRunEvent(state, "run_started", { scope, resetMaxCycleReviewRefs: resetReviews.refs });
   emitAutoRunChanged(state, "run_started");
   launchRunLoop(runId);
@@ -245,9 +279,23 @@ export async function getAutoRunState(runId: string): Promise<DesktopAutoRunStat
 }
 
 export async function getLatestAutoRunSummary(projectRoot: string, canvasId?: string | null): Promise<DesktopAutoRunState | null> {
+  const normalizedCanvasId = canvasId ?? null;
+  const workspace = await resolveTaskCanvasWorkspace(projectRoot, normalizedCanvasId);
   const latest = [...runs.values()]
-    .filter((run) => run.projectRoot === projectRoot && run.canvasId === (canvasId ?? null))
+    .filter((run) => run.projectRoot === projectRoot && run.canvasId === normalizedCanvasId)
     .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
     .at(-1);
-  return latest ? cloneAutoRunState(latest) : null;
+  if (latest) {
+    return cloneAutoRunState(latest);
+  }
+  const persistedLatest = (await listPersistedAutoRunStates(workspace, { hasActiveLoop: (runId) => activeLoops.has(runId) }))
+    .filter((run) => run.projectRoot === workspace.rootPath && run.canvasId === normalizedCanvasId)
+    .at(0);
+  if (!persistedLatest) {
+    return null;
+  }
+  const state = canRehydratePersistedRun(persistedLatest)
+    ? rehydratePersistedRun(persistedLatest, workspace)
+    : persistedLatest;
+  return cloneAutoRunState(state);
 }

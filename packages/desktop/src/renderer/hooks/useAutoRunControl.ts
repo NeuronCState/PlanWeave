@@ -104,7 +104,7 @@ export function useAutoRunControl({
     }
     try {
       setMiniRunPanelOpen(true);
-      if (!autoRunState || ["completed", "blocked", "failed", "stopped", "manual"].includes(autoRunState.phase)) {
+      if (!autoRunState || ["completed", "blocked", "failed", "stopped"].includes(autoRunState.phase)) {
         const scope = selectedAutoRunScope();
         if (!scope) {
           setError(t("selectBlockFirst"));

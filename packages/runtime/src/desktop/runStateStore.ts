@@ -4,14 +4,8 @@ import { writeJsonFile } from "../json.js";
 import type { ProjectWorkspace } from "../types.js";
 import type { DesktopAutoRunEvent, DesktopAutoRunState } from "./types.js";
 
-let nextRunNumber = 1;
-
 export function now(): string {
   return new Date().toISOString();
-}
-
-export function nextRunId(): string {
-  return `DESKTOP-RUN-${String(nextRunNumber++).padStart(4, "0")}`;
 }
 
 export function cloneAutoRunState(state: DesktopAutoRunState): DesktopAutoRunState {

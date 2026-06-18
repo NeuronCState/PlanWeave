@@ -205,6 +205,58 @@ describe("auto run control hook", () => {
     expect(result.current.autoRunState).toEqual(runningState);
   });
 
+  it("keeps manual Auto Run state waiting for manual submission instead of starting a new run", async () => {
+    const manualState = autoRunState({
+      phase: "manual",
+      currentRef: selectedBlock.ref,
+      currentExecutor: "manual",
+      error: "Manual result required.",
+      explanation: {
+        phase: "manual",
+        currentRef: selectedBlock.ref,
+        currentExecutor: "manual",
+        latestRecordId: null,
+        latestRecordPath: null,
+        latestOutputSummary: "planweave submit-result T-ALPHA#B-001 --report <report.md>",
+        error: "Manual result required.",
+        nextAction: {
+          kind: "submit_manual_result",
+          message: "Complete the manual step, then submit the result.",
+          command: "planweave submit-result T-ALPHA#B-001 --report <report.md>",
+          targetPath: null,
+          ref: selectedBlock.ref
+        }
+      }
+    });
+    const bridge = createDesktopBridgeMock({
+      startAutoRun: vi.fn()
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useAutoRunControl } = await import("../renderer/hooks/useAutoRunControl");
+
+    const { result } = renderHook(() =>
+      useAutoRunControl({
+        autoRunState: manualState,
+        selectedCanvasId: "canvas-main",
+        selectedBlock,
+        selectedProject: project,
+        selectedTaskPanelId: null,
+        setAutoRunState: vi.fn(),
+        setError: vi.fn(),
+        t: createTranslator("zh-CN"),
+        tmuxMonitoringEnabled: false
+      })
+    );
+
+    await act(async () => {
+      await result.current.handleAutoRunClick();
+    });
+
+    expect(bridge.startAutoRun).not.toHaveBeenCalled();
+    expect(result.current.autoRunState).toEqual(manualState);
+  });
+
   it("updates auto-run state from matching subscription events without polling", async () => {
     const runningState = autoRunState();
     const eventState = autoRunState({

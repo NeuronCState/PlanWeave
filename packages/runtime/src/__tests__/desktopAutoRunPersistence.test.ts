@@ -1,0 +1,451 @@
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  createTaskCanvas,
+  getAutoRunState,
+  getLatestAutoRunSummary,
+  resolveTaskCanvasWorkspace,
+  resumeAutoRun,
+  startAutoRun,
+  stopAutoRun
+} from "../desktop/index.js";
+import type { DesktopAutoRunState } from "../desktop/index.js";
+import { initWorkspace } from "../initWorkspace.js";
+import { writeJsonFile } from "../json.js";
+import { writeProjectGraph } from "../projectGraph/loadProjectGraph.js";
+import type { PlanPackageManifest, ProjectWorkspace } from "../types.js";
+import { createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
+import { manifestTestBuilder } from "./manifestTestBuilder.js";
+
+const startedRunIds = new Set<string>();
+const noTmux = { tmuxEnabled: false } as const;
+
+afterEach(async () => {
+  await Promise.all([...startedRunIds].map((runId) => stopAutoRun(runId).catch(() => undefined)));
+  startedRunIds.clear();
+  delete process.env.PLANWEAVE_HOME;
+});
+
+function persistedAutoRunState(workspace: ProjectWorkspace, patch: Partial<Omit<DesktopAutoRunState, "explanation">> = {}): DesktopAutoRunState {
+  const runId = patch.runId ?? "DESKTOP-RUN-0001";
+  const runRoot = join(workspace.resultsDir, "auto-runs", runId);
+  const state = {
+    runId,
+    projectRoot: workspace.rootPath,
+    canvasId: null,
+    scope: { kind: "project" },
+    phase: "completed",
+    stepCount: 1,
+    stepLimit: 20,
+    currentRef: "T-001#B-001",
+    currentExecutor: "fake-codex",
+    elapsedMs: 1250,
+    latestOutputSummary: "persisted output",
+    latestRecordId: "T-001#B-001::RUN-001",
+    latestRecordPath: join(workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-001", "metadata.json"),
+    statePath: join(runRoot, "state.json"),
+    eventLogPath: join(runRoot, "events.ndjson"),
+    options: { tmuxEnabled: false },
+    error: null,
+    startedAt: "2026-05-23T00:00:00.000Z",
+    updatedAt: "2026-05-23T00:00:01.250Z",
+    ...patch
+  } satisfies Omit<DesktopAutoRunState, "explanation">;
+  return {
+    ...state,
+    explanation: {
+      phase: state.phase,
+      currentRef: state.currentRef,
+      currentExecutor: state.currentExecutor,
+      latestRecordId: state.latestRecordId,
+      latestRecordPath: state.latestRecordPath,
+      latestOutputSummary: state.latestOutputSummary,
+      error: state.error,
+      nextAction: {
+        kind: "review_status",
+        message: "Review the final status and latest run record.",
+        command: null,
+        targetPath: null,
+        ref: state.currentRef
+      }
+    }
+  };
+}
+
+async function writePersistedAutoRunState(state: DesktopAutoRunState): Promise<void> {
+  await mkdir(dirname(state.statePath), { recursive: true });
+  await writeFile(state.statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+}
+
+async function createTestWorkspaceInHome(home: string, manifest: PlanPackageManifest): Promise<{
+  root: string;
+  init: Awaited<ReturnType<typeof initWorkspace>>;
+}> {
+  const root = await mkdtemp(join(tmpdir(), "planweave-project-"));
+  process.env.PLANWEAVE_HOME = home;
+  const init = await initWorkspace({ projectRoot: root });
+  await writeJsonFile(init.workspace.manifestFile, manifest);
+  await writePromptFiles(init.workspace.packageDir, manifest);
+  return { root, init };
+}
+
+function desktopRunNumber(runId: string): number {
+  const match = /^DESKTOP-RUN-(\d+)$/.exec(runId);
+  expect(match).not.toBeNull();
+  return Number.parseInt(match![1], 10);
+}
+
+describe("desktop auto run persistence", () => {
+  it("allocates desktop run IDs after existing persisted Auto Run directories", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { root, init } = await createTestWorkspace(manifest);
+    await writePersistedAutoRunState(persistedAutoRunState(init.workspace, { runId: "DESKTOP-RUN-0007" }));
+
+    const started = await startAutoRun(root, null, { kind: "project" }, 0, noTmux);
+    startedRunIds.add(started.runId);
+
+    expect(desktopRunNumber(started.runId)).toBeGreaterThanOrEqual(8);
+  });
+
+  it("allocates distinct desktop run IDs for concurrent starts", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { root } = await createTestWorkspace(manifest);
+
+    const [first, second] = await Promise.all([
+      startAutoRun(root, null, { kind: "project" }, 0, noTmux),
+      startAutoRun(root, null, { kind: "project" }, 0, noTmux)
+    ]);
+    startedRunIds.add(first.runId);
+    startedRunIds.add(second.runId);
+
+    expect(first.runId).not.toBe(second.runId);
+    expect(first.runId).toMatch(/^DESKTOP-RUN-\d{4,}$/);
+    expect(second.runId).toMatch(/^DESKTOP-RUN-\d{4,}$/);
+  });
+
+  it("allocates globally distinct desktop run IDs across project canvas workspaces", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { root } = await createTestWorkspace(manifest);
+    const canvas = await createTaskCanvas(root, { name: "Second canvas" });
+
+    const defaultRun = await startAutoRun(root, null, { kind: "project" }, 0, noTmux);
+    const canvasRun = await startAutoRun(root, canvas.canvasId, { kind: "project" }, 0, noTmux);
+    startedRunIds.add(defaultRun.runId);
+    startedRunIds.add(canvasRun.runId);
+
+    expect(defaultRun.runId).not.toBe(canvasRun.runId);
+    await expect(getAutoRunState(defaultRun.runId)).resolves.toMatchObject({
+      runId: defaultRun.runId,
+      projectRoot: root,
+      canvasId: null
+    });
+    await expect(getAutoRunState(canvasRun.runId)).resolves.toMatchObject({
+      runId: canvasRun.runId,
+      projectRoot: root,
+      canvasId: canvas.canvasId
+    });
+  });
+
+  it("allocates desktop run IDs after existing persisted Auto Run directories in other canvases", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { root } = await createTestWorkspace(manifest);
+    const canvas = await createTaskCanvas(root, { name: "Second canvas" });
+    const canvasWorkspace = await resolveTaskCanvasWorkspace(root, canvas.canvasId);
+    await writePersistedAutoRunState(persistedAutoRunState(canvasWorkspace, { runId: "DESKTOP-RUN-0007", canvasId: canvas.canvasId }));
+
+    const started = await startAutoRun(root, null, { kind: "project" }, 0, noTmux);
+    startedRunIds.add(started.runId);
+
+    expect(desktopRunNumber(started.runId)).toBeGreaterThanOrEqual(8);
+  });
+
+  it("allocates desktop run IDs after existing persisted Auto Run directories in custom canvas results dirs", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { root, init } = await createTestWorkspace(manifest);
+    await writeProjectGraph(init.workspace, {
+      version: "plan-project/v1",
+      canvases: [
+        {
+          id: "default",
+          type: "canvas",
+          title: "Default",
+          packageDir: "package",
+          stateFile: "state.json",
+          resultsDir: "results"
+        },
+        {
+          id: "manual-canvas",
+          type: "canvas",
+          title: "Manual canvas",
+          packageDir: "manual-canvas/package",
+          stateFile: "manual-canvas/state.json",
+          resultsDir: "manual-canvas/results"
+        }
+      ],
+      edges: [],
+      crossTaskEdges: []
+    });
+    const canvasWorkspace = await resolveTaskCanvasWorkspace(root, "manual-canvas");
+    await writePersistedAutoRunState(persistedAutoRunState(canvasWorkspace, { runId: "DESKTOP-RUN-0007", canvasId: "manual-canvas" }));
+
+    const started = await startAutoRun(root, null, { kind: "project" }, 0, noTmux);
+    startedRunIds.add(started.runId);
+
+    expect(desktopRunNumber(started.runId)).toBeGreaterThanOrEqual(8);
+  });
+
+  it("allocates desktop run IDs when an unrelated historical project has corrupt metadata", async () => {
+    const manifest = manifestTestBuilder().build();
+    const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    const current = await createTestWorkspaceInHome(home, manifest);
+    const corruptProjectRoot = join(home, "projects", "corrupt-project");
+    await mkdir(corruptProjectRoot, { recursive: true });
+    await writeFile(join(corruptProjectRoot, "project.json"), "{", "utf8");
+
+    const started = await startAutoRun(current.root, null, { kind: "project" }, 0, noTmux);
+    startedRunIds.add(started.runId);
+
+    await expect(getAutoRunState(started.runId)).resolves.toMatchObject({
+      runId: started.runId,
+      projectRoot: current.root
+    });
+  });
+
+  it("uses historical project graph canvas results dirs even when project metadata is corrupt", async () => {
+    const manifest = manifestTestBuilder().build();
+    const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    const current = await createTestWorkspaceInHome(home, manifest);
+    const historicalWorkspace = await createTestWorkspaceInHome(home, manifest);
+    await writeProjectGraph(historicalWorkspace.init.workspace, {
+      version: "plan-project/v1",
+      canvases: [
+        {
+          id: "default",
+          type: "canvas",
+          title: "Default",
+          packageDir: "package",
+          stateFile: "state.json",
+          resultsDir: "results"
+        },
+        {
+          id: "manual-canvas",
+          type: "canvas",
+          title: "Manual canvas",
+          packageDir: "manual-canvas/package",
+          stateFile: "manual-canvas/state.json",
+          resultsDir: "manual-canvas/results"
+        }
+      ],
+      edges: [],
+      crossTaskEdges: []
+    });
+    const canvasWorkspace = await resolveTaskCanvasWorkspace(historicalWorkspace.root, "manual-canvas");
+    await writePersistedAutoRunState(persistedAutoRunState(canvasWorkspace, { runId: "DESKTOP-RUN-0007", canvasId: "manual-canvas" }));
+    await writeFile(historicalWorkspace.init.workspace.projectFile, "{", "utf8");
+
+    const started = await startAutoRun(current.root, null, { kind: "project" }, 0, noTmux);
+    startedRunIds.add(started.runId);
+
+    expect(desktopRunNumber(started.runId)).toBeGreaterThanOrEqual(8);
+  });
+
+  it("allocates globally distinct desktop run IDs across projects in the same PlanWeave home", async () => {
+    const manifest = manifestTestBuilder().build();
+    const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    const firstWorkspace = await createTestWorkspaceInHome(home, manifest);
+    const secondWorkspace = await createTestWorkspaceInHome(home, manifest);
+
+    const [firstRun, secondRun] = await Promise.all([
+      startAutoRun(firstWorkspace.root, null, { kind: "project" }, 0, noTmux),
+      startAutoRun(secondWorkspace.root, null, { kind: "project" }, 0, noTmux)
+    ]);
+    startedRunIds.add(firstRun.runId);
+    startedRunIds.add(secondRun.runId);
+
+    expect(firstRun.runId).not.toBe(secondRun.runId);
+    await expect(getAutoRunState(firstRun.runId)).resolves.toMatchObject({
+      runId: firstRun.runId,
+      projectRoot: firstWorkspace.root,
+      canvasId: null
+    });
+    await expect(getAutoRunState(secondRun.runId)).resolves.toMatchObject({
+      runId: secondRun.runId,
+      projectRoot: secondWorkspace.root,
+      canvasId: null
+    });
+  });
+
+  it("recovers the latest persisted Auto Run summary without reporting interrupted runs as active", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { root, init } = await createTestWorkspace(manifest);
+    const interrupted = persistedAutoRunState(init.workspace, {
+      runId: "DESKTOP-RUN-0003",
+      phase: "running",
+      error: null,
+      updatedAt: "2026-05-23T00:00:01.250Z"
+    });
+    await writePersistedAutoRunState(interrupted);
+
+    const summary = await getLatestAutoRunSummary(root, null);
+
+    expect(summary).toMatchObject({
+      runId: "DESKTOP-RUN-0003",
+      phase: "failed",
+      currentRef: "T-001#B-001",
+      currentExecutor: "fake-codex",
+      latestRecordId: "T-001#B-001::RUN-001",
+      latestRecordPath: interrupted.latestRecordPath,
+      statePath: interrupted.statePath,
+      eventLogPath: interrupted.eventLogPath,
+      elapsedMs: 1250,
+      error: expect.stringContaining("interrupted while running"),
+      explanation: {
+        phase: "failed",
+        error: expect.stringContaining("interrupted while running"),
+        latestRecordPath: interrupted.latestRecordPath,
+        nextAction: {
+          kind: "inspect_record",
+          message: "Inspect the latest run record, then resolve the blocker before retrying.",
+          targetPath: interrupted.latestRecordPath
+        }
+      }
+    });
+  });
+
+  it("rehydrates persisted paused Auto Run summaries so they can resume", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { root, init } = await createTestWorkspace(manifest);
+    const paused = persistedAutoRunState(init.workspace, {
+      runId: "DESKTOP-RUN-9104",
+      phase: "paused",
+      error: "Step limit reached.",
+      updatedAt: "2026-05-23T00:00:04.000Z"
+    });
+    await writePersistedAutoRunState(paused);
+
+    const summary = await getLatestAutoRunSummary(root, null);
+
+    expect(summary).toMatchObject({
+      runId: "DESKTOP-RUN-9104",
+      phase: "paused",
+      explanation: {
+        phase: "paused",
+        nextAction: {
+          kind: "resume"
+        }
+      }
+    });
+    await expect(resumeAutoRun(paused.runId)).resolves.toMatchObject({
+      runId: paused.runId,
+      phase: "running"
+    });
+  });
+
+  it("does not silently overwrite an in-memory run when rehydrating a duplicated persisted run ID", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { root, init } = await createTestWorkspace(manifest);
+    const canvas = await createTaskCanvas(root, { name: "Second canvas" });
+    const canvasWorkspace = await resolveTaskCanvasWorkspace(root, canvas.canvasId);
+    await writePersistedAutoRunState(
+      persistedAutoRunState(init.workspace, {
+        runId: "DESKTOP-RUN-9001",
+        phase: "paused",
+        updatedAt: "2026-05-23T00:00:04.000Z"
+      })
+    );
+    await writePersistedAutoRunState(
+      persistedAutoRunState(canvasWorkspace, {
+        runId: "DESKTOP-RUN-9001",
+        canvasId: canvas.canvasId,
+        phase: "paused",
+        updatedAt: "2026-05-23T00:00:05.000Z"
+      })
+    );
+
+    await expect(getLatestAutoRunSummary(root, null)).resolves.toMatchObject({
+      runId: "DESKTOP-RUN-9001",
+      canvasId: null
+    });
+    await expect(getLatestAutoRunSummary(root, canvas.canvasId)).rejects.toThrow("already belongs to project");
+    await expect(getAutoRunState("DESKTOP-RUN-9001")).resolves.toMatchObject({
+      runId: "DESKTOP-RUN-9001",
+      canvasId: null
+    });
+  });
+
+  it("rehydrates persisted manual Auto Run summaries as continuable manual-result sessions", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { root, init } = await createTestWorkspace(manifest);
+    const manual = {
+      ...persistedAutoRunState(init.workspace, {
+        runId: "DESKTOP-RUN-9105",
+        phase: "manual",
+        currentExecutor: "manual",
+        latestOutputSummary: "Manual result required.",
+        error: "Manual result required.",
+        updatedAt: "2026-05-23T00:00:05.000Z"
+      }),
+      explanation: {
+        phase: "manual",
+        currentRef: "T-001#B-001",
+        currentExecutor: "manual",
+        latestRecordId: "T-001#B-001::RUN-001",
+        latestRecordPath: null,
+        latestOutputSummary: "Manual result required.",
+        error: "Manual result required.",
+        nextAction: {
+          kind: "submit_manual_result",
+          message: "Submit a manual result file for the current block.",
+          command: "planweave submit T-001#B-001 --report <path>",
+          targetPath: null,
+          ref: "T-001#B-001"
+        }
+      }
+    } satisfies DesktopAutoRunState;
+    await writePersistedAutoRunState(manual);
+
+    const summary = await getLatestAutoRunSummary(root, null);
+
+    expect(summary).toMatchObject({
+      runId: "DESKTOP-RUN-9105",
+      phase: "manual",
+      error: "Manual result required.",
+      explanation: {
+        phase: "manual",
+        nextAction: {
+          kind: "submit_manual_result",
+          command: "planweave submit T-001#B-001 --report <path>",
+          ref: "T-001#B-001"
+        }
+      }
+    });
+    await expect(getAutoRunState(manual.runId)).resolves.toMatchObject({
+      runId: manual.runId,
+      phase: "manual"
+    });
+  });
+
+  it("skips corrupt persisted Auto Run states while recovering the latest valid summary", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { root, init } = await createTestWorkspace(manifest);
+    const valid = persistedAutoRunState(init.workspace, {
+      runId: "DESKTOP-RUN-0002",
+      phase: "completed",
+      updatedAt: "2026-05-23T00:00:02.000Z"
+    });
+    const corrupt = persistedAutoRunState(init.workspace, {
+      runId: "DESKTOP-RUN-0003",
+      updatedAt: "2026-05-23T00:00:03.000Z"
+    });
+    await writePersistedAutoRunState(valid);
+    await mkdir(dirname(corrupt.statePath), { recursive: true });
+    await writeFile(corrupt.statePath, "{", "utf8");
+
+    await expect(getLatestAutoRunSummary(root, null)).resolves.toMatchObject({
+      runId: "DESKTOP-RUN-0002",
+      phase: "completed"
+    });
+  });
+});

@@ -8,13 +8,17 @@ import type { CanvasFlowNode } from "../types";
 
 export function CanvasNodeCard({ data }: NodeProps<CanvasFlowNode>) {
   const hasDiagnostics = data.canvas.diagnostics.length > 0;
+  const healthSeverity = data.health?.severity ?? "ok";
+  const hasHealthIssue = healthSeverity !== "ok";
+  const blockerCount = data.health?.blockerCount ?? 0;
 
   return (
     <Card
       className={cn(
         "w-[280px] border bg-card shadow-sm",
         data.selected ? "border-primary ring-2 ring-primary/25" : "border-border",
-        hasDiagnostics ? "border-destructive/70" : null
+        hasDiagnostics || healthSeverity === "error" ? "border-destructive/70" : null,
+        !hasDiagnostics && healthSeverity === "warning" ? "border-amber-500/80" : null
       )}
       size="sm"
       onClick={() => data.onSelect(data.canvas.canvasId)}
@@ -29,6 +33,11 @@ export function CanvasNodeCard({ data }: NodeProps<CanvasFlowNode>) {
             <Badge className="shrink-0 gap-1" variant="destructive">
               <AlertTriangleIcon className="size-3" aria-hidden="true" />
               {data.labels.error}
+            </Badge>
+          ) : hasHealthIssue ? (
+            <Badge className="shrink-0 gap-1" variant={healthSeverity === "error" ? "destructive" : "secondary"}>
+              <AlertTriangleIcon className="size-3" aria-hidden="true" />
+              {blockerCount > 0 ? data.labels.blocked : data.labels.warning}
             </Badge>
           ) : null}
         </CardTitle>

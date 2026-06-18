@@ -96,6 +96,7 @@ type WorkspaceTabsProps = {
   setNewTaskMode: Dispatch<SetStateAction<DesktopTaskDraftMode>>;
   setNewTaskTargetId: Dispatch<SetStateAction<string | null>>;
   setNewTaskText: Dispatch<SetStateAction<string>>;
+  setTaskDraft: Dispatch<SetStateAction<DesktopTaskDraft | null>>;
   setReviewDefaultCyclesDraft: Dispatch<SetStateAction<number>>;
   setReviewTaskId: Dispatch<SetStateAction<string | null>>;
   setSearchQuery: Dispatch<SetStateAction<string>>;

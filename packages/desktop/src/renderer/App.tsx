@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { type Edge, type ReactFlowInstance, useEdgesState, useNodesState } from "@xyflow/react";
-import type { DesktopPackageFileChangeEvent, DesktopProjectSummary } from "@planweave-ai/runtime";
-import { bridge, desktopCanvasReference } from "./bridge";
-import { nodeTypes, graphEdges, graphNodes } from "./graph/flowModel";
-import { taskNodeLabels } from "./graph/taskNodeLabels";
+import type { DesktopPackageFileChangeEvent } from "@planweave-ai/runtime";
+import { bridge } from "./bridge";
+import { nodeTypes } from "./graph/flowModel";
 import { createTranslator } from "./i18n";
 import { ProjectSidebar } from "./sidebar/ProjectSidebar";
 import { buildNotificationItems } from "./notifications";
@@ -27,6 +26,9 @@ import { useVisibleGraphTasks } from "./hooks/useVisibleGraphTasks";
 import { useDetectedAgents } from "./hooks/useDetectedAgents";
 import { useRuntimeTools } from "./hooks/useRuntimeTools";
 import { useTaskNodeFocus } from "./hooks/useTaskNodeFocus";
+import { useTaskExecutorActions } from "./hooks/useTaskExecutorActions";
+import { useDesktopProjectActions } from "./hooks/useDesktopProjectActions";
+import { useGraphFlowModel } from "./hooks/useGraphFlowModel";
 import { CollapsedSidebarControls, RightPaletteSidebar } from "./AppSidebars";
 import { AppSettingsRoute } from "./AppSettingsRoute";
 import { AppErrorBanner } from "./components/AppErrorBanner";
@@ -197,6 +199,7 @@ export function App() {
     setNewTaskMode,
     setNewTaskTargetId,
     setNewTaskText,
+    setTaskDraft,
     taskDraft
   } = useTaskDraft({ loadProject: openProjectInSession, selectedCanvasId, selectedProject, setActiveView, setError });
 
@@ -244,168 +247,70 @@ export function App() {
     titleDrafts
   } = usePromptDrafts({ graph, refreshGraph, selectedCanvasId, selectedProject, setError });
 
-  const handleTaskExecutorChange = useCallback(
-    async (taskId: string, executorName: string | null) => {
-      if (!bridge || !selectedProject) {
-        return;
-      }
-      try {
-        const result = await bridge.updateTaskExecutor(desktopCanvasReference(selectedProject, selectedCanvasId), taskId, executorName);
-        if (!result.ok) {
-          setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
-          return;
-        }
-        await refreshGraph();
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      }
+  const { handleTaskExecutorChange } = useTaskExecutorActions({
+    refreshGraph,
+    selectedCanvasId,
+    selectedProject,
+    setError
+  });
+
+  const {
+    handleDeleteProject,
+    handleDeleteTaskCanvas,
+    handleProjectNewGraph,
+    handleRevealPathInFinder,
+    handleRevealProject
+  } = useDesktopProjectActions({
+    createTaskCanvas: createTaskCanvasInSession,
+    deleteTaskCanvas: deleteTaskCanvasInSession,
+    removeProject,
+    setActiveView,
+    setError,
+    t
+  });
+
+  useGraphFlowModel({
+    blockActions: {
+      saveSelectedBlockExecutor,
+      saveSelectedBlockPrompt,
+      saveSelectedBlockTitle
     },
-    [refreshGraph, selectedCanvasId, selectedProject]
-  );
-
-  const handleProjectNewGraph = useCallback(
-    async (project: DesktopProjectSummary) => {
-      if (!bridge) {
-        setError(t("bridgeUnavailable"));
-        return;
-      }
-      try {
-        await createTaskCanvasInSession(project);
-        setActiveView("new-task");
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      }
+    drafts: {
+      promptDrafts,
+      saveStates,
+      titleDrafts
     },
-    [createTaskCanvasInSession, setActiveView, t]
-  );
-
-  const handleRevealProject = useCallback(
-    async (project: DesktopProjectSummary) => {
-      if (!bridge) {
-        setError(t("bridgeUnavailable"));
-        return;
-      }
-      try {
-        await bridge.revealProjectInFinder(project.rootPath);
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      }
+    flowState: {
+      setEdges,
+      setNodes,
+      setSelectedBlock
     },
-    [t]
-  );
-
-  const handleRevealPathInFinder = useCallback(
-    async (path: string | null | undefined) => {
-      if (!bridge || !path) {
-        return;
-      }
-      try {
-        await bridge.revealPathInFinder(path);
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      }
+    records: {
+      blockFeedbackRecords,
+      blockReviewAttempts,
+      blockRunRecords
     },
-    [bridge, setError]
-  );
-
-  const handleDeleteProject = useCallback(
-    async (project: DesktopProjectSummary) => {
-      if (!window.confirm(t("deleteProjectConfirm"))) {
-        return;
-      }
-      try {
-        await removeProject(project);
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      }
+    source: {
+      executorOptions,
+      graph,
+      layout,
+      selectedBlock,
+      t
     },
-    [removeProject, t]
-  );
-
-  const handleDeleteTaskCanvas = useCallback(
-    async (project: DesktopProjectSummary, canvasId: string) => {
-      if (!bridge) {
-        return;
-      }
-      if (!window.confirm(t("deleteTaskCanvasConfirm"))) {
-        return;
-      }
-      try {
-        await deleteTaskCanvasInSession(project, canvasId);
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      }
-    },
-    [deleteTaskCanvasInSession, t]
-  );
-
-
-  useEffect(() => {
-    if (!graph) {
-      setNodes([]);
-      setEdges([]);
-      return;
+    taskActions: {
+      handleDeleteBlock,
+      handleDeleteTaskNode,
+      handleOpenBlockInspector,
+      handleOpenRunRecord,
+      handleOpenTaskInspector,
+      handlePromptChange,
+      handlePromptSave,
+      handleTaskExecutorChange,
+      handleTitleChange,
+      handleTitleSave,
+      startAutoRunWithScope
     }
-    setNodes(
-      graphNodes(
-        graph,
-        layout,
-        executorOptions,
-        titleDrafts,
-        promptDrafts,
-        saveStates,
-        taskNodeLabels(t),
-        selectedBlock,
-        blockRunRecords,
-        blockReviewAttempts,
-        blockFeedbackRecords,
-        handleTitleChange,
-        handleTitleSave,
-        handleTaskExecutorChange,
-        handlePromptChange,
-        handlePromptSave,
-        handleOpenBlockInspector,
-        handleOpenBlockInspector,
-        handleOpenTaskInspector,
-        startAutoRunWithScope,
-        handleDeleteTaskNode,
-        handleDeleteBlock,
-        setSelectedBlock,
-        saveSelectedBlockTitle,
-        saveSelectedBlockExecutor,
-        saveSelectedBlockPrompt,
-        handleOpenRunRecord
-      )
-    );
-    setEdges(graphEdges(graph));
-  }, [
-    graph,
-    executorOptions,
-    blockFeedbackRecords,
-    blockReviewAttempts,
-    blockRunRecords,
-    handleDeleteBlock,
-    handleDeleteTaskNode,
-    handleOpenBlockInspector,
-    handleOpenTaskInspector,
-    handleOpenRunRecord,
-    handlePromptChange,
-    handlePromptSave,
-    handleTaskExecutorChange,
-    handleTitleChange,
-    handleTitleSave,
-    layout,
-    promptDrafts,
-    saveStates,
-    setEdges,
-    setNodes,
-    saveSelectedBlockExecutor,
-    saveSelectedBlockPrompt,
-    saveSelectedBlockTitle,
-    selectedBlock,
-    t,
-    titleDrafts
-  ]);
+  });
 
   const {
     addPaletteComponent,
@@ -584,6 +489,7 @@ export function App() {
           setNewTaskMode={setNewTaskMode}
           setNewTaskTargetId={setNewTaskTargetId}
           setNewTaskText={setNewTaskText}
+          setTaskDraft={setTaskDraft}
           setReviewDefaultCyclesDraft={setReviewDefaultCyclesDraft}
           setReviewTaskId={setReviewTaskId}
           setSearchQuery={setSearchQuery}

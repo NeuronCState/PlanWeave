@@ -1,16 +1,19 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
+import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { DesktopAutoRunState, DesktopCanvasGraphViewModel, DesktopGraphViewModel, DesktopProjectSummary } from "@planweave-ai/runtime";
+import type { DesktopAutoRunState, DesktopCanvasGraphViewModel, DesktopGraphViewModel, DesktopProjectSummary, DesktopTaskDraft } from "@planweave-ai/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createDesktopBridgeMock } from "./desktopBridgeMock";
 import { ComponentPalette } from "../renderer/palette/ComponentPalette";
 import { FloatingAutoRunControl } from "../renderer/run/FloatingAutoRunControl";
 import { ProjectSidebar } from "../renderer/sidebar/ProjectSidebar";
 import { createTranslator } from "../renderer/i18n";
 import type { DesktopUiSettings } from "../renderer/types";
 import { CanvasMapInspector } from "../renderer/views/CanvasMapInspector";
+import { NewTaskView } from "../renderer/views/NewTaskView";
 
 const t = createTranslator("en");
 
@@ -227,6 +230,160 @@ describe("desktop renderer interface interactions", () => {
     expect(screen.getByText("1")).toBeInTheDocument();
   });
 
+  it("allows editing generated New Task drafts before confirmation", async () => {
+    class ResizeObserverMock {
+      disconnect = vi.fn();
+      observe = vi.fn();
+      unobserve = vi.fn();
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    const confirmTaskDraft = vi.fn().mockResolvedValue(undefined);
+
+    function Harness() {
+      const [taskDraft, setTaskDraft] = useState<DesktopTaskDraft | null>({
+        mode: "document",
+        targetTaskId: null,
+        tasks: [
+          {
+            title: "Generated task",
+            promptMarkdown: "# Generated prompt",
+            acceptance: ["Generated acceptance"],
+            blockTypes: ["implementation"]
+          }
+        ],
+        blocks: []
+      });
+      const [newTaskText, setNewTaskText] = useState("Source document");
+      return (
+        <NewTaskView
+          confirmTaskDraft={confirmTaskDraft}
+          generateTaskDraft={vi.fn().mockResolvedValue(undefined)}
+          graph={graph}
+          handleOpenProject={vi.fn().mockResolvedValue(undefined)}
+          newTaskMode="document"
+          newTaskTargetId={null}
+          newTaskText={newTaskText}
+          selectedCanvasId="canvas-main"
+          selectedProject={project}
+          setActiveView={vi.fn()}
+          setNewTaskMode={vi.fn()}
+          setNewTaskTargetId={vi.fn()}
+          setNewTaskText={setNewTaskText}
+          setTaskDraft={setTaskDraft}
+          t={t}
+          taskDraft={taskDraft}
+        />
+      );
+    }
+
+    render(<Harness />);
+
+    const titleInput = screen.getByDisplayValue("Generated task");
+    fireEvent.change(titleInput, { target: { value: "Edited task" } });
+    const acceptanceInput = screen.getByDisplayValue("Generated acceptance");
+    fireEvent.change(acceptanceInput, { target: { value: "Edited acceptance" } });
+    await userEvent.click(screen.getByRole("button", { name: "Review Block" }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm write" }));
+
+    expect(screen.getByDisplayValue("Edited task")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Edited acceptance")).toBeInTheDocument();
+    expect(confirmTaskDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes edited New Task draft payload through the draft hook", async () => {
+    const addTaskNode = vi.fn().mockResolvedValue({ ok: true, diagnostics: [] });
+    const bridge = createDesktopBridgeMock({ addTaskNode });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useTaskDraft } = await import("../renderer/hooks/useTaskDraft");
+    const loadProject = vi.fn().mockResolvedValue(undefined);
+    const setActiveView = vi.fn();
+    const setError = vi.fn();
+
+    const { result } = renderHook(() =>
+      useTaskDraft({
+        loadProject,
+        selectedCanvasId: "canvas-main",
+        selectedProject: project,
+        setActiveView,
+        setError
+      })
+    );
+
+    act(() => {
+      result.current.setTaskDraft({
+        mode: "document",
+        targetTaskId: null,
+        tasks: [
+          {
+            title: "Edited task",
+            promptMarkdown: "# Edited prompt",
+            acceptance: ["Edited acceptance"],
+            blockTypes: ["implementation", "review"]
+          }
+        ],
+        blocks: []
+      });
+    });
+    await act(async () => {
+      await result.current.confirmTaskDraft();
+    });
+
+    expect(addTaskNode).toHaveBeenCalledWith(
+      { projectRoot: project.rootPath, canvasId: "canvas-main" },
+      {
+        title: "Edited task",
+        promptMarkdown: "# Edited prompt",
+        acceptance: ["Edited acceptance"],
+        blockTypes: ["implementation", "review"]
+      }
+    );
+    expect(setError).not.toHaveBeenCalled();
+    expect(loadProject).toHaveBeenCalledWith(project, "canvas-main");
+    expect(setActiveView).toHaveBeenCalledWith("graph");
+  });
+
+  it("prevents New Task draft writes when acceptance is empty", async () => {
+    const addTaskNode = vi.fn().mockResolvedValue({ ok: true, diagnostics: [] });
+    const bridge = createDesktopBridgeMock({ addTaskNode });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useTaskDraft } = await import("../renderer/hooks/useTaskDraft");
+    const setError = vi.fn();
+
+    const { result } = renderHook(() =>
+      useTaskDraft({
+        loadProject: vi.fn().mockResolvedValue(undefined),
+        selectedCanvasId: "canvas-main",
+        selectedProject: project,
+        setActiveView: vi.fn(),
+        setError
+      })
+    );
+
+    act(() => {
+      result.current.setTaskDraft({
+        mode: "document",
+        targetTaskId: null,
+        tasks: [
+          {
+            title: "Edited task",
+            promptMarkdown: "# Edited prompt",
+            acceptance: [],
+            blockTypes: ["implementation"]
+          }
+        ],
+        blocks: []
+      });
+    });
+    await act(async () => {
+      await result.current.confirmTaskDraft();
+    });
+
+    expect(addTaskNode).not.toHaveBeenCalled();
+    expect(setError).toHaveBeenCalledWith("Task 1 needs at least one acceptance item.");
+  });
+
   it("keeps project collapse control visible and opens project selection in the canvas map view", async () => {
     class ResizeObserverMock {
       disconnect = vi.fn();
@@ -349,14 +506,23 @@ describe("desktop renderer interface interactions", () => {
       ],
       edges: [],
       crossTaskEdges: [],
-      diagnostics: []
+      diagnostics: [],
+      health: {
+        severity: "ok",
+        canvases: [{ canvasId: "canvas-main", severity: "ok", blockerCount: 0, diagnosticCount: 0 }],
+        edges: [],
+        blockedBlocks: [],
+        diagnostics: []
+      }
     };
 
     render(
       <CanvasMapInspector
         graph={canvasGraph}
         onClose={onClose}
+        onBlockOpen={vi.fn()}
         onCanvasOpen={vi.fn()}
+        onTaskOpen={vi.fn()}
         selectedCanvas={canvasGraph.canvases[0] ?? null}
         selectedCanvasId="canvas-main"
         selectedEdge={null}
@@ -367,6 +533,91 @@ describe("desktop renderer interface interactions", () => {
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
 
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("lists canvas map dependency blockers and dispatches jump actions", async () => {
+    const onBlockOpen = vi.fn();
+    const onCanvasOpen = vi.fn();
+    const onTaskOpen = vi.fn();
+    const canvasGraph: DesktopCanvasGraphViewModel = {
+      projectId: "P-001",
+      projectTitle: "Demo",
+      canvases: [
+        {
+          canvasId: "canvas-main",
+          title: "Main canvas",
+          packageDir: "canvases/main/package",
+          diagnostics: []
+        },
+        {
+          canvasId: "canvas-upstream",
+          title: "Upstream canvas",
+          packageDir: "canvases/upstream/package",
+          diagnostics: []
+        }
+      ],
+      edges: [{ from: "canvas-main", to: "canvas-upstream", type: "depends_on" }],
+      crossTaskEdges: [],
+      diagnostics: [],
+      health: {
+        severity: "warning",
+        canvases: [
+          { canvasId: "canvas-main", severity: "warning", blockerCount: 1, diagnosticCount: 0 },
+          { canvasId: "canvas-upstream", severity: "ok", blockerCount: 0, diagnosticCount: 0 }
+        ],
+        edges: [{ from: "canvas-main", to: "canvas-upstream", type: "depends_on", severity: "warning", blockerCount: 1, diagnosticCount: 0 }],
+        blockedBlocks: [
+          {
+            blocked: {
+              canvasId: "canvas-main",
+              canvasTitle: "Main canvas",
+              taskId: "T-002",
+              taskTitle: "Downstream task",
+              blockRef: "T-002#B-001",
+              blockId: "B-001",
+              blockTitle: "Implement downstream",
+              status: "ready"
+            },
+            blockers: [
+              {
+                kind: "task",
+                canvasId: "canvas-upstream",
+                canvasTitle: "Upstream canvas",
+                taskId: "T-001",
+                taskTitle: "Upstream task",
+                status: "ready"
+              }
+            ],
+            reason: "Project graph blockers are not complete: canvas-upstream:T-001."
+          }
+        ],
+        diagnostics: []
+      }
+    };
+
+    render(
+      <CanvasMapInspector
+        graph={canvasGraph}
+        onClose={vi.fn()}
+        onBlockOpen={onBlockOpen}
+        onCanvasOpen={onCanvasOpen}
+        onTaskOpen={onTaskOpen}
+        selectedCanvas={canvasGraph.canvases[0] ?? null}
+        selectedCanvasId="canvas-main"
+        selectedEdge={null}
+        t={t}
+      />
+    );
+
+    expect(screen.getByText("Dependency blockers")).toBeVisible();
+    expect(screen.getByText("canvas-main:T-002#B-001")).toBeVisible();
+
+    await userEvent.click(screen.getAllByRole("button", { name: "Open task" })[0]);
+    await userEvent.click(screen.getByRole("button", { name: "Open block" }));
+
+    expect(onTaskOpen).toHaveBeenCalledWith("canvas-upstream", "T-001");
+    expect(onBlockOpen).toHaveBeenCalledWith("canvas-main", "T-002#B-001");
+    expect(onCanvasOpen).not.toHaveBeenCalled();
   });
 
   it("reports component palette click and drag intents through public callbacks", async () => {
@@ -503,9 +754,11 @@ describe("desktop renderer interface interactions", () => {
     expect(screen.getByTestId("auto-run-mini-status")).toHaveAttribute("data-phase", "failed");
     expect(screen.getByTestId("auto-run-mini-status")).toHaveAttribute("data-run-id", "RUN-FAILED");
     expect(screen.getByTestId("auto-run-error")).toHaveTextContent("Executor exited with code 1.");
-    expect(screen.getByText("Next action: Open the latest record and fix the failure.")).toBeInTheDocument();
+    expect(screen.getByTestId("auto-run-failure-details")).toHaveTextContent("Next action");
+    expect(screen.getByTestId("auto-run-failure-details")).toHaveTextContent("Open the latest record and fix the failure.");
     expect(screen.getByTestId("auto-run-open-record")).toHaveAttribute("data-record-path", "/tmp/failed-result.json");
     expect(screen.getByTestId("auto-run-open-record")).toHaveAttribute("data-run-id", "RUN-FAILED");
+    expect(screen.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId("auto-run-open-record"));
 

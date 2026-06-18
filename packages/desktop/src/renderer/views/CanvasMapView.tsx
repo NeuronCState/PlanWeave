@@ -21,7 +21,9 @@ import { CanvasMapInspector } from "./CanvasMapInspector";
 
 type CanvasMapViewProps = {
   handleOpenProject: () => Promise<void>;
+  handleOpenBlockInspector: (ref: string, canvasId?: string | null) => Promise<void>;
   loadProject: (project: DesktopProjectSummary, canvasId?: string | null) => Promise<void>;
+  onTaskPanelSelect: (taskId: string | null) => void;
   selectedCanvasId: string | null;
   selectedProject: DesktopProjectSummary | null;
   setActiveView: (view: AppView) => void;
@@ -35,6 +37,7 @@ function canvasEdgeData(edge: Edge | null): DisplayCanvasEdgeData | null {
     return null;
   }
   return {
+    health: data.health ?? null,
     manifestEdgeType: data.manifestEdgeType,
     manifestFrom: data.manifestFrom,
     manifestTo: data.manifestTo
@@ -43,7 +46,9 @@ function canvasEdgeData(edge: Edge | null): DisplayCanvasEdgeData | null {
 
 export function CanvasMapView({
   handleOpenProject,
+  handleOpenBlockInspector,
   loadProject,
+  onTaskPanelSelect,
   selectedCanvasId,
   selectedProject,
   setActiveView,
@@ -74,6 +79,28 @@ export function CanvasMapView({
     },
     [loadProject, selectedProject, setActiveView, setError]
   );
+  const openTask = useCallback(
+    (canvasId: string, taskId: string) => {
+      if (!selectedProject) {
+        return;
+      }
+      void loadProject(selectedProject, canvasId)
+        .then(() => onTaskPanelSelect(taskId))
+        .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught)));
+    },
+    [loadProject, onTaskPanelSelect, selectedProject, setError]
+  );
+  const openBlock = useCallback(
+    (canvasId: string, blockRef: string) => {
+      if (!selectedProject) {
+        return;
+      }
+      void loadProject(selectedProject, canvasId)
+        .then(() => handleOpenBlockInspector(blockRef, canvasId))
+        .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught)));
+    },
+    [handleOpenBlockInspector, loadProject, selectedProject, setError]
+  );
 
   useEffect(() => {
     if (!canvasGraph) {
@@ -86,8 +113,10 @@ export function CanvasMapView({
         canvasGraph,
         canvasMapLayout,
         {
+          blocked: t("blocked"),
           error: t("error"),
-          open: t("enterCanvas")
+          open: t("enterCanvas"),
+          warning: t("warning")
         },
         selectedMapCanvasId,
         openCanvas,
@@ -179,7 +208,9 @@ export function CanvasMapView({
             <CanvasMapInspector
               graph={canvasGraph}
               onClose={closeInspector}
+              onBlockOpen={openBlock}
               onCanvasOpen={openCanvas}
+              onTaskOpen={openTask}
               selectedCanvas={selectedCanvas}
               selectedCanvasId={selectedMapCanvasId}
               selectedEdge={selectedManifestEdge}

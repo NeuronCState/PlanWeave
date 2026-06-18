@@ -5,6 +5,7 @@ import type {
   DesktopBlockDetail,
   DesktopBlockRunRecordSummary,
   DesktopAgentKind,
+  DesktopCanvasHealthCanvasSummary,
   DesktopCanvasNodeViewModel,
   DesktopFeedbackRecord,
   DesktopReviewAttemptSummary,
@@ -72,12 +73,15 @@ export type TaskNodeData = {
 export type TaskFlowNode = Node<TaskNodeData, "task">;
 
 export type CanvasNodeLabels = {
+  blocked: string;
   error: string;
   open: string;
+  warning: string;
 };
 
 export type CanvasNodeData = {
   canvas: DesktopCanvasNodeViewModel;
+  health: DesktopCanvasHealthCanvasSummary | null;
   labels: CanvasNodeLabels;
   selected: boolean;
   onOpen: (canvasId: string) => void;

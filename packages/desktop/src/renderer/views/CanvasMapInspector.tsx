@@ -8,11 +8,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { createTranslator } from "../i18n";
+import { CanvasMapBlockedBlocksList, CanvasMapHealthDiagnostics } from "./CanvasMapHealthDetails";
 
 type CanvasMapInspectorProps = {
   graph: DesktopCanvasGraphViewModel;
   onClose: () => void;
+  onBlockOpen: (canvasId: string, blockRef: string) => void;
   onCanvasOpen: (canvasId: string) => void;
+  onTaskOpen: (canvasId: string, taskId: string) => void;
   selectedCanvas: DesktopCanvasNodeViewModel | null;
   selectedCanvasId: string | null;
   selectedEdge: DesktopCanvasGraphEdgeViewModel | null;
@@ -25,17 +28,32 @@ function canvasTitle(t: ReturnType<typeof createTranslator>, titleByCanvasId: Ma
 
 function CanvasEdgeInspector({
   edge,
+  graph,
+  onBlockOpen,
+  onCanvasOpen,
+  onTaskOpen,
   titleByCanvasId,
   t
 }: {
   edge: DesktopCanvasGraphEdgeViewModel;
+  graph: DesktopCanvasGraphViewModel;
+  onBlockOpen: (canvasId: string, blockRef: string) => void;
+  onCanvasOpen: (canvasId: string) => void;
+  onTaskOpen: (canvasId: string, taskId: string) => void;
   titleByCanvasId: Map<string, string>;
   t: ReturnType<typeof createTranslator>;
 }) {
+  const edgeHealth = graph.health.edges.find((summary) => summary.from === edge.from && summary.to === edge.to && summary.type === edge.type);
+  const blockers = graph.health.blockedBlocks.filter(
+    (item) => item.blocked.canvasId === edge.from && item.blockers.some((blocker) => blocker.canvasId === edge.to)
+  );
   return (
     <Card size="sm">
       <CardHeader>
-        <CardTitle className="text-sm">{t("canvasDependency")}</CardTitle>
+        <CardTitle className="flex items-center justify-between gap-2 text-sm">
+          <span>{t("canvasDependency")}</span>
+          {edgeHealth && edgeHealth.severity !== "ok" ? <Badge variant="secondary">{t("dependencyHealth")}</Badge> : null}
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2 text-sm">
         <div>
@@ -53,6 +71,7 @@ function CanvasEdgeInspector({
         <div className="rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
           {t("fromWaitsForTo")}
         </div>
+        <CanvasMapBlockedBlocksList blockers={blockers} onBlockOpen={onBlockOpen} onCanvasOpen={onCanvasOpen} onTaskOpen={onTaskOpen} t={t} />
       </CardContent>
     </Card>
   );
@@ -61,7 +80,9 @@ function CanvasEdgeInspector({
 export function CanvasMapInspector({
   graph,
   onClose,
+  onBlockOpen,
   onCanvasOpen,
+  onTaskOpen,
   selectedCanvas,
   selectedCanvasId,
   selectedEdge,
@@ -73,6 +94,10 @@ export function CanvasMapInspector({
   const relatedCrossTaskEdges = graph.crossTaskEdges.filter(
     (edge) => edge.from.canvasId === selectedCanvasId || edge.to.canvasId === selectedCanvasId
   );
+  const selectedCanvasHealth = graph.health.canvases.find((canvas) => canvas.canvasId === selectedCanvasId) ?? null;
+  const relatedHealthBlockers = graph.health.blockedBlocks.filter(
+    (item) => item.blocked.canvasId === selectedCanvasId || item.blockers.some((blocker) => blocker.canvasId === selectedCanvasId)
+  );
 
   if (selectedEdge) {
     return (
@@ -82,13 +107,26 @@ export function CanvasMapInspector({
             <XIcon data-icon="inline-start" />
           </Button>
         </div>
-        <CanvasEdgeInspector edge={selectedEdge} titleByCanvasId={titleByCanvasId} t={t} />
+        <CanvasEdgeInspector
+          edge={selectedEdge}
+          graph={graph}
+          onBlockOpen={onBlockOpen}
+          onCanvasOpen={onCanvasOpen}
+          onTaskOpen={onTaskOpen}
+          titleByCanvasId={titleByCanvasId}
+          t={t}
+        />
       </div>
     );
   }
 
   if (!selectedCanvas) {
-    return <div className="text-sm text-muted-foreground">{t("noCanvasSelected")}</div>;
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="text-sm text-muted-foreground">{t("noCanvasSelected")}</div>
+        <CanvasMapHealthDiagnostics diagnostics={graph.health.diagnostics} t={t} />
+      </div>
+    );
   }
 
   return (
@@ -98,6 +136,7 @@ export function CanvasMapInspector({
           <span className="truncate">{selectedCanvas.title}</span>
           <span className="flex shrink-0 items-center gap-1">
             {selectedCanvas.diagnostics.length > 0 ? <Badge variant="destructive">{t("error")}</Badge> : null}
+            {selectedCanvasHealth && selectedCanvasHealth.severity !== "ok" ? <Badge variant="secondary">{t("dependencyHealth")}</Badge> : null}
             <Button size="icon-sm" variant="ghost" aria-label={t("close")} onClick={onClose}>
               <XIcon data-icon="inline-start" />
             </Button>
@@ -125,6 +164,7 @@ export function CanvasMapInspector({
             )) : <span className="text-xs text-muted-foreground">{t("none")}</span>}
           </div>
         </div>
+        <CanvasMapBlockedBlocksList blockers={relatedHealthBlockers} onBlockOpen={onBlockOpen} onCanvasOpen={onCanvasOpen} onTaskOpen={onTaskOpen} t={t} />
         {selectedCanvas.diagnostics.length > 0 ? (
           <div className="flex flex-col gap-1">
             <div className="text-xs text-muted-foreground">{t("diagnostics")}</div>
@@ -136,6 +176,7 @@ export function CanvasMapInspector({
             ))}
           </div>
         ) : null}
+        <CanvasMapHealthDiagnostics diagnostics={graph.health.diagnostics} t={t} />
         <Button className="w-full justify-start" onClick={() => onCanvasOpen(selectedCanvas.canvasId)}>
           <GitBranchIcon data-icon="inline-start" />
           {t("enterCanvas")}

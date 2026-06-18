@@ -38,13 +38,24 @@ describe("desktop renderer i18n", () => {
   });
 
   it("uses translation keys for task card and review default copy", async () => {
-    const [settingsSource, reviewHookSource, reviewViewSource, statsSource] = await Promise.all([
+    const [
+      settingsSource,
+      settingsGeneralSource,
+      settingsComponentsSource,
+      settingsReviewSource,
+      reviewHookSource,
+      reviewViewSource,
+      statsSource
+    ] = await Promise.all([
       readFile(resolve(sourceDir, "renderer", "views", "SettingsView.tsx"), "utf8"),
+      readFile(resolve(sourceDir, "renderer", "settings", "SettingsGeneralSection.tsx"), "utf8"),
+      readFile(resolve(sourceDir, "renderer", "settings", "SettingsComponentsSection.tsx"), "utf8"),
+      readFile(resolve(sourceDir, "renderer", "settings", "SettingsReviewSection.tsx"), "utf8"),
       readFile(resolve(sourceDir, "renderer", "hooks", "useReviewPipeline.ts"), "utf8"),
       readFile(resolve(sourceDir, "renderer", "views", "ReviewPipelineView.tsx"), "utf8"),
       readFile(resolve(sourceDir, "renderer", "views", "StatisticsView.tsx"), "utf8")
     ]);
-    const rendererSource = `${settingsSource}\n${reviewHookSource}\n${reviewViewSource}\n${statsSource}`;
+    const rendererSource = `${settingsSource}\n${settingsGeneralSource}\n${settingsComponentsSource}\n${settingsReviewSource}\n${reviewHookSource}\n${reviewViewSource}\n${statsSource}`;
 
     expect(rendererSource).not.toContain(">Task Prompt<");
     expect(rendererSource).not.toContain(">Block Stack<");

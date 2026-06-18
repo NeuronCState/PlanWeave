@@ -40,6 +40,42 @@ type FloatingAutoRunControlProps = {
   t: ReturnType<typeof createTranslator>;
 };
 
+function isFailureState(state: DesktopAutoRunState | null): state is DesktopAutoRunState {
+  return state?.phase === "blocked" || state?.phase === "failed";
+}
+
+function FailureDetailRow({ label, testId, value }: { label: string; testId?: string; value: string | null | undefined }) {
+  if (!value) {
+    return null;
+  }
+  return (
+    <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="min-w-0 break-words" data-testid={testId}>{value}</span>
+    </div>
+  );
+}
+
+function AutoRunFailureDetails({ state, t }: { state: DesktopAutoRunState; t: ReturnType<typeof createTranslator> }) {
+  const explanation = state.explanation;
+  return (
+    <div className="rounded-md border border-destructive/50 bg-destructive/5 p-2 text-xs" data-testid="auto-run-failure-details">
+      <div className="mb-2 font-medium text-destructive">{t("failureDetails")}</div>
+      <div className="flex flex-col gap-1.5">
+        <FailureDetailRow label={t("phase")} value={state.phase} />
+        <FailureDetailRow label={t("error")} testId="auto-run-error" value={explanation.error ?? state.error} />
+        <FailureDetailRow label={t("nextAction")} value={explanation.nextAction.message} />
+        <FailureDetailRow label={t("actionKind")} value={explanation.nextAction.kind} />
+        <FailureDetailRow label={t("suggestedCommand")} testId="auto-run-command" value={explanation.nextAction.command} />
+        <FailureDetailRow label={t("latestRecordPath")} testId="auto-run-latest-record-path" value={explanation.latestRecordPath} />
+        <FailureDetailRow label={t("currentBlock")} value={explanation.currentRef} />
+        <FailureDetailRow label={t("agent")} value={explanation.currentExecutor} />
+        <FailureDetailRow label={t("latestOutput")} value={explanation.latestOutputSummary} />
+      </div>
+    </div>
+  );
+}
+
 export function FloatingAutoRunControl({
   autoRunScopeMode,
   autoRunState,
@@ -60,9 +96,10 @@ export function FloatingAutoRunControl({
   style,
   t
 }: FloatingAutoRunControlProps) {
-  const canStop = autoRunState ? ["running", "pausing", "paused", "manual", "blocked", "failed"].includes(autoRunState.phase) : false;
+  const canStop = autoRunState ? ["running", "pausing", "paused", "manual"].includes(autoRunState.phase) : false;
   const hasProject = Boolean(selectedProject);
   const explanation = autoRunState?.explanation ?? null;
+  const showFailureDetails = isFailureState(autoRunState);
 
   return (
     <div className="absolute flex items-center gap-2 rounded-xl border bg-background p-2 shadow-lg" data-auto-run-control style={style}>
@@ -139,17 +176,18 @@ export function FloatingAutoRunControl({
                       {t("stepCount")}: {autoRunState ? `${autoRunState.stepCount}` : "-"}
                     </span>
                   </div>
-                  {explanation?.latestOutputSummary ? (
+                  {showFailureDetails ? <AutoRunFailureDetails state={autoRunState} t={t} /> : null}
+                  {!showFailureDetails && explanation?.latestOutputSummary ? (
                     <div className="rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
                       {t("latestOutput")}: {explanation.latestOutputSummary}
                     </div>
                   ) : null}
-                  {explanation ? (
+                  {!showFailureDetails && explanation ? (
                     <div className="rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
                       {t("nextAction")}: {explanation.nextAction.message}
                     </div>
                   ) : null}
-                  {explanation?.error ? (
+                  {!showFailureDetails && explanation?.error ? (
                     <div className="rounded-md border border-destructive p-2 text-xs text-destructive" data-testid="auto-run-error">
                       {explanation.error}
                     </div>

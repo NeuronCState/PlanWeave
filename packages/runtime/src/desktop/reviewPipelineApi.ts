@@ -9,6 +9,7 @@ import {
 import { compileTaskGraph } from "../graph/compileTaskGraph.js";
 import { loadPackage } from "../package/loadPackage.js";
 import { resolvePackagePath } from "../package/resolvePackagePath.js";
+import { invalidateDesktopProjectProjection } from "./graph/projectProjectionModel.js";
 import type {
   GraphEditResult,
   ManifestBlock,
@@ -189,11 +190,13 @@ export async function updateReviewPipeline(
     const promptMarkdown = input.steps[index]?.promptMarkdown.trim() || defaultPrompt(block.title);
     sideEffects.push(...writePromptSideEffects(block.prompt, promptMarkdown.endsWith("\n") ? promptMarkdown : `${promptMarkdown}\n`));
   }
-  return commitPlanPackageGraphMutation({
+  const result = await commitPlanPackageGraphMutation({
     projectRoot,
     mutation: buildPlanPackageManifestChangeMutation(manifest, nextManifest, {
       affectedTasks: [task.id],
       sideEffects
     })
   });
+  invalidateDesktopProjectProjection(projectRoot);
+  return result;
 }

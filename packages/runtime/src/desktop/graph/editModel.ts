@@ -11,6 +11,7 @@ import { loadPackage } from "../../package/loadPackage.js";
 import type { BlockType, GraphEditResult, ManifestBlock, ManifestTaskNode, PackageWorkspaceRef, PlanPackageManifest } from "../../types.js";
 import type { DesktopAddBlockInput, DesktopAddTaskInput, DesktopGraphEditValidationInput } from "../types.js";
 import { getTask } from "./graphHelpers.js";
+import { invalidateDesktopProjectProjection } from "./projectProjectionModel.js";
 
 function normalizeOptionalText(value: string | null): string | undefined {
   return value?.trim() || undefined;
@@ -99,18 +100,22 @@ function graphEditResult(manifest: PlanPackageManifest, affectedTasks: string[] 
 
 async function commitTaskEdit(projectRoot: PackageWorkspaceRef, input: PlanPackageTaskFieldEditInput): Promise<GraphEditResult> {
   const { manifest } = await loadPackage(projectRoot);
-  return commitPlanPackageGraphMutation({
+  const result = await commitPlanPackageGraphMutation({
     projectRoot,
     mutation: buildPlanPackageTaskFieldEditMutation(manifest, input)
   });
+  invalidateDesktopProjectProjection(projectRoot);
+  return result;
 }
 
 async function commitBlockEdit(projectRoot: PackageWorkspaceRef, input: PlanPackageBlockFieldEditInput): Promise<GraphEditResult> {
   const { manifest } = await loadPackage(projectRoot);
-  return commitPlanPackageGraphMutation({
+  const result = await commitPlanPackageGraphMutation({
     projectRoot,
     mutation: buildPlanPackageBlockFieldEditMutation(manifest, input)
   });
+  invalidateDesktopProjectProjection(projectRoot);
+  return result;
 }
 
 export async function addTaskNode(projectRoot: PackageWorkspaceRef, input: DesktopAddTaskInput): Promise<GraphEditResult> {
@@ -141,7 +146,7 @@ export async function addTaskNode(projectRoot: PackageWorkspaceRef, input: Deskt
     acceptance: input.acceptance?.length ? input.acceptance : ["Task is implemented."],
     blocks
   };
-  return commitPlanPackageGraphMutation({
+  const result = await commitPlanPackageGraphMutation({
     projectRoot,
     mutation: buildPlanPackageGraphMutation(manifest, {
       kind: "addTaskNode",
@@ -150,6 +155,8 @@ export async function addTaskNode(projectRoot: PackageWorkspaceRef, input: Deskt
       blockPromptMarkdown: blocks.map((block) => ({ blockId: block.id, markdown: promptFileMarkdown(`# ${block.title}\n\n${input.promptMarkdown}`) }))
     })
   });
+  invalidateDesktopProjectProjection(projectRoot);
+  return result;
 }
 
 export async function addBlock(projectRoot: PackageWorkspaceRef, input: DesktopAddBlockInput): Promise<GraphEditResult> {
@@ -166,7 +173,7 @@ export async function addBlock(projectRoot: PackageWorkspaceRef, input: DesktopA
     executor: normalizeOptionalText(input.executor ?? null),
     maxFeedbackCycles: manifest.review.maxFeedbackCycles
   });
-  return commitPlanPackageGraphMutation({
+  const result = await commitPlanPackageGraphMutation({
     projectRoot,
     mutation: buildPlanPackageGraphMutation(manifest, {
       kind: "addBlock",
@@ -175,23 +182,29 @@ export async function addBlock(projectRoot: PackageWorkspaceRef, input: DesktopA
       promptMarkdown: promptFileMarkdown(input.promptMarkdown)
     })
   });
+  invalidateDesktopProjectProjection(projectRoot);
+  return result;
 }
 
 export async function removeTaskNode(projectRoot: PackageWorkspaceRef, taskId: string): Promise<GraphEditResult> {
   const { manifest } = await loadPackage(projectRoot);
   getTask(compileTaskGraph(manifest), taskId);
-  return commitPlanPackageGraphMutation({
+  const result = await commitPlanPackageGraphMutation({
     projectRoot,
     mutation: buildPlanPackageGraphMutation(manifest, { kind: "removeNode", nodeId: taskId, removeTaskDirectory: true })
   });
+  invalidateDesktopProjectProjection(projectRoot);
+  return result;
 }
 
 export async function removeBlock(projectRoot: PackageWorkspaceRef, ref: string): Promise<GraphEditResult> {
   const { manifest } = await loadPackage(projectRoot);
-  return commitPlanPackageGraphMutation({
+  const result = await commitPlanPackageGraphMutation({
     projectRoot,
     mutation: buildPlanPackageGraphMutation(manifest, { kind: "removeBlock", blockRef: ref })
   });
+  invalidateDesktopProjectProjection(projectRoot);
+  return result;
 }
 
 export async function validateGraphEdit(projectRoot: PackageWorkspaceRef, input: DesktopGraphEditValidationInput): Promise<GraphEditResult> {
@@ -242,10 +255,14 @@ export async function updateBlockExecutor(projectRoot: PackageWorkspaceRef, ref:
   return commitBlockEdit(projectRoot, { blockRef: ref, executor: executorName });
 }
 
-export function addDependencyEdge(projectRoot: PackageWorkspaceRef, fromTaskId: string, toTaskId: string): Promise<GraphEditResult> {
-  return addEdge({ projectRoot, edge: { from: fromTaskId, to: toTaskId, type: "depends_on" } });
+export async function addDependencyEdge(projectRoot: PackageWorkspaceRef, fromTaskId: string, toTaskId: string): Promise<GraphEditResult> {
+  const result = await addEdge({ projectRoot, edge: { from: fromTaskId, to: toTaskId, type: "depends_on" } });
+  invalidateDesktopProjectProjection(projectRoot);
+  return result;
 }
 
-export function removeDependencyEdge(projectRoot: PackageWorkspaceRef, fromTaskId: string, toTaskId: string): Promise<GraphEditResult> {
-  return removeEdge({ projectRoot, edge: { from: fromTaskId, to: toTaskId, type: "depends_on" } });
+export async function removeDependencyEdge(projectRoot: PackageWorkspaceRef, fromTaskId: string, toTaskId: string): Promise<GraphEditResult> {
+  const result = await removeEdge({ projectRoot, edge: { from: fromTaskId, to: toTaskId, type: "depends_on" } });
+  invalidateDesktopProjectProjection(projectRoot);
+  return result;
 }

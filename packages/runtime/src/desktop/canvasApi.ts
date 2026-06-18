@@ -12,6 +12,8 @@ import { createEmptyState } from "../state.js";
 import type { ProjectWorkspace, ValidationIssue } from "../types.js";
 import { canvasDiagnostics } from "./canvasDiagnostics.js";
 import { normalizeRegistry, registryVersion, type TaskCanvasRecord, type TaskCanvasRegistry } from "./canvasRegistry.js";
+import { appendDesktopDiagnostics, desktopDiagnostic, errorMessage } from "./graph/desktopDiagnostics.js";
+import { invalidateDesktopProjectProjection } from "./graph/projectProjectionModel.js";
 import type { DesktopTaskCanvasSummary } from "./types.js";
 
 const defaultCanvasId = "default";
@@ -85,36 +87,48 @@ function defaultCanvasRecord(workspace: ProjectWorkspace, name: string): TaskCan
   };
 }
 
-async function readManifestTitle(workspace: ProjectWorkspace): Promise<string> {
+async function readManifestTitle(workspace: ProjectWorkspace): Promise<{ title: string; diagnostics: ValidationIssue[] }> {
   try {
     const raw = asRecord(await readJsonFile<unknown>(workspace.manifestFile));
     const project = asRecord(raw?.project);
-    return typeof project?.title === "string" && project.title.trim() ? project.title : "任务画布";
-  } catch {
-    return "任务画布";
+    return {
+      title: typeof project?.title === "string" && project.title.trim() ? project.title : "任务画布",
+      diagnostics: []
+    };
+  } catch (caught) {
+    return {
+      title: "任务画布",
+      diagnostics: [
+        desktopDiagnostic("desktop_manifest_title_read_failed", `Default task canvas title could not be read: ${errorMessage(caught)}`, workspace.manifestFile)
+      ]
+    };
   }
 }
 
 async function readRegistry(
   projectRoot: string,
   options: { createDefault?: boolean } = {}
-): Promise<{ projectWorkspace: ProjectWorkspace; registry: TaskCanvasRegistry }> {
+): Promise<{ projectWorkspace: ProjectWorkspace; registry: TaskCanvasRegistry; diagnosticsByCanvasId: Map<string, ValidationIssue[]> }> {
   const projectWorkspace = await resolveProjectWorkspace(projectRoot);
   const path = registryPath(projectWorkspace);
   if (!(await exists(path))) {
     if (options.createDefault === false) {
-      return { projectWorkspace, registry: { version: registryVersion, canvases: [] } };
+      return { projectWorkspace, registry: { version: registryVersion, canvases: [] }, diagnosticsByCanvasId: new Map() };
     }
     const title = await readManifestTitle(projectWorkspace);
     const registry: TaskCanvasRegistry = {
       version: registryVersion,
-      canvases: [defaultCanvasRecord(projectWorkspace, title)]
+      canvases: [defaultCanvasRecord(projectWorkspace, title.title)]
     };
     await mkdir(dirname(path), { recursive: true });
     await writeJsonFile(path, registry);
-    return { projectWorkspace, registry };
+    return {
+      projectWorkspace,
+      registry,
+      diagnosticsByCanvasId: title.diagnostics.length > 0 ? new Map([[defaultCanvasId, title.diagnostics]]) : new Map()
+    };
   }
-  return { projectWorkspace, registry: normalizeRegistry(await readJsonFile<unknown>(path)) };
+  return { projectWorkspace, registry: normalizeRegistry(await readJsonFile<unknown>(path)), diagnosticsByCanvasId: new Map() };
 }
 
 async function writeRegistry(workspace: ProjectWorkspace, registry: TaskCanvasRegistry): Promise<void> {
@@ -153,23 +167,31 @@ function selectedCanvasRecord(registry: TaskCanvasRegistry, canvasId?: string | 
   return registry.activeCanvasId ? requireCanvasRecord(registry, registry.activeCanvasId) : registry.canvases[0];
 }
 
-async function taskCount(workspace: ProjectWorkspace): Promise<number> {
+async function taskCount(workspace: ProjectWorkspace): Promise<{ count: number; diagnostics: ValidationIssue[] }> {
   try {
     const raw = asRecord(await readJsonFile<unknown>(workspace.manifestFile));
     const nodes = Array.isArray(raw?.nodes) ? raw.nodes : [];
-    return nodes.filter((node) => asRecord(node)?.type === "task").length;
-  } catch {
-    return 0;
+    return { count: nodes.filter((node) => asRecord(node)?.type === "task").length, diagnostics: [] };
+  } catch (caught) {
+    return {
+      count: 0,
+      diagnostics: [
+        desktopDiagnostic("desktop_canvas_task_count_read_failed", `Canvas task count could not be read: ${errorMessage(caught)}`, workspace.manifestFile)
+      ]
+    };
   }
 }
 
-async function summarizeCanvas(projectWorkspace: ProjectWorkspace, record: TaskCanvasRecord): Promise<DesktopTaskCanvasSummary> {
+async function summarizeCanvas(projectWorkspace: ProjectWorkspace, record: TaskCanvasRecord, extraDiagnostics: ValidationIssue[] = []): Promise<DesktopTaskCanvasSummary> {
   const workspace = canvasWorkspace(projectWorkspace, record);
   const diagnostics = await canvasDiagnostics(workspace);
+  appendDesktopDiagnostics(diagnostics, extraDiagnostics);
+  const taskCountResult = await taskCount(workspace);
+  appendDesktopDiagnostics(diagnostics, taskCountResult.diagnostics);
   return {
     canvasId: record.canvasId,
     name: record.name,
-    taskCount: await taskCount(workspace),
+    taskCount: taskCountResult.count,
     missingPromptCount: diagnostics.filter((diagnostic) => diagnostic.code === "prompt_missing").length,
     diagnostics,
     createdAt: record.createdAt,
@@ -180,10 +202,12 @@ async function summarizeCanvas(projectWorkspace: ProjectWorkspace, record: TaskC
 async function summarizeProjectCanvas(projectWorkspace: ProjectWorkspace, canvas: ProjectCanvasNode): Promise<DesktopTaskCanvasSummary> {
   const workspace = workspaceForProjectCanvas(projectWorkspace, canvas);
   const diagnostics = await canvasDiagnostics(workspace);
+  const taskCountResult = await taskCount(workspace);
+  appendDesktopDiagnostics(diagnostics, taskCountResult.diagnostics);
   return {
     canvasId: canvas.id,
     name: canvas.title,
-    taskCount: await taskCount(workspace),
+    taskCount: taskCountResult.count,
     missingPromptCount: diagnostics.filter((diagnostic) => diagnostic.code === "prompt_missing").length,
     diagnostics,
     createdAt: new Date(0).toISOString(),
@@ -236,8 +260,8 @@ export async function listTaskCanvases(projectRoot: string): Promise<DesktopTask
   if (loaded.source === "project_graph") {
     return Promise.all(loaded.manifest.canvases.map((canvas) => summarizeProjectCanvas(loaded.workspace, canvas)));
   }
-  const { projectWorkspace, registry } = await readRegistry(projectRoot);
-  return Promise.all(registry.canvases.map((record) => summarizeCanvas(projectWorkspace, record)));
+  const { projectWorkspace, registry, diagnosticsByCanvasId } = await readRegistry(projectRoot);
+  return Promise.all(registry.canvases.map((record) => summarizeCanvas(projectWorkspace, record, diagnosticsByCanvasId.get(record.canvasId) ?? [])));
 }
 
 export async function getActiveTaskCanvasId(projectRoot: string): Promise<string | null> {
@@ -315,6 +339,7 @@ export async function createTaskCanvas(projectRoot: string, input: { name?: stri
       ...loaded.manifest,
       canvases: [...loaded.manifest.canvases, canvas]
     });
+    invalidateDesktopProjectProjection(projectRoot);
     return summarizeProjectCanvas(loaded.workspace, canvas);
   }
   const { projectWorkspace, registry } = await readRegistry(projectRoot);
@@ -335,6 +360,7 @@ export async function createTaskCanvas(projectRoot: string, input: { name?: stri
   await writeJsonFile(workspace.stateFile, createEmptyState());
   const nextRegistry = { ...registry, canvases: [...registry.canvases, record] };
   await writeRegistry(projectWorkspace, nextRegistry);
+  invalidateDesktopProjectProjection(projectRoot);
   return summarizeCanvas(projectWorkspace, record);
 }
 
@@ -355,6 +381,7 @@ export async function removeTaskCanvas(projectRoot: string, canvasId: string): P
       await writeJsonFile(workspace.stateFile, createEmptyState());
       await rm(workspace.resultsDir, { recursive: true, force: true });
       await mkdir(workspace.resultsDir, { recursive: true });
+      invalidateDesktopProjectProjection(projectRoot);
       return listTaskCanvases(projectRoot);
     }
     await writeProjectGraph(loaded.workspace, {
@@ -362,6 +389,7 @@ export async function removeTaskCanvas(projectRoot: string, canvasId: string): P
       canvases: loaded.manifest.canvases.filter((candidate) => candidate.id !== canvasId)
     });
     await rm(workspace.workspaceRoot, { recursive: true, force: true });
+    invalidateDesktopProjectProjection(projectRoot);
     return listTaskCanvases(projectRoot);
   }
   const { projectWorkspace, registry } = await readRegistry(projectRoot);
@@ -375,6 +403,7 @@ export async function removeTaskCanvas(projectRoot: string, canvasId: string): P
     await writeJsonFile(workspace.stateFile, createEmptyState());
     await rm(workspace.resultsDir, { recursive: true, force: true });
     await mkdir(workspace.resultsDir, { recursive: true });
+    invalidateDesktopProjectProjection(projectRoot);
     return listTaskCanvases(projectRoot);
   }
   await rm(dirname(workspace.packageDir), { recursive: true, force: true });
@@ -383,5 +412,6 @@ export async function removeTaskCanvas(projectRoot: string, canvasId: string): P
     canvases: registry.canvases.filter((canvas) => canvas.canvasId !== canvasId)
   };
   await writeRegistry(projectWorkspace, nextRegistry);
+  invalidateDesktopProjectProjection(projectRoot);
   return listTaskCanvases(projectRoot);
 }

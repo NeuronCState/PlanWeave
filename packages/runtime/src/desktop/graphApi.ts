@@ -16,6 +16,6 @@ export {
 } from "./graph/editModel.js";
 export { getBlockDetail, getGraphViewModel, getTaskDetail, getTaskExecutionOrder } from "./graph/readModel.js";
 export { getDesktopProjectSnapshot } from "./graph/projectSnapshotModel.js";
-export { getStatistics } from "./graph/statisticsModel.js";
-export { searchProject } from "./graph/searchModel.js";
+export { getStatistics, getStatisticsProjection } from "./graph/statisticsModel.js";
+export { searchProject, searchProjectWithDiagnostics } from "./graph/searchModel.js";
 export { getProjectExecutionPlan, getTodoGroups } from "./graph/todoModel.js";

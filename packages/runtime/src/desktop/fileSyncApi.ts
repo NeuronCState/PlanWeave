@@ -11,6 +11,7 @@ import type {
   PackageFileSnapshot
 } from "../types.js";
 import type { DesktopPackageFileSnapshotRef, DesktopPackageFileSyncResult } from "./types.js";
+import { invalidateDesktopProjectProjection } from "./graph/projectProjectionModel.js";
 
 const snapshots = new Map<string, PackageFileSnapshot>();
 const snapshotsById = new Map<string, PackageFileSnapshot>();
@@ -100,6 +101,7 @@ function syncResult(options: {
 }
 
 export async function createDesktopPackageFileSnapshot(projectRoot: PackageWorkspaceRef): Promise<DesktopPackageFileSnapshotRef> {
+  invalidateDesktopProjectProjection(projectRoot);
   const projectKey = await snapshotKey(projectRoot);
   const displayProjectRoot = typeof projectRoot === "string" ? projectRoot : projectRoot.rootPath;
   const snapshot = await createRuntimePackageFileSnapshot(projectRoot);
@@ -112,6 +114,7 @@ export async function detectDesktopPackageFileChanges(
   projectRoot: PackageWorkspaceRef,
   snapshotId?: string | null
 ): Promise<DesktopPackageFileSyncResult> {
+  invalidateDesktopProjectProjection(projectRoot);
   const projectKey = await snapshotKey(projectRoot);
   const previous = previousSnapshot(projectKey, snapshotId);
   if (!previous) {
@@ -142,6 +145,7 @@ export async function refreshChangedDesktopPackagePrompts(
   projectRoot: PackageWorkspaceRef,
   snapshotId?: string | null
 ): Promise<DesktopPackageFileSyncResult> {
+  invalidateDesktopProjectProjection(projectRoot);
   const projectKey = await snapshotKey(projectRoot);
   const previous = previousSnapshot(projectKey, snapshotId);
   if (!previous) {
@@ -183,6 +187,7 @@ export async function refreshChangedDesktopPackagePrompts(
 }
 
 export async function refreshPackageFileChanges(projectRoot: PackageWorkspaceRef): Promise<DesktopPackageFileSyncResult> {
+  invalidateDesktopProjectProjection(projectRoot);
   const projectKey = await snapshotKey(projectRoot);
   const previous = snapshots.get(projectKey);
   if (!previous) {

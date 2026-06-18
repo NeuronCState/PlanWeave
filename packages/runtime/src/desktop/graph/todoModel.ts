@@ -2,6 +2,8 @@ import { buildExecutionStatus, type ExecutionStatus } from "../../taskManager/ex
 import { createProjectGraphClaimGuardFromAggregation } from "../../taskManager/projectGraphClaimGuard.js";
 import { loadRuntime, type RuntimeContext } from "../../taskManager/runtimeContext.js";
 import type { DesktopProjectExecutionPhase, DesktopProjectExecutionPlan, DesktopTodoGroups, DesktopTodoItem } from "../types.js";
+import type { ValidationIssue } from "../../types.js";
+import { appendDesktopDiagnostic, desktopDiagnostic, errorMessage } from "./desktopDiagnostics.js";
 import { getBlock } from "./graphHelpers.js";
 import {
   loadProjectCanvasAggregation,
@@ -97,7 +99,19 @@ export type CanvasExecutionSnapshot = {
 export type ProjectTodoContext = {
   aggregation: ProjectCanvasAggregationContext;
   snapshotsByCanvas: Map<string, CanvasExecutionSnapshot>;
+  diagnostics: ValidationIssue[];
 };
+
+function failedCanvasExecutionSnapshot(taskCount: number, error: unknown): CanvasExecutionSnapshot {
+  return {
+    groups: emptyTodoGroups(),
+    projectBlockedReadyCount: 0,
+    taskCount,
+    runtime: null,
+    status: null,
+    error
+  };
+}
 
 async function canvasExecutionSnapshot(
   aggregation: ProjectCanvasAggregationContext,
@@ -134,6 +148,7 @@ async function canvasExecutionSnapshot(
 
 export async function loadProjectTodoContext(projectRoot: string): Promise<ProjectTodoContext> {
   const runtimesByCanvas = new Map<string, RuntimeContext>();
+  const diagnostics: ValidationIssue[] = [];
   const aggregation = await loadProjectCanvasAggregation(projectRoot, {
     loadRuntimeSnapshot: async (workspace, canvasId) => {
       const runtime = await loadRuntime({ projectRoot: workspace });
@@ -144,9 +159,18 @@ export async function loadProjectTodoContext(projectRoot: string): Promise<Proje
   const snapshotsByCanvas = new Map<string, CanvasExecutionSnapshot>();
 
   for (const canvasId of aggregation.orderedCanvasIds) {
-    snapshotsByCanvas.set(canvasId, await canvasExecutionSnapshot(aggregation, canvasId, runtimesByCanvas.get(canvasId)));
+    const canvas = aggregation.canvasesById.get(canvasId);
+    try {
+      snapshotsByCanvas.set(canvasId, await canvasExecutionSnapshot(aggregation, canvasId, runtimesByCanvas.get(canvasId)));
+    } catch (caught) {
+      appendDesktopDiagnostic(
+        diagnostics,
+        desktopDiagnostic("desktop_canvas_execution_snapshot_failed", errorMessage(caught), canvasId)
+      );
+      snapshotsByCanvas.set(canvasId, failedCanvasExecutionSnapshot(canvas?.canvas.taskCount ?? 0, caught));
+    }
   }
-  return { aggregation, snapshotsByCanvas };
+  return { aggregation, snapshotsByCanvas, diagnostics };
 }
 
 export function buildTodoGroupsFromContext(context: ProjectTodoContext): DesktopTodoGroups {

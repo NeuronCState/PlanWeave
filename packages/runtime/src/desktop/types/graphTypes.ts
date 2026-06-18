@@ -66,6 +66,67 @@ export type DesktopCanvasNodeViewModel = {
   diagnostics: ValidationIssue[];
 };
 
+export type DesktopCanvasHealthSeverity = "ok" | "warning" | "error";
+
+export type DesktopCanvasHealthTaskRef = {
+  canvasId: string;
+  canvasTitle: string;
+  taskId: string;
+  taskTitle: string;
+};
+
+export type DesktopCanvasHealthBlockRef = DesktopCanvasHealthTaskRef & {
+  blockRef: string;
+  blockId: string;
+  blockTitle: string;
+  status: BlockStatus;
+};
+
+export type DesktopCanvasHealthBlocker =
+  | {
+      kind: "canvas";
+      canvasId: string;
+      canvasTitle: string;
+    }
+  | {
+      kind: "task";
+      canvasId: string;
+      canvasTitle: string;
+      taskId: string;
+      taskTitle: string;
+      status: TaskStatus;
+    };
+
+export type DesktopCanvasHealthBlockedBlock = {
+  blocked: DesktopCanvasHealthBlockRef;
+  blockers: DesktopCanvasHealthBlocker[];
+  reason: string;
+};
+
+export type DesktopCanvasHealthCanvasSummary = {
+  canvasId: string;
+  severity: DesktopCanvasHealthSeverity;
+  blockerCount: number;
+  diagnosticCount: number;
+};
+
+export type DesktopCanvasHealthEdgeSummary = {
+  from: string;
+  to: string;
+  type: "depends_on";
+  severity: DesktopCanvasHealthSeverity;
+  blockerCount: number;
+  diagnosticCount: number;
+};
+
+export type DesktopCanvasHealth = {
+  severity: DesktopCanvasHealthSeverity;
+  canvases: DesktopCanvasHealthCanvasSummary[];
+  edges: DesktopCanvasHealthEdgeSummary[];
+  blockedBlocks: DesktopCanvasHealthBlockedBlock[];
+  diagnostics: ValidationIssue[];
+};
+
 export type DesktopCanvasGraphEdgeViewModel = {
   from: string;
   to: string;
@@ -91,6 +152,7 @@ export type DesktopCanvasGraphViewModel = {
   edges: DesktopCanvasGraphEdgeViewModel[];
   crossTaskEdges: DesktopCrossCanvasTaskEdgeViewModel[];
   diagnostics: ValidationIssue[];
+  health: DesktopCanvasHealth;
 };
 
 export type DesktopCanvasMapLayoutNode = {
@@ -216,6 +278,7 @@ export type DesktopProjectSnapshot = {
   todoGroups: DesktopTodoGroups | null;
   executionPlan: DesktopProjectExecutionPlan | null;
   statistics: DesktopStatistics | null;
+  diagnostics: ValidationIssue[];
   errors: string[];
 };
 

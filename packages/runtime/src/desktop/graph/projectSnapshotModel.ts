@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { readProjectPrompt, readProjectPromptPolicy } from "../../projectPromptPolicy.js";
 import { getDesktopLayout, getDesktopLayoutForPackage } from "../layoutApi.js";
 import { resolveTaskCanvasWorkspace } from "../canvasApi.js";
-import type { ProjectWorkspace } from "../../types.js";
+import type { ProjectWorkspace, ValidationIssue } from "../../types.js";
 import type { DesktopCanvasReference, DesktopProjectSnapshot } from "../types.js";
 import {
   buildDesktopGraphViewModelContext,
@@ -10,22 +10,19 @@ import {
   loadDesktopGraphViewModelContext,
   type DesktopGraphViewModelContext
 } from "./readModel.js";
-import { buildStatisticsFromProjectTodoContext } from "./statisticsModel.js";
-import { buildProjectExecutionPlanFromContext, buildTodoGroupsFromContext, loadProjectTodoContext, type ProjectTodoContext } from "./todoModel.js";
-
-function errorMessage(caught: unknown): string {
-  return caught instanceof Error ? caught.message : String(caught);
-}
+import { appendDesktopDiagnostic, appendDesktopDiagnostics, desktopDiagnostic, errorMessage, formatDesktopDiagnostic } from "./desktopDiagnostics.js";
+import { readDesktopProjectProjection, readDesktopProjectStatisticsProjection, type DesktopProjectProjection } from "./projectProjectionModel.js";
+import { buildProjectExecutionPlanFromContext, buildTodoGroupsFromContext, type ProjectTodoContext } from "./todoModel.js";
 
 async function captureSnapshotPart<T>(
-  errors: string[],
+  diagnostics: ValidationIssue[],
   label: string,
   load: () => Promise<T>
 ): Promise<T | null> {
   try {
     return await load();
   } catch (caught) {
-    errors.push(`${label}: ${errorMessage(caught)}`);
+    appendDesktopDiagnostic(diagnostics, desktopDiagnostic("desktop_snapshot_part_failed", errorMessage(caught), label));
     return null;
   }
 }
@@ -81,7 +78,7 @@ function selectedGraphContextFromProjectTodoContext(
 }
 
 export async function getDesktopProjectSnapshot(ref: DesktopCanvasReference): Promise<DesktopProjectSnapshot> {
-  const errors: string[] = [];
+  const diagnostics: ValidationIssue[] = [];
   const selectedWorkspace: SelectedWorkspaceResult = await resolveTaskCanvasWorkspace(ref.projectRoot, ref.canvasId)
     .then((workspace) => ({ ok: true, workspace }) as const)
     .catch((error: unknown) => ({ ok: false, error }) as const);
@@ -91,7 +88,13 @@ export async function getDesktopProjectSnapshot(ref: DesktopCanvasReference): Pr
     }
     return selectedWorkspace.workspace;
   };
-  const projectTodoContext: SnapshotResult<ProjectTodoContext> = await captureResult(() => loadProjectTodoContext(ref.projectRoot));
+  const projectProjection: SnapshotResult<DesktopProjectProjection> = await captureResult(() => readDesktopProjectProjection(ref.projectRoot));
+  if (projectProjection.ok) {
+    appendDesktopDiagnostics(diagnostics, projectProjection.value.diagnostics);
+  }
+  const projectTodoContext: SnapshotResult<ProjectTodoContext> = projectProjection.ok
+    ? { ok: true, value: projectProjection.value.todoContext }
+    : { ok: false, error: projectProjection.error };
   const selectedGraphContext: SnapshotResult<DesktopGraphViewModelContext> = selectedWorkspace.ok
     ? projectTodoContext.ok
       ? await captureResult(async () => selectedGraphContextFromProjectTodoContext(projectTodoContext.value, selectedWorkspace.workspace))
@@ -107,18 +110,23 @@ export async function getDesktopProjectSnapshot(ref: DesktopCanvasReference): Pr
     executionPlan,
     statistics
   ] = await Promise.all([
-    captureSnapshotPart(errors, "projectPromptMarkdown", () => readProjectPrompt(ref.projectRoot)),
-    captureSnapshotPart(errors, "projectPromptPolicy", () => readProjectPromptPolicy(ref.projectRoot)),
-    captureSnapshotPart(errors, "graph", async () => buildGraphViewModel(unwrapSnapshotResult(selectedGraphContext))),
-    captureSnapshotPart(errors, "layout", async () => {
+    captureSnapshotPart(diagnostics, "projectPromptMarkdown", () => readProjectPrompt(ref.projectRoot)),
+    captureSnapshotPart(diagnostics, "projectPromptPolicy", () => readProjectPromptPolicy(ref.projectRoot)),
+    captureSnapshotPart(diagnostics, "graph", async () => buildGraphViewModel(unwrapSnapshotResult(selectedGraphContext))),
+    captureSnapshotPart(diagnostics, "layout", async () => {
       if (selectedGraphContext.ok) {
         return getDesktopLayoutForPackage(selectedGraphContext.value.workspace, selectedGraphContext.value.manifest);
       }
       return getDesktopLayout(getSelectedWorkspace());
     }),
-    captureSnapshotPart(errors, "todoGroups", async () => buildTodoGroupsFromContext(unwrapSnapshotResult(projectTodoContext))),
-    captureSnapshotPart(errors, "executionPlan", async () => buildProjectExecutionPlanFromContext(unwrapSnapshotResult(projectTodoContext))),
-    captureSnapshotPart(errors, "statistics", async () => buildStatisticsFromProjectTodoContext(unwrapSnapshotResult(projectTodoContext)))
+    captureSnapshotPart(diagnostics, "todoGroups", async () => buildTodoGroupsFromContext(unwrapSnapshotResult(projectTodoContext))),
+    captureSnapshotPart(diagnostics, "executionPlan", async () => buildProjectExecutionPlanFromContext(unwrapSnapshotResult(projectTodoContext))),
+    captureSnapshotPart(diagnostics, "statistics", async () => {
+      unwrapSnapshotResult(projectTodoContext);
+      const projection = await readDesktopProjectStatisticsProjection(ref.projectRoot);
+      appendDesktopDiagnostics(diagnostics, projection.diagnostics);
+      return projection.statistics;
+    })
   ]);
 
   return {
@@ -129,6 +137,7 @@ export async function getDesktopProjectSnapshot(ref: DesktopCanvasReference): Pr
     todoGroups,
     executionPlan,
     statistics,
-    errors
+    diagnostics,
+    errors: diagnostics.map(formatDesktopDiagnostic)
   };
 }

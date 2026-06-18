@@ -227,6 +227,7 @@ describe("desktop graph read API", () => {
 
     const snapshot = await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
 
+    expect(snapshot.diagnostics).toEqual([]);
     expect(snapshot.errors).toEqual([]);
     await expect(readProjectPrompt(root)).resolves.toBe(snapshot.projectPromptMarkdown);
     await expect(readProjectPromptPolicy(root)).resolves.toEqual(snapshot.projectPromptPolicy);
@@ -251,6 +252,9 @@ describe("desktop graph read API", () => {
     expect(snapshot.todoGroups).not.toBeNull();
     expect(snapshot.executionPlan).not.toBeNull();
     expect(snapshot.statistics).not.toBeNull();
+    expect(snapshot.diagnostics).toEqual([
+      expect.objectContaining({ code: "desktop_snapshot_part_failed", path: "layout" })
+    ]);
     expect(snapshot.errors).toEqual([
       expect.stringContaining("layout:")
     ]);
@@ -267,13 +271,14 @@ describe("desktop graph read API", () => {
     const snapshot = await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
 
     expect(snapshot.graph?.tasks.map((task) => task.taskId)).toEqual(["T-001"]);
-    expect(snapshot.todoGroups).toBeNull();
-    expect(snapshot.executionPlan).toBeNull();
-    expect(snapshot.statistics).toBeNull();
+    expect(snapshot.todoGroups?.ready.map((item) => item.ref)).toEqual(["T-001#B-001"]);
+    expect(snapshot.executionPlan?.phases.map((phase) => phase.canvasId)).toEqual(["default", brokenCanvas.canvasId]);
+    expect(snapshot.statistics).toMatchObject({ taskTotal: 1, blockTotal: 2 });
+    expect(snapshot.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "desktop_canvas_execution_snapshot_failed", path: brokenCanvas.canvasId })
+    ]));
     expect(snapshot.errors).toEqual(expect.arrayContaining([
-      expect.stringContaining(`todoGroups: Canvas '${brokenCanvas.canvasId}' execution snapshot failed`),
-      expect.stringContaining(`executionPlan: Canvas '${brokenCanvas.canvasId}' execution snapshot failed`),
-      expect.stringContaining(`statistics: Canvas '${brokenCanvas.canvasId}' execution snapshot failed`)
+      expect.stringContaining(`${brokenCanvas.canvasId}: Canvas '${brokenCanvas.canvasId}' execution snapshot failed`)
     ]));
   });
 });

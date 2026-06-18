@@ -4,7 +4,8 @@ import { dirname, join } from "node:path";
 import { readProject, resolveProjectWorkspace } from "../project.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import type { ProjectWorkspace, ValidationIssue } from "../types.js";
-import { loadProjectCanvasAggregation } from "./graph/projectCanvasAggregation.js";
+import { buildCanvasHealth } from "./graph/canvasHealthModel.js";
+import { readDesktopProjectProjection } from "./graph/projectProjectionModel.js";
 import type {
   DesktopCanvasGraphViewModel,
   DesktopCanvasMapLayout,
@@ -97,7 +98,8 @@ async function projectTitle(projectRoot: string, fallback: string): Promise<stri
 }
 
 async function canvasIdsForProject(projectRoot: string): Promise<{ workspace: ProjectWorkspace; projectId: string; canvasIds: string[] }> {
-  const { loaded, graph } = await loadProjectCanvasAggregation(projectRoot);
+  const { todoContext } = await readDesktopProjectProjection(projectRoot);
+  const { loaded, graph } = todoContext.aggregation;
   return {
     workspace: loaded.workspace,
     projectId: loaded.workspace.id,
@@ -106,7 +108,8 @@ async function canvasIdsForProject(projectRoot: string): Promise<{ workspace: Pr
 }
 
 export async function getCanvasGraphViewModel(projectRoot: string): Promise<DesktopCanvasGraphViewModel> {
-  const { loaded, graph, canvasesById } = await loadProjectCanvasAggregation(projectRoot);
+  const { todoContext } = await readDesktopProjectProjection(projectRoot);
+  const { loaded, graph, canvasesById } = todoContext.aggregation;
   const diagnostics = [...graph.diagnostics.errors, ...graph.diagnostics.warnings];
   const canvases = await Promise.all(
     graph.canvasIdsInOrder.map(async (canvasId) => {
@@ -128,7 +131,8 @@ export async function getCanvasGraphViewModel(projectRoot: string): Promise<Desk
     canvases,
     edges: graph.manifest.edges.map((edge) => ({ from: edge.from, to: edge.to, type: edge.type })),
     crossTaskEdges: graph.crossTaskEdges.map((edge) => ({ from: edge.from, to: edge.to, type: edge.type })),
-    diagnostics
+    diagnostics,
+    health: buildCanvasHealth(todoContext)
   };
 }
 

@@ -1,11 +1,25 @@
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createTaskCanvas, getGraphViewModel, getProjectExecutionPlan, getStatistics, getTodoGroups, resolveTaskCanvasWorkspace, searchProject } from "../desktop/index.js";
+import {
+  createTaskCanvas,
+  getDesktopProjectSnapshot,
+  getGraphViewModel,
+  getProjectExecutionPlan,
+  getStatistics,
+  getStatisticsProjection,
+  getTodoGroups,
+  resolveTaskCanvasWorkspace,
+  searchProject,
+  searchProjectWithDiagnostics
+} from "../desktop/index.js";
 import { mapProjectTaskCanvases } from "../desktop/graph/projectCanvasAggregation.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { writeProjectGraph } from "../projectGraph/index.js";
 import { runAutoRunStep } from "../taskManager/autoRun.js";
 import { claimNext, getExecutionStatus, submitBlockResult, submitReviewResult } from "../taskManager/index.js";
 import type { PlanPackageManifest } from "../types.js";
+import { maxIndexedResultFileBytes } from "../desktop/graph/resultsFileIndex.js";
 import { basicManifest, createTestWorkspace, writePromptFiles, writeReport, writeReviewResult } from "./promptTestHelpers.js";
 
 afterEach(() => {
@@ -70,6 +84,151 @@ describe("desktop search and statistics API", () => {
 
     const graph = await getGraphViewModel(root);
     expect(graph.tasks.find((task) => task.taskId === "T-001")?.executorLabel).toBe("Mixed");
+  });
+
+  it("reports missing results directories through snapshot diagnostics without changing statistics shape", async () => {
+    const { root, init } = await createTestWorkspace();
+    await rm(init.workspace.resultsDir, { recursive: true, force: true });
+
+    const snapshot = await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
+
+    expect(snapshot.statistics).toMatchObject({
+      taskTotal: 1,
+      averageImplementationTimeMs: null
+    });
+    expect(snapshot.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "desktop_results_read_failed", path: "results" })
+    ]));
+    expect(snapshot.errors).toEqual(expect.arrayContaining([
+      expect.stringContaining("results: Result files could not be listed")
+    ]));
+  });
+
+  it("refreshes cached desktop projection diagnostics after results directory becomes unreadable", async () => {
+    const { root, init } = await createTestWorkspace();
+
+    await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
+    await rm(init.workspace.resultsDir, { recursive: true, force: true });
+
+    const snapshot = await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
+
+    expect(snapshot.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "desktop_results_read_failed", path: "results" })
+    ]));
+    expect(snapshot.errors).toEqual(expect.arrayContaining([
+      expect.stringContaining("results: Result files could not be listed")
+    ]));
+  });
+
+  it("reports search result file listing failures through public diagnostics without changing search results", async () => {
+    const { root, init } = await createTestWorkspace();
+    await rm(init.workspace.resultsDir, { recursive: true, force: true });
+
+    await expect(searchProject(root, "T-001 task prompt", { kinds: ["prompt"] })).resolves.toEqual([
+      expect.objectContaining({ kind: "prompt", ref: "T-001", targetRef: "T-001" })
+    ]);
+    const projection = await searchProjectWithDiagnostics(root, "T-001 task prompt", { kinds: ["prompt"] });
+
+    expect(projection.results).toEqual([
+      expect.objectContaining({ kind: "prompt", ref: "T-001", targetRef: "T-001" })
+    ]);
+    expect(projection.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "desktop_results_read_failed", path: "results" })
+    ]));
+  });
+
+  it("reports malformed result metadata through snapshot diagnostics", async () => {
+    const { root, init } = await createTestWorkspace();
+    const runDir = join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-BAD");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(join(runDir, "metadata.json"), "{", "utf8");
+
+    const snapshot = await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
+    const statisticsProjection = await getStatisticsProjection(root);
+
+    expect(snapshot.statistics).toMatchObject({
+      taskTotal: 1,
+      averageImplementationTimeMs: null
+    });
+    expect(statisticsProjection.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "desktop_result_metadata_read_failed",
+        path: "results/T-001/blocks/B-001/runs/RUN-BAD/metadata.json"
+      })
+    ]));
+    expect(snapshot.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "desktop_result_metadata_read_failed",
+        path: "results/T-001/blocks/B-001/runs/RUN-BAD/metadata.json"
+      })
+    ]));
+    expect(snapshot.errors).toEqual(expect.arrayContaining([
+      expect.stringContaining("results/T-001/blocks/B-001/runs/RUN-BAD/metadata.json: Result metadata could not be read or parsed")
+    ]));
+  });
+
+  it("reports empty and oversized result metadata through statistics diagnostics", async () => {
+    const { root, init } = await createTestWorkspace();
+    const emptyRunDir = join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-EMPTY");
+    const oversizedRunDir = join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-OVERSIZED");
+    await mkdir(emptyRunDir, { recursive: true });
+    await mkdir(oversizedRunDir, { recursive: true });
+    await writeFile(join(emptyRunDir, "metadata.json"), "", "utf8");
+    await writeFile(join(oversizedRunDir, "metadata.json"), " ".repeat(maxIndexedResultFileBytes + 1), "utf8");
+
+    const projection = await getStatisticsProjection(root);
+
+    expect(projection.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "desktop_result_metadata_read_failed",
+        path: "results/T-001/blocks/B-001/runs/RUN-EMPTY/metadata.json"
+      }),
+      expect.objectContaining({
+        code: "desktop_result_metadata_read_failed",
+        path: "results/T-001/blocks/B-001/runs/RUN-OVERSIZED/metadata.json"
+      })
+    ]));
+  });
+
+  it("refreshes cached desktop projection after task manager result and state writes", async () => {
+    const { root } = await createTestWorkspace();
+
+    await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
+    await searchProjectWithDiagnostics(root, "cache invalidation marker");
+    await getStatisticsProjection(root);
+    await claimNext({ projectRoot: root });
+    await submitBlockResult({
+      projectRoot: root,
+      ref: "T-001#B-001",
+      reportPath: await writeReport(root, "cache-invalidation-report.md", "cache invalidation marker\n")
+    });
+
+    const snapshot = await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
+    const search = await searchProjectWithDiagnostics(root, "cache invalidation marker");
+
+    expect(snapshot.todoGroups?.completed).toEqual([
+      expect.objectContaining({ ref: "T-001#B-001" })
+    ]);
+    expect(search.results).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "run_record", ref: "T-001/blocks/B-001/runs/RUN-001/report.md" })
+    ]));
+  });
+
+  it("refreshes cached desktop projection after external prompt file edits", async () => {
+    const { root, init } = await createTestWorkspace();
+
+    await searchProjectWithDiagnostics(root, "external prompt cache marker");
+    await writeFile(join(init.workspace.packageDir, "nodes", "T-001", "prompt.md"), "# Edited prompt\n\nexternal prompt cache marker\n", "utf8");
+
+    const search = await searchProjectWithDiagnostics(root, "external prompt cache marker", { kinds: ["prompt"] });
+
+    expect(search.results).toEqual([
+      expect.objectContaining({
+        kind: "prompt",
+        ref: "T-001",
+        targetRef: "T-001"
+      })
+    ]);
   });
 
   it("searches only the requested task canvas when canvasId is filtered", async () => {
@@ -317,8 +476,15 @@ describe("desktop search and statistics API", () => {
     invalidManifest.nodes[0].blocks[0].type = "check";
     await writeJsonFile(brokenWorkspace.manifestFile, invalidManifest);
 
-    await expect(getStatistics(root)).rejects.toThrow(`Canvas '${brokenCanvas.canvasId}' execution snapshot failed`);
-    await expect(getTodoGroups(root)).rejects.toThrow(`Canvas '${brokenCanvas.canvasId}' execution snapshot failed`);
+    await expect(getStatistics(root)).resolves.toMatchObject({ taskTotal: 1, blockTotal: 2 });
+    await expect(getStatisticsProjection(root)).resolves.toMatchObject({
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: "desktop_canvas_execution_snapshot_failed", path: brokenCanvas.canvasId })
+      ])
+    });
+    await expect(getTodoGroups(root)).resolves.toMatchObject({
+      ready: [expect.objectContaining({ canvasId: "default", ref: "T-001#B-001" })]
+    });
     await expect(searchProject(root, "T-001 task prompt", { kinds: ["prompt"] })).resolves.toEqual([
       expect.objectContaining({ canvasId: "default", ref: "T-001" })
     ]);

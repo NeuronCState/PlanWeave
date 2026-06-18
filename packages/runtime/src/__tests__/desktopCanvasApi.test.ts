@@ -1,4 +1,4 @@
-import { access } from "node:fs/promises";
+import { access, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -126,6 +126,42 @@ describe("desktop task canvas API", () => {
       missingPromptCount: 3,
       diagnostics: expect.arrayContaining([expect.objectContaining({ code: "prompt_missing" })])
     });
+  });
+
+  it("reports task count read failures in canvas summaries", async () => {
+    const { root } = await createTestWorkspace();
+    const canvas = await createTaskCanvas(root, { name: "Unreadable manifest canvas" });
+    const canvasWorkspace = await resolveTaskCanvasWorkspace(root, canvas.canvasId);
+    await writeFile(canvasWorkspace.manifestFile, "{", "utf8");
+
+    const canvases = await listTaskCanvases(root);
+
+    expect(canvases.find((item) => item.canvasId === canvas.canvasId)).toMatchObject({
+      canvasId: canvas.canvasId,
+      taskCount: 0,
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: "manifest_read_failed" }),
+        expect.objectContaining({ code: "desktop_canvas_task_count_read_failed" })
+      ])
+    });
+  });
+
+  it("reports default canvas title fallback diagnostics when manifest title cannot be read", async () => {
+    const { root, init } = await createTestWorkspace();
+    await writeFile(init.workspace.manifestFile, "{", "utf8");
+
+    const canvases = await listTaskCanvases(root);
+
+    expect(canvases).toEqual([
+      expect.objectContaining({
+        canvasId: "default",
+        name: "任务画布",
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({ code: "desktop_manifest_title_read_failed" }),
+          expect.objectContaining({ code: "desktop_canvas_task_count_read_failed" })
+        ])
+      })
+    ]);
   });
 
   it("keeps raw task counts visible when a canvas contains removed plan structures", async () => {

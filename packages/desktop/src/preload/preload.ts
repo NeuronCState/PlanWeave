@@ -17,10 +17,11 @@ let lastSmokeRevealPath: string | null = null;
 const api: DesktopBridgeApi = {
   ...invokeApi,
   revealPathInFinder: async (path) => {
-    await invokeApi.revealPathInFinder(path);
     if (process.env.PLANWEAVE_DESKTOP_SMOKE === "1") {
       lastSmokeRevealPath = path;
+      return;
     }
+    await invokeApi.revealPathInFinder(path);
   },
   onPackageFileChanged: (callback) => {
     const listener = (_event: IpcRendererEvent, payload: DesktopPackageFileChangeEvent) => callback(payload);

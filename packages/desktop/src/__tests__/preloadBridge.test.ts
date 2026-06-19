@@ -238,7 +238,7 @@ describe("preload bridge invocation", () => {
     expect(electronMock.ipcRenderer.off).toHaveBeenCalledWith(appUpdateChangedChannel, listener);
   });
 
-  it("exposes a smoke-only reveal path signal after the reveal IPC resolves", async () => {
+  it("records smoke reveal requests without invoking the system file manager", async () => {
     process.env.PLANWEAVE_DESKTOP_SMOKE = "1";
     electronMock.ipcRenderer.invoke.mockResolvedValue(undefined);
 
@@ -252,11 +252,22 @@ describe("preload bridge invocation", () => {
     expect(smokeApi.getLastRevealPath()).toBeNull();
     await api.revealPathInFinder("/tmp/record/metadata.json");
 
-    expect(electronMock.ipcRenderer.invoke).toHaveBeenCalledWith(desktopBridgeInvokeChannels.revealPathInFinder, "/tmp/record/metadata.json");
+    expect(electronMock.ipcRenderer.invoke).not.toHaveBeenCalledWith(desktopBridgeInvokeChannels.revealPathInFinder, "/tmp/record/metadata.json");
     expect(smokeApi.getLastRevealPath()).toBe("/tmp/record/metadata.json");
 
     smokeApi.clearLastRevealPath();
     expect(smokeApi.getLastRevealPath()).toBeNull();
+  });
+
+  it("invokes reveal path IPC outside smoke mode", async () => {
+    electronMock.ipcRenderer.invoke.mockResolvedValue(undefined);
+
+    await import("../preload/preload");
+    const api = electronMock.exposed.get("planweave") as { revealPathInFinder(path: string): Promise<void> };
+
+    await api.revealPathInFinder("/tmp/record/metadata.json");
+
+    expect(electronMock.ipcRenderer.invoke).toHaveBeenCalledWith(desktopBridgeInvokeChannels.revealPathInFinder, "/tmp/record/metadata.json");
   });
 
   it("does not expose the smoke reveal path signal outside smoke mode", async () => {

@@ -18,6 +18,10 @@ const electronMock = vi.hoisted(() => {
     BrowserWindow: {
       fromWebContents: vi.fn(),
       getAllWindows: vi.fn(() => windows)
+    },
+    shell: {
+      openPath: vi.fn(),
+      showItemInFolder: vi.fn()
     }
   };
 });
@@ -49,10 +53,7 @@ vi.mock("electron", () => ({
   BrowserWindow: electronMock.BrowserWindow,
   dialog: { showOpenDialog: vi.fn() },
   ipcMain: electronMock.ipcMain,
-  shell: {
-    openPath: vi.fn(),
-    showItemInFolder: vi.fn()
-  }
+  shell: electronMock.shell
 }));
 
 vi.mock("@planweave-ai/runtime", async () => {
@@ -75,6 +76,9 @@ describe("runtime bridge handlers", () => {
     electronMock.ipcMain.handle.mockClear();
     electronMock.BrowserWindow.fromWebContents.mockClear();
     electronMock.BrowserWindow.getAllWindows.mockClear();
+    electronMock.shell.openPath.mockClear();
+    electronMock.shell.showItemInFolder.mockClear();
+    delete process.env.PLANWEAVE_DESKTOP_SMOKE;
     runtimeMock.autoRunEventListeners.clear();
     runtimeMock.getDesktopProjectSnapshot.mockClear();
     runtimeMock.getGraphViewModel.mockClear();
@@ -153,5 +157,17 @@ describe("runtime bridge handlers", () => {
 
     expect(activeSend).toHaveBeenCalledWith(autoRunChangedChannel, event);
     expect(destroyedSend).not.toHaveBeenCalled();
+  });
+
+  it("does not open Finder from reveal handlers while desktop smoke is running", async () => {
+    process.env.PLANWEAVE_DESKTOP_SMOKE = "1";
+    const { registerRuntimeBridgeHandlers } = await import("../main/runtimeBridgeHandlers");
+    registerRuntimeBridgeHandlers();
+
+    await electronMock.handlers.get(desktopBridgeInvokeChannels.revealProjectInFinder)?.(null, "/tmp/project");
+    await electronMock.handlers.get(desktopBridgeInvokeChannels.revealPathInFinder)?.(null, "/tmp/project/.planweave/runs/RUN-001/metadata.json");
+
+    expect(electronMock.shell.openPath).not.toHaveBeenCalled();
+    expect(electronMock.shell.showItemInFolder).not.toHaveBeenCalled();
   });
 });

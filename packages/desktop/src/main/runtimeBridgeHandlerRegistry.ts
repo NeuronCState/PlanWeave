@@ -109,9 +109,15 @@ export const runtimeBridgeHandlers = {
     return result.filePaths[0] ?? null;
   },
   revealProjectInFinder: async (_event, rootPath) => {
+    if (process.env.PLANWEAVE_DESKTOP_SMOKE === "1") {
+      return;
+    }
     await shell.openPath(rootPath);
   },
   revealPathInFinder: (_event, path) => {
+    if (process.env.PLANWEAVE_DESKTOP_SMOKE === "1") {
+      return;
+    }
     shell.showItemInFolder(path);
   },
   detectAgentTools: () => detectAgentTools(),

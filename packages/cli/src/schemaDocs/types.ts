@@ -1,11 +1,5 @@
-export type SchemaTopicName = "manifest" | "project" | "state" | "layout";
+import type { RuntimeSchemaTopicName, SchemaDocument as RuntimeSchemaDocument } from "@planweave-ai/runtime";
 
-export type SchemaDocument = {
-  name: SchemaTopicName;
-  summary: string;
-  path: string;
-  ownership: string;
-  validation: string[];
-  schema: Record<string, unknown>;
-  notes: string[];
-};
+export type SchemaTopicName = RuntimeSchemaTopicName | "state" | "layout";
+
+export type SchemaDocument = RuntimeSchemaDocument<SchemaTopicName>;

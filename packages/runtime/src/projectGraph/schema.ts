@@ -41,13 +41,15 @@ const projectCrossTaskEdgeSchema = z
   })
   .strict();
 
-export const projectGraphManifestSchema = z
-  .object({
-    version: z.literal(supportedProjectGraphVersion),
-    canvases: z.array(projectCanvasNodeSchema).min(1),
-    edges: z.array(projectCanvasEdgeSchema).default([]),
-    crossTaskEdges: z.array(projectCrossTaskEdgeSchema).default([])
-  })
-  .strict();
+const projectGraphManifestSchemaShape = {
+  version: z.literal(supportedProjectGraphVersion),
+  canvases: z.array(projectCanvasNodeSchema).min(1),
+  edges: z.array(projectCanvasEdgeSchema).default([]),
+  crossTaskEdges: z.array(projectCrossTaskEdgeSchema).default([])
+};
+
+export const projectGraphManifestSchemaTopLevelFields = Object.freeze(Object.keys(projectGraphManifestSchemaShape));
+
+export const projectGraphManifestSchema = z.object(projectGraphManifestSchemaShape).strict();
 
 export type ParsedProjectGraphManifest = z.infer<typeof projectGraphManifestSchema>;

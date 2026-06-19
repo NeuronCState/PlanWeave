@@ -4,7 +4,13 @@ export { readProject, resolveProjectWorkspace } from "./project.js";
 export { readProjectPrompt, readProjectPromptPolicy, updateProjectPrompt, updateProjectPromptPolicy } from "./projectPromptPolicy.js";
 export type { ProjectPromptPolicy } from "./projectPromptPolicy.js";
 export { initWorkspace } from "./initWorkspace.js";
-export { manifestNodeSchema, manifestSchema } from "./schema/manifest.js";
+export { manifestNodeSchema, manifestSchema, manifestSchemaTopLevelFields } from "./schema/manifest.js";
+export {
+  manifestSchemaDocument,
+  projectSchemaDocument,
+  runtimeSchemaDocuments,
+  runtimeSchemaTopicOrder
+} from "./schemaDocs/index.js";
 export { loadPackage } from "./package/loadPackage.js";
 export { editBlock, editTask } from "./package/manifestEdit.js";
 export { readMarkdown } from "./package/readMarkdown.js";
@@ -28,6 +34,7 @@ export {
   projectCanvasWorkspace,
   projectGraphPath,
   projectGraphManifestSchema,
+  projectGraphManifestSchemaTopLevelFields,
   projectGraphSchema,
   resolveProjectCanvasWorkspace,
   writeProjectGraph
@@ -146,7 +153,7 @@ export {
   updateReviewPipeline,
   validateGraphEdit
 } from "./desktop/index.js";
-export { edgeTypes, runSubmitStatuses, reviewStatuses } from "./types.js";
+export { edgeTypes, executorAdapters, reviewTriggerConditions, runSubmitStatuses, reviewStatuses } from "./types.js";
 export {
   projectGraphCanvasNodeTypes,
   projectGraphEdgeTypes,
@@ -157,4 +164,5 @@ export {
 export type * from "./desktop/index.js";
 export type * from "./autoRun/executorPreflightTypes.js";
 export type * from "./projectGraph/index.js";
+export type * from "./schemaDocs/index.js";
 export type * from "./types.js";

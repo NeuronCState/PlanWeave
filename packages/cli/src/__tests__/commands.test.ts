@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { manifestSchemaDocument as runtimeManifestSchemaDocument, projectSchemaDocument as runtimeProjectSchemaDocument } from "@planweave-ai/runtime";
 import { createProgram } from "../index.js";
 import { formatExecutorTestHuman, formatExecutorTestJson } from "../commands/executors.js";
 import { formatClaimHint } from "../commands/status.js";
@@ -228,6 +229,8 @@ describe("planweave CLI contract", () => {
     expect(formatSchemaHelp("all")).toContain("project: Project-level canvas graph schema.");
     expect(schemaDocuments.manifest.schema).toHaveProperty("nodes");
     expect(schemaDocuments.project.schema).toHaveProperty("canvases");
+    expect(schemaDocuments.manifest).toBe(runtimeManifestSchemaDocument);
+    expect(schemaDocuments.project).toBe(runtimeProjectSchemaDocument);
   });
 
   it("prints claim hint status reasons", () => {

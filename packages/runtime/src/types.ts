@@ -5,6 +5,23 @@ export const nodeTypes = ["task"] as const;
 export const edgeTypes = ["depends_on"] as const;
 
 export const blockTypes = ["implementation", "review"] as const;
+export const executorAdapter = {
+  manual: "manual",
+  codexExec: "codex-exec",
+  opencodeExec: "opencode-exec",
+  claudeCodeExec: "claude-code-exec",
+  piExec: "pi-exec",
+  localReview: "local-review"
+} as const;
+export const executorAdapters = [
+  executorAdapter.manual,
+  executorAdapter.codexExec,
+  executorAdapter.opencodeExec,
+  executorAdapter.claudeCodeExec,
+  executorAdapter.piExec,
+  executorAdapter.localReview
+] as const;
+export const reviewTriggerConditions = ["after_required_work_completed", "manual"] as const;
 export const taskStatuses = ["planned", "ready", "in_progress", "implemented"] as const;
 export const blockStatuses = ["planned", "ready", "in_progress", "completed", "needs_changes", "blocked", "diverged"] as const;
 export const feedbackStatuses = ["open", "in_progress", "resolved", "dismissed"] as const;
@@ -13,6 +30,7 @@ export const reviewVerdicts = ["passed", "needs_changes"] as const;
 export type NodeType = (typeof nodeTypes)[number];
 export type EdgeType = (typeof edgeTypes)[number];
 export type BlockType = (typeof blockTypes)[number];
+export type ExecutorAdapterName = (typeof executorAdapters)[number];
 export type TaskStatus = (typeof taskStatuses)[number];
 export type BlockStatus = (typeof blockStatuses)[number];
 export type FeedbackStatus = (typeof feedbackStatuses)[number];
@@ -26,7 +44,7 @@ export type ReviewHookDefinition = {
   executionPolicy: "trusted-local";
 };
 
-export type ReviewTriggerCondition = "after_required_work_completed" | "manual";
+export type ReviewTriggerCondition = (typeof reviewTriggerConditions)[number];
 
 export type ManualExecutorProfile = {
   adapter: "manual";

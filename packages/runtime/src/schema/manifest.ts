@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { edgeTypes, supportedManifestVersion } from "../types.js";
+import { edgeTypes, executorAdapter, reviewTriggerConditions, supportedManifestVersion } from "../types.js";
 
 const blockParallelPolicySchema = z
   .object({
@@ -21,12 +21,12 @@ const reviewHookSchema = z
 const executorProfileSchema = z.discriminatedUnion("adapter", [
   z
     .object({
-      adapter: z.literal("manual")
+      adapter: z.literal(executorAdapter.manual)
     })
     .strict(),
   z
     .object({
-      adapter: z.literal("codex-exec"),
+      adapter: z.literal(executorAdapter.codexExec),
       command: z.string().min(1),
       args: z.array(z.string()).default(["exec", "-"]),
       sandbox: z.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
@@ -36,7 +36,7 @@ const executorProfileSchema = z.discriminatedUnion("adapter", [
     .strict(),
   z
     .object({
-      adapter: z.literal("opencode-exec"),
+      adapter: z.literal(executorAdapter.opencodeExec),
       command: z.string().min(1),
       args: z.array(z.string()).default(["run", "-"]),
       sandbox: z.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
@@ -45,7 +45,7 @@ const executorProfileSchema = z.discriminatedUnion("adapter", [
     .strict(),
   z
     .object({
-      adapter: z.literal("claude-code-exec"),
+      adapter: z.literal(executorAdapter.claudeCodeExec),
       command: z.string().min(1),
       args: z.array(z.string()).default(["-p"]),
       timeoutMs: z.number().int().positive().optional()
@@ -53,7 +53,7 @@ const executorProfileSchema = z.discriminatedUnion("adapter", [
     .strict(),
   z
     .object({
-      adapter: z.literal("pi-exec"),
+      adapter: z.literal(executorAdapter.piExec),
       command: z.string().min(1),
       args: z.array(z.string()).default(["-p"]),
       timeoutMs: z.number().int().positive().optional()
@@ -61,7 +61,7 @@ const executorProfileSchema = z.discriminatedUnion("adapter", [
     .strict(),
   z
     .object({
-      adapter: z.literal("local-review"),
+      adapter: z.literal(executorAdapter.localReview),
       command: z.string().min(1),
       args: z.array(z.string()).default([]),
       sandbox: z.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
@@ -95,7 +95,7 @@ const reviewBlockSchema = z
         required: z.boolean().default(true),
         maxFeedbackCycles: z.number().int().nonnegative().default(1),
         preset: z.string().min(1).optional(),
-        triggerCondition: z.enum(["after_required_work_completed", "manual"]).optional(),
+        triggerCondition: z.enum(reviewTriggerConditions).optional(),
         inputContext: z.string().min(1).optional(),
         passCriteria: z.string().min(1).optional(),
         feedbackFormat: z.string().min(1).optional(),
@@ -121,47 +121,51 @@ const taskNodeSchema = z
 
 export const manifestNodeSchema = taskNodeSchema;
 
-export const manifestSchema = z
-  .object({
-    version: z.literal(supportedManifestVersion),
-    project: z
-      .object({
-        title: z.string().min(1),
-        description: z.string()
-      })
-      .strict(),
-    execution: z
-      .object({
-        defaultExecutor: z.string().min(1).optional(),
-        parallel: z
-          .object({
-            enabled: z.boolean(),
-            maxConcurrent: z.number().int().positive()
-          })
-          .strict()
-      })
-      .strict(),
-    review: z
-      .object({
-        maxFeedbackCycles: z.number().int().nonnegative().default(1),
-        completionPolicy: z.literal("strict")
-      })
-      .strict(),
-    executors: z.record(z.string().min(1), executorProfileSchema).default({}),
-    nodes: z.array(manifestNodeSchema),
-    edges: z.array(
-      z
+const manifestSchemaShape = {
+  version: z.literal(supportedManifestVersion),
+  project: z
+    .object({
+      title: z.string().min(1),
+      description: z.string()
+    })
+    .strict(),
+  execution: z
+    .object({
+      defaultExecutor: z.string().min(1).optional(),
+      parallel: z
         .object({
-          from: z.string().min(1),
-          to: z.string().min(1),
-          type: z.enum(edgeTypes)
+          enabled: z.boolean(),
+          maxConcurrent: z.number().int().positive()
         })
         .strict()
-    )
-  })
+    })
+    .strict(),
+  review: z
+    .object({
+      maxFeedbackCycles: z.number().int().nonnegative().default(1),
+      completionPolicy: z.literal("strict")
+    })
+    .strict(),
+  executors: z.record(z.string().min(1), executorProfileSchema).default({}),
+  nodes: z.array(manifestNodeSchema),
+  edges: z.array(
+    z
+      .object({
+        from: z.string().min(1),
+        to: z.string().min(1),
+        type: z.enum(edgeTypes)
+      })
+      .strict()
+  )
+};
+
+export const manifestSchemaTopLevelFields = Object.freeze(Object.keys(manifestSchemaShape));
+
+export const manifestSchema = z
+  .object(manifestSchemaShape)
   .passthrough()
   .superRefine((manifest, context) => {
-    const allowedTopLevelKeys = new Set(["version", "project", "execution", "review", "executors", "nodes", "edges"]);
+    const allowedTopLevelKeys = new Set(manifestSchemaTopLevelFields);
     for (const key of Object.keys(manifest)) {
       if (allowedTopLevelKeys.has(key)) {
         continue;

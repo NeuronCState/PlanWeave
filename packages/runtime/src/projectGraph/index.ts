@@ -3,7 +3,7 @@ export { parseProjectTaskRefKey, projectCanvasEdgeKey, projectCrossTaskEdgeKey, 
 export { loadProjectGraph, loadProjectGraphForWorkspace, projectGraphPath, writeProjectGraph } from "./loadProjectGraph.js";
 export { materializeProjectGraph } from "./materializeProjectGraph.js";
 export { defaultCanvasProjectGraph, projectGraphFromLegacyRegistry } from "./migration.js";
-export { projectGraphManifestSchema, projectGraphManifestSchema as projectGraphSchema } from "./schema.js";
+export { projectGraphManifestSchema, projectGraphManifestSchemaTopLevelFields, projectGraphManifestSchema as projectGraphSchema } from "./schema.js";
 export { projectCanvasWorkspace, resolveProjectCanvasWorkspace } from "./projectGraphWorkspace.js";
 export {
   projectGraphEdgeTypes,

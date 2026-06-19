@@ -432,7 +432,7 @@ export function App() {
 
   if (activeView === "settings") {
     return (
-      <div className="relative h-screen min-h-0 overflow-hidden bg-app-shell text-foreground">
+      <div className="glass-surface relative h-screen min-h-0 overflow-hidden text-foreground">
         <AppSettingsRoute {...settingsRouteProps} />
         <AppOverlays error={error} setError={setError} t={t} />
       </div>
@@ -440,7 +440,7 @@ export function App() {
   }
 
   return (
-    <div className="relative h-screen min-h-0 overflow-hidden bg-app-shell text-foreground">
+    <div className="glass-surface relative h-screen min-h-0 overflow-hidden text-foreground">
       <main className="relative flex h-full min-h-0 overflow-hidden">
         <ProjectSidebar
           activeView={activeView}

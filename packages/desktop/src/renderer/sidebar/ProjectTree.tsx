@@ -55,7 +55,7 @@ export function ProjectTree({
   t
 }: ProjectTreeProps) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 bg-app-sidebar p-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs font-semibold uppercase tracking-[0.08em] text-text-faint">{t("projects")}</div>
         <Button className="text-text-muted hover:bg-surface-muted hover:text-text-strong" size="icon-sm" variant="ghost" onClick={handleOpenProject} aria-label={t("chooseProjectFolder")}>

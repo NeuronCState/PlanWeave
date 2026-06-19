@@ -141,8 +141,8 @@ export function ProjectSidebar({
   };
 
   return (
-    <aside className="relative flex shrink-0 flex-col overflow-hidden border-r border-border/80 bg-app-sidebar text-text" style={{ width }}>
-      <div className="app-drag-region flex h-11 shrink-0 items-center border-b border-border/80 bg-app-sidebar px-3 pl-[124px]">
+    <aside className="relative flex shrink-0 flex-col overflow-hidden text-text" style={{ width }}>
+      <div className="app-drag-region flex h-11 shrink-0 items-center border-b border-border/80 px-3 pl-[124px]">
         <div className="app-no-drag flex items-center gap-1">
           <Button size="icon-sm" variant="ghost" aria-label={t("collapseSidebar")} onClick={onToggleSidebar}>
             <PanelLeftCloseIcon data-icon="inline-start" />
@@ -182,7 +182,7 @@ export function ProjectSidebar({
         t={t}
       />
       <Separator className="bg-border/80" />
-      <div className="flex items-center gap-2 bg-app-sidebar p-3">
+      <div className="flex items-center gap-2 p-3">
         <Button className="h-8 flex-1 justify-start px-2 text-text-muted hover:bg-surface-muted hover:text-text-strong" variant="ghost" onClick={() => void resetLayout()}>
           <RotateCcwIcon data-icon="inline-start" />
           {t("resetLayout")}

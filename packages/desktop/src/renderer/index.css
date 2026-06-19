@@ -111,9 +111,13 @@
     --app-shell: oklch(0.973 0.006 96);
     --app-sidebar: oklch(0.955 0.008 255);
     --app-topbar: oklch(0.982 0.004 106);
-    --app-canvas: oklch(0.965 0.007 120);
+    --app-canvas: oklch(0.987 0.003 106);
     --app-panel: oklch(0.99 0.002 106);
     --app-sidebar-material: oklch(0.965 0.004 106 / 36%);
+    /* Glass surface strength knobs. Shared by every .glass-surface region so a
+       future contrast/intensity setting can tune all glass from one place. */
+    --glass-blur: 20px;
+    --glass-saturate: 1.3;
     --surface-base: oklch(0.99 0.002 106);
     --surface-muted: oklch(0.952 0.005 248);
     --surface-raised: oklch(1 0 0);
@@ -227,9 +231,11 @@
 }
 
 html[data-window-material="true"] {
-  /* Only the left sidebar reads as glass. The shell goes transparent so the
-     sidebar can reveal the native window material, while the topbar, canvas,
-     and right palette keep their opaque tokens and stay solid. */
+  /* Glass mode. Every chrome shell uses the single shared .glass-surface
+     class, so the workspace row and the settings row read identically. The
+     shell and window backgrounds go transparent so .glass-surface can reveal
+     the native window material; the topbar, canvas, panel, and right palette
+     keep their opaque tokens and stay solid. */
   --app-shell: transparent;
   --app-sidebar: var(--app-sidebar-material);
 }
@@ -240,11 +246,23 @@ html[data-window-material="true"] #root {
   background: transparent;
 }
 
-/* Glass: when native vibrancy is active, blur the OS backdrop behind the
-   shell chrome so translucent surfaces read as frosted glass. The graph
-   canvas and cards keep opaque tokens, so this only affects the shell. */
-html[data-window-material="true"] .bg-app-sidebar {
-  backdrop-filter: blur(20px) saturate(1.3);
+/* Shared glass surface — the single source of truth for the frosted chrome on
+   both the workspace and settings pages. Solid sidebar color by default; in
+   window-material mode --app-sidebar resolves to the translucent tint and the
+   backdrop is blurred. Strength comes entirely from --glass-blur and
+   --glass-saturate, so one future setting can adjust both pages at once.
+
+   Layering model: apply this ONLY to the top-level container of each page. All
+   chrome (sidebars, navs, title bars, drag regions) stays transparent and
+   reveals this one layer; only content panels (graph canvas, settings body,
+   right palette) carry opaque tokens. New chrome then gets glass for free —
+   never paint glass onto individual chrome elements again. */
+.glass-surface {
+  background-color: var(--app-sidebar);
+}
+
+html[data-window-material="true"] .glass-surface {
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 html[data-reduced-motion="true"] *,

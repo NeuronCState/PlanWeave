@@ -79,10 +79,12 @@ export function SettingsView({
   };
 
   return (
-    <main className="flex h-full min-h-0 bg-app-canvas text-text">
+    <main className="flex h-full min-h-0 text-text">
       <SettingsNav section={section} setSection={setSection} onBackToApp={() => setActiveView("graph")} t={t} />
-      <ScrollArea className="min-w-0 flex-1">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-12 py-10">
+      <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-l-xl bg-app-shell text-text">
+        <div className="app-drag-region h-11 shrink-0 border-b border-border/80 bg-app-topbar" />
+        <ScrollArea className="min-w-0 flex-1 bg-app-canvas">
+          <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-12 py-10">
           {section === "general" ? (
             <SettingsGeneralSection
               language={language}
@@ -117,8 +119,9 @@ export function SettingsView({
               updateSettings={updateSettings}
             />
           ) : null}
-        </div>
-      </ScrollArea>
+          </div>
+        </ScrollArea>
+      </section>
     </main>
   );
 }

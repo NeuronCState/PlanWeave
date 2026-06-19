@@ -1,6 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { DesktopAgentDetection, DesktopGraphViewModel, DesktopProjectSummary, DesktopRuntimeToolAvailability, ProjectPromptPolicy } from "@planweave-ai/runtime";
-import { WindowTitleBar } from "./components/WindowTitleBar";
 import type { createTranslator, Language } from "./i18n";
 import type { AppView, DesktopUiSettings } from "./types";
 import { SettingsView } from "./views/SettingsView";
@@ -47,8 +46,7 @@ export function AppSettingsRoute({
   updateSettings
 }: AppSettingsRouteProps) {
   return (
-    <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-app-shell text-foreground">
-      <WindowTitleBar t={t} />
+    <div className="h-screen min-h-0 overflow-hidden text-foreground">
       <SettingsView
         graph={graph}
         agents={agents}

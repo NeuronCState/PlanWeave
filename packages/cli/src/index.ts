@@ -32,6 +32,7 @@ import { registerExecutorsCommand } from "./commands/executors.js";
 import { registerRunStatusCommand } from "./commands/runStatus.js";
 import { registerHelpCommand } from "./commands/help.js";
 import { registerSchemaCommand } from "./commands/schema.js";
+import { formatCliError } from "./errors.js";
 import { addProjectRootOption } from "./projectRoot.js";
 
 const require = createRequire(import.meta.url);
@@ -92,5 +93,14 @@ export function isCliEntrypoint(moduleUrl: string, argvPath: string | undefined)
 }
 
 if (isCliEntrypoint(import.meta.url, process.argv[1])) {
-  await createProgram().parseAsync(process.argv);
+  try {
+    await createProgram().parseAsync(process.argv);
+  } catch (error) {
+    if (process.env.PLANWEAVE_DEBUG === "1") {
+      console.error(error);
+    } else {
+      console.error(formatCliError(error));
+    }
+    process.exitCode = 1;
+  }
 }

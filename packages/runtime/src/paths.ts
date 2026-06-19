@@ -1,9 +1,7 @@
 import { homedir } from "node:os";
-import { access } from "node:fs/promises";
-import { constants } from "node:fs";
 import { join, resolve } from "node:path";
 import { getActiveTaskCanvasId, resolveTaskCanvasWorkspace } from "./desktop/canvasApi.js";
-import { resolveProjectWorkspace } from "./project.js";
+import { requireInitializedProjectWorkspace } from "./project.js";
 import { loadProjectGraph, projectCanvasWorkspace, projectGraphPath } from "./projectGraph/index.js";
 import type { ProjectPathsResult } from "./types.js";
 
@@ -12,12 +10,7 @@ export function resolvePlanweaveHome(): string {
 }
 
 export async function readProjectPaths(projectRoot: string): Promise<ProjectPathsResult> {
-  const projectWorkspace = await resolveProjectWorkspace(projectRoot);
-  try {
-    await access(projectWorkspace.projectFile, constants.R_OK);
-  } catch {
-    throw new Error(`PlanWeave workspace for project '${projectWorkspace.rootPath}' has not been initialized.`);
-  }
+  const projectWorkspace = await requireInitializedProjectWorkspace(projectRoot);
   const workspace = await resolveTaskCanvasWorkspace(projectRoot);
   const loadedProjectGraph = await loadProjectGraph(projectRoot);
   const canvases = loadedProjectGraph.manifest.canvases.map((canvas) => {

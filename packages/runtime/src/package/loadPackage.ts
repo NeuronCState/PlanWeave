@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { resolveTaskCanvasWorkspace } from "../desktop/canvasApi.js";
 import { readJsonFile } from "../json.js";
+import { requireInitializedProjectWorkspace } from "../project.js";
 import { manifestSchema } from "../schema/manifest.js";
 import type { PackageWorkspaceRef, PlanPackageManifest, ProjectWorkspace } from "../types.js";
 
@@ -14,6 +15,9 @@ export async function resolvePackageWorkspace(workspaceRef: PackageWorkspaceRef)
 }
 
 export async function loadPackage(workspaceRef: PackageWorkspaceRef): Promise<LoadedPlanPackage> {
+  if (typeof workspaceRef === "string") {
+    await requireInitializedProjectWorkspace(workspaceRef);
+  }
   const workspace = await resolvePackageWorkspace(workspaceRef);
   const raw = await readJsonFile<unknown>(join(workspace.packageDir, "manifest.json"));
   const manifest = manifestSchema.parse(raw) as PlanPackageManifest;

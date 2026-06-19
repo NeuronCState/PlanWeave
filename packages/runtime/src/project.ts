@@ -1,6 +1,7 @@
 import { access, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { constants } from "node:fs";
+import { PlanWeaveWorkspaceNotInitializedError } from "./errors.js";
 import { createProjectId } from "./projectId.js";
 import { resolvePlanweaveHome } from "./paths.js";
 import { readJsonFile } from "./json.js";
@@ -33,4 +34,14 @@ export async function readProject(projectRoot: string): Promise<ProjectMetadata 
     return null;
   }
   return readJsonFile<ProjectMetadata>(workspace.projectFile);
+}
+
+export async function requireInitializedProjectWorkspace(projectRoot: string): Promise<ProjectWorkspace> {
+  const workspace = await resolveProjectWorkspace(projectRoot);
+  try {
+    await access(workspace.projectFile, constants.R_OK);
+  } catch {
+    throw new PlanWeaveWorkspaceNotInitializedError(workspace);
+  }
+  return workspace;
 }

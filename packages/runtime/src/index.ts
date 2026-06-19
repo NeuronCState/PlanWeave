@@ -1,6 +1,7 @@
+export { PlanWeaveWorkspaceNotInitializedError } from "./errors.js";
 export { readProjectPaths, resolvePlanweaveHome } from "./paths.js";
 export { createProjectId } from "./projectId.js";
-export { readProject, resolveProjectWorkspace } from "./project.js";
+export { readProject, requireInitializedProjectWorkspace, resolveProjectWorkspace } from "./project.js";
 export { readProjectPrompt, readProjectPromptPolicy, updateProjectPrompt, updateProjectPromptPolicy } from "./projectPromptPolicy.js";
 export type { ProjectPromptPolicy } from "./projectPromptPolicy.js";
 export { initWorkspace } from "./initWorkspace.js";

@@ -1,5 +1,6 @@
 import type { Command } from "commander";
-import { readProjectPaths } from "@planweave-ai/runtime";
+import { PlanWeaveWorkspaceNotInitializedError, readProjectPaths } from "@planweave-ai/runtime";
+import { formatWorkspaceNotInitialized, workspaceNotInitializedJson } from "../errors.js";
 import { resolveCliProjectRoot } from "../projectRoot.js";
 
 export function registerPathsCommand(program: Command): void {
@@ -8,7 +9,21 @@ export function registerPathsCommand(program: Command): void {
     .description("Print PlanWeave workspace paths for the current project")
     .option("--json", "print machine-readable output")
     .action(async (options: { json?: boolean }) => {
-      const paths = await readProjectPaths(resolveCliProjectRoot());
+      let paths: Awaited<ReturnType<typeof readProjectPaths>>;
+      try {
+        paths = await readProjectPaths(resolveCliProjectRoot());
+      } catch (error) {
+        if (!(error instanceof PlanWeaveWorkspaceNotInitializedError)) {
+          throw error;
+        }
+        process.exitCode = 1;
+        if (options.json) {
+          console.log(JSON.stringify(workspaceNotInitializedJson(error), null, 2));
+          return;
+        }
+        console.error(formatWorkspaceNotInitialized(error));
+        return;
+      }
       if (options.json) {
         console.log(JSON.stringify(paths, null, 2));
         return;

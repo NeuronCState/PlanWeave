@@ -9,13 +9,15 @@ import { createWindow } from "./window.js";
 
 const isDev = process.env.PLANWEAVE_DESKTOP_DEV_SERVER_URL !== undefined;
 const isSmoke = process.env.PLANWEAVE_DESKTOP_SMOKE === "1";
+const isStartupSmoke = process.env.PLANWEAVE_DESKTOP_STARTUP_SMOKE === "1";
+const isSmokeRun = isSmoke || isStartupSmoke;
 
 // Production app launches can inherit shell env from development tools; keep PLANWEAVE_HOME scoped to dev and smoke runs.
-if (!isDev && !isSmoke) {
+if (!isDev && !isSmokeRun) {
   delete process.env.PLANWEAVE_HOME;
 }
 
-if (isSmoke && process.env.PLANWEAVE_DESKTOP_SMOKE_USER_DATA_DIR) {
+if (isSmokeRun && process.env.PLANWEAVE_DESKTOP_SMOKE_USER_DATA_DIR) {
   app.setPath("userData", process.env.PLANWEAVE_DESKTOP_SMOKE_USER_DATA_DIR);
 }
 
@@ -28,7 +30,12 @@ registerApplicationMenu({ checkForUpdates: checkForAppUpdate });
 
 app.whenReady().then(() => {
   void (async () => {
-    await createWindow({ isDev, isSmoke });
+    await createWindow({ isDev, isSmoke, isStartupSmoke });
+    if (isStartupSmoke) {
+      console.log(JSON.stringify({ event: "PLANWEAVE_DESKTOP_STARTUP_SMOKE_READY" }));
+      app.exit(0);
+      return;
+    }
     void autoStartMcpTunnel();
     if (app.isPackaged) {
       void checkForAppUpdate();
@@ -41,7 +48,7 @@ app.whenReady().then(() => {
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    void createWindow({ isDev, isSmoke });
+    void createWindow({ isDev, isSmoke, isStartupSmoke });
   }
 });
 

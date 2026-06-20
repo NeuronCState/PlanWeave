@@ -206,15 +206,15 @@ async function runRendererManualSmoke(window: BrowserWindow): Promise<Record<str
       const waitForWindowMaterialState = async () => {
         for (let attempt = 0; attempt < 50; attempt += 1) {
           const rootHasMaterial = document.documentElement.dataset.windowMaterial === "true";
-          const sidebar = document.querySelector(".bg-app-sidebar");
-          const backgroundColor = sidebar instanceof HTMLElement ? window.getComputedStyle(sidebar).backgroundColor : "";
-          const sidebarHasAlpha = /(?:rgba|rgb|oklch|color)\\([^)]*(?:,\\s*0\\.|\\/\\s*0\\.)/.test(backgroundColor);
-          if (rootHasMaterial && sidebarHasAlpha) {
+          const glassSurface = document.querySelector(".glass-surface");
+          const backgroundColor = glassSurface instanceof HTMLElement ? window.getComputedStyle(glassSurface).backgroundColor : "";
+          const glassSurfaceHasAlpha = /(?:rgba|rgb|oklch|color)\\([^)]*(?:,\\s*0\\.|\\/\\s*0\\.)/.test(backgroundColor);
+          if (rootHasMaterial && glassSurfaceHasAlpha) {
             return backgroundColor;
           }
           await wait(100);
         }
-        throw new Error("Window material did not apply a root state and an alpha sidebar surface.");
+        throw new Error("Window material did not apply a root state and an alpha glass surface.");
       };
 
       const covered = [];

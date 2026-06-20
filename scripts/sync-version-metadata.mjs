@@ -14,6 +14,13 @@ const packages = {
   mcp: "packages/mcp/package.json"
 };
 
+const versionSourceFiles = {
+  mcp: {
+    path: "packages/mcp/src/packageInfo.ts",
+    pattern: /export const mcpPackageVersion = "([^"]+)";/
+  }
+};
+
 const versionFlagTargets = {
   "--root": ["root"],
   "--runtime": ["runtime"],
@@ -120,6 +127,25 @@ async function writeIfChanged(relativePath, nextText, changedFiles) {
   }
 }
 
+async function syncVersionSourceFile(target, version, changedFiles) {
+  const sourceFile = versionSourceFiles[target];
+  if (!sourceFile) {
+    return;
+  }
+  const currentText = await readText(sourceFile.path);
+  const match = sourceFile.pattern.exec(currentText);
+  if (!match) {
+    invalidFiles.push(`${sourceFile.path} does not expose a supported version constant`);
+    return;
+  }
+  if (!semverPattern.test(match[1])) {
+    invalidFiles.push(`${sourceFile.path} has invalid version ${JSON.stringify(match[1])}`);
+    return;
+  }
+  const nextText = currentText.replace(sourceFile.pattern, (text) => text.replace(match[1], version));
+  await writeIfChanged(sourceFile.path, nextText, changedFiles);
+}
+
 const changedFiles = [];
 const invalidFiles = [];
 
@@ -135,6 +161,7 @@ for (const [target, packageJsonPath] of Object.entries(packages)) {
     packageJson.version = nextVersion;
     await writeIfChanged(packageJsonPath, stringifyJson(packageJson), changedFiles);
   }
+  await syncVersionSourceFile(target, nextVersion ?? packageJson.version, changedFiles);
 }
 
 if (invalidFiles.length > 0) {

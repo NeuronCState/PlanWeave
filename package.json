@@ -22,6 +22,7 @@
     "desktop:release:linux": "pnpm --dir packages/desktop release:linux",
     "desktop:release:mac": "pnpm --dir packages/desktop release:mac",
     "desktop:release:win": "pnpm --dir packages/desktop release:win",
+    "desktop:verify:packaged:mac": "pnpm --dir packages/desktop verify:packaged:mac",
     "pack:npm": "pnpm -r --filter @planweave-ai/runtime --filter @planweave-ai/cli pack",
     "planweave": "pnpm --filter @planweave-ai/cli planweave",
     "publish:npm": "pnpm -r --filter @planweave-ai/runtime --filter @planweave-ai/cli publish --access public",

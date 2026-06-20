@@ -1,6 +1,6 @@
 {
   "name": "@planweave-ai/desktop",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Desktop application for PlanWeave plan packages, task graphs, and agent workflows.",
   "license": "MIT",
   "author": "GaosCode <GaosCode@users.noreply.github.com>",
@@ -23,7 +23,7 @@
     "workflow"
   ],
   "scripts": {
-    "build": "pnpm --filter @planweave-ai/mcp build && tsc -p tsconfig.json && tsc -p tsconfig.main.json && vite build",
+    "build": "pnpm --filter @planweave-ai/mcp build && tsc -p tsconfig.json && tsc -p tsconfig.main.json --noEmit && node scripts/build-electron.mjs && vite build",
     "dev": "vite --host 127.0.0.1",
     "dist:all": "pnpm build && electron-builder --mac dmg zip --linux AppImage deb tar.gz --win nsis zip --publish never",
     "dist:linux": "pnpm build && electron-builder --linux AppImage deb tar.gz --publish never",
@@ -33,12 +33,13 @@
     "pack:linux": "pnpm build && electron-builder --linux --dir --publish never",
     "pack:mac": "pnpm build && electron-builder --mac --dir --publish never",
     "pack:win": "pnpm build && electron-builder --win --dir --publish never",
-    "release:all": "pnpm build && electron-builder --mac dmg zip --linux AppImage deb tar.gz --win nsis zip --publish always",
+    "release:all": "pnpm verify:packaged:mac && electron-builder --mac dmg zip --linux AppImage deb tar.gz --win nsis zip --publish always",
     "release:linux": "pnpm build && electron-builder --linux AppImage deb tar.gz --publish always",
-    "release:mac": "pnpm build && electron-builder --mac dmg zip --publish always",
+    "release:mac": "pnpm verify:packaged:mac && electron-builder --mac dmg zip --publish always",
     "release:win": "pnpm build && electron-builder --win nsis zip --publish always",
     "start": "electron dist/main/main.js",
-    "smoke": "tsx scripts/electron-smoke.ts"
+    "smoke": "tsx scripts/electron-smoke.ts",
+    "verify:packaged:mac": "pnpm pack:mac && node scripts/verify-packaged-app.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.9",
@@ -63,6 +64,7 @@
     "vite": "^7.2.4"
   },
   "devDependencies": {
+    "@electron/asar": "^3.4.1",
     "@tailwindcss/vite": "^4.3.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -71,6 +73,7 @@
     "@types/react-dom": "^19.2.3",
     "electron": "^39.2.6",
     "electron-builder": "^26.8.1",
+    "esbuild": "^0.28.1",
     "jsdom": "^29.1.1",
     "tailwindcss": "^4.3.1"
   },

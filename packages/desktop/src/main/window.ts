@@ -21,7 +21,7 @@ export function configureExternalLinkHandling(window: Pick<BrowserWindow, "webCo
   });
 }
 
-export async function createWindow(options: { isDev: boolean; isSmoke: boolean }): Promise<BrowserWindow> {
+export async function createWindow(options: { isDev: boolean; isSmoke: boolean; isStartupSmoke?: boolean }): Promise<BrowserWindow> {
   // macOS liquid glass requires a transparent window so the NSGlassEffectView
   // behind the web contents can blend with whatever sits behind the window.
   const isMac = process.platform === "darwin";
@@ -30,7 +30,7 @@ export async function createWindow(options: { isDev: boolean; isSmoke: boolean }
     height: 860,
     minWidth: 1100,
     minHeight: 720,
-    show: !options.isSmoke,
+    show: !options.isSmoke && !options.isStartupSmoke,
     title: "PlanWeave Desktop",
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 14, y: 14 },

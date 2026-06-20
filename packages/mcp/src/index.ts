@@ -9,6 +9,9 @@ export { createPlanweaveMcpHttpServer, listenPlanweaveMcpServer } from "./server
 export { handlePlanweaveTool, isPlanweaveToolName, planweaveToolNames, type PlanweaveToolName, type RuntimeGateway } from "./tools.js";
 
 function isCliEntrypoint(): boolean {
+  if (process.versions.electron) {
+    return false;
+  }
   if (!process.argv[1]) {
     return false;
   }

@@ -2,6 +2,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Server } from "node:http";
 import { createPlanweaveMcpHttpServer } from "../server.js";
+import { planweaveToolNames } from "../tools.js";
 
 let server: Server | undefined;
 
@@ -180,23 +181,8 @@ describe("PlanWeave MCP HTTP server", () => {
 
     expect(toolsResponse.status).toBe(200);
     const toolsPayload = await readMcpResponse(toolsResponse);
-    expect(toolsPayload).toMatchObject({
-      result: {
-        tools: expect.arrayContaining([
-          expect.objectContaining({ name: "get_schema" }),
-          expect.objectContaining({ name: "list_projects" }),
-          expect.objectContaining({ name: "open_project" }),
-          expect.objectContaining({ name: "validate_project" }),
-          expect.objectContaining({ name: "get_project_overview" }),
-          expect.objectContaining({ name: "get_project_graph" }),
-          expect.objectContaining({ name: "get_task_detail" }),
-          expect.objectContaining({ name: "get_block_detail" }),
-          expect.objectContaining({ name: "get_review_pipeline" })
-        ])
-      }
-    });
     const tools = (toolsPayload as { result: { tools: Array<{ name: string; outputSchema?: unknown }> } }).result.tools;
-    expect(tools).toHaveLength(9);
+    expect(tools.map((tool) => tool.name).sort()).toEqual([...planweaveToolNames].sort());
     expect(tools.every((tool) => tool.outputSchema && typeof tool.outputSchema === "object")).toBe(true);
   });
 });

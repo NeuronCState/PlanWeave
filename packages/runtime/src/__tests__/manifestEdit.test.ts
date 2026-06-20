@@ -31,18 +31,20 @@ describe("manifest edit commands", () => {
       taskId: "T-001",
       title: "Updated task title",
       promptMarkdown: "# Updated task prompt\n",
-      executor: "manual"
+      executor: "manual",
+      acceptance: ["Updated acceptance one.", "Updated acceptance two."]
     });
     const manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
 
     expect(result).toMatchObject({
       ok: true,
       taskId: "T-001",
-      updatedFields: ["title", "prompt", "executor"]
+      updatedFields: ["title", "prompt", "executor", "acceptance"]
     });
     expect(taskById(manifest, "T-001")).toMatchObject({
       title: "Updated task title",
-      executor: "manual"
+      executor: "manual",
+      acceptance: ["Updated acceptance one.", "Updated acceptance two."]
     });
     expect(taskById(manifest, "T-002").title).toBe("Second task");
     await expect(readFile(join(init.workspace.packageDir, "nodes/T-001/prompt.md"), "utf8")).resolves.toBe("# Updated task prompt\n");
@@ -112,6 +114,7 @@ describe("manifest edit commands", () => {
     const result = await editBlock({
       projectRoot: root,
       ref: "T-001#B-001",
+      dependsOn: [],
       parallelSafe: false,
       parallelLocks: ["db", "api"]
     });
@@ -121,9 +124,10 @@ describe("manifest edit commands", () => {
       ok: true,
       ref: "T-001#B-001",
       blockType: "implementation",
-      updatedFields: ["parallel.safe", "parallel.locks"]
+      updatedFields: ["depends_on", "parallel.safe", "parallel.locks"]
     });
     expect(blockById(manifest, "T-001", "B-001")).toMatchObject({
+      depends_on: [],
       parallel: { safe: false, locks: ["db", "api"] }
     });
   });

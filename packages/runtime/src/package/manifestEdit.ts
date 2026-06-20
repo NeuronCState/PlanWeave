@@ -9,7 +9,8 @@ export async function editTask(options: EditTaskInput): Promise<EditTaskResult> 
     taskId: options.taskId,
     title: options.title,
     promptMarkdown: options.promptMarkdown,
-    executor: options.executor
+    executor: options.executor,
+    acceptance: options.acceptance
   });
   const result = await commitPlanPackageGraphMutation({
     projectRoot: options.projectRoot,
@@ -25,6 +26,7 @@ export async function editBlock(options: EditBlockInput): Promise<EditBlockResul
     title: options.title,
     promptMarkdown: options.promptMarkdown,
     executor: options.executor,
+    dependsOn: options.dependsOn,
     parallelSafe: options.parallelSafe,
     parallelLocks: options.parallelLocks,
     reviewRequired: options.reviewRequired,

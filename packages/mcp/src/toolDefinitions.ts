@@ -1,0 +1,376 @@
+import * as z from "zod/v4";
+import type { PlanweaveToolName } from "./tools.js";
+
+const blockTypeSchema = z.enum(["implementation", "review"]);
+const reviewTriggerConditionSchema = z.enum(["after_required_work_completed", "manual"]);
+const reviewHookSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("executable"),
+  command: z.string().min(1),
+  args: z.array(z.string()).optional(),
+  executionPolicy: z.literal("trusted-local")
+});
+const packageFileSchema = z.object({
+  path: z.string().min(1),
+  content: z.string(),
+  encoding: z.literal("utf8").optional()
+});
+
+const readOnlyAnnotations = {
+  readOnlyHint: true,
+  openWorldHint: false
+} as const;
+
+const writeAnnotations = {
+  readOnlyHint: false,
+  openWorldHint: false
+} as const;
+
+export type ToolDefinition = {
+  title: string;
+  description: string;
+  inputSchema?: z.core.$ZodLooseShape;
+  annotations: typeof readOnlyAnnotations | typeof writeAnnotations;
+};
+
+const projectInput = {
+  projectId: z.string().min(1)
+};
+
+const projectCanvasInput = {
+  ...projectInput,
+  canvasId: z.string().min(1).optional()
+};
+
+const blockRefInput = {
+  blockRef: z.string().min(1).optional(),
+  taskId: z.string().min(1).optional(),
+  blockId: z.string().min(1).optional()
+};
+
+const taskPromptInput = {
+  ...projectCanvasInput,
+  taskId: z.string().min(1),
+  markdown: z.string()
+};
+
+const blockPromptInput = {
+  ...projectCanvasInput,
+  ...blockRefInput,
+  markdown: z.string()
+};
+
+const reviewPipelineStepInput = z.object({
+  blockRef: z.string().min(1).optional(),
+  blockId: z.string().min(1).optional(),
+  title: z.string().min(1),
+  enabled: z.boolean(),
+  preset: z.string().min(1),
+  triggerCondition: reviewTriggerConditionSchema.optional(),
+  inputContext: z.string().min(1),
+  passCriteria: z.string().min(1),
+  feedbackFormat: z.string().min(1),
+  maxFeedbackCycles: z.number().int().nonnegative(),
+  hook: reviewHookSchema.nullable().optional(),
+  promptMarkdown: z.string()
+});
+
+export const planweaveToolDefinitions: Record<PlanweaveToolName, ToolDefinition> = {
+  get_schema: {
+    title: "Get PlanWeave Schema",
+    description: "Return PlanWeave runtime schema documents.",
+    inputSchema: { topic: z.enum(["manifest", "project"]).optional() },
+    annotations: readOnlyAnnotations
+  },
+  get_authoring_rules: {
+    title: "Get PlanWeave Authoring Rules",
+    description: "Return concise rules for authoring PlanWeave packages through MCP tools.",
+    annotations: readOnlyAnnotations
+  },
+  get_plan_package_example: {
+    title: "Get PlanWeave Package Example",
+    description: "Return a small importable PlanWeave package file set.",
+    annotations: readOnlyAnnotations
+  },
+  list_projects: {
+    title: "List PlanWeave Projects",
+    description: "List registered PlanWeave projects.",
+    annotations: readOnlyAnnotations
+  },
+  open_project: {
+    title: "Open PlanWeave Project",
+    description: "Open a registered PlanWeave project by projectId.",
+    inputSchema: projectInput,
+    annotations: readOnlyAnnotations
+  },
+  init_project: {
+    title: "Initialize PlanWeave Project",
+    description: "Create or open a managed PlanWeave project by name.",
+    inputSchema: { name: z.string().min(1) },
+    annotations: writeAnnotations
+  },
+  create_canvas: {
+    title: "Create PlanWeave Task Canvas",
+    description: "Create a new task canvas in a registered PlanWeave project.",
+    inputSchema: { ...projectInput, name: z.string().min(1).optional() },
+    annotations: writeAnnotations
+  },
+  get_project_overview: {
+    title: "Get PlanWeave Project Overview",
+    description: "Return a registered PlanWeave project's canvases and high-level summary.",
+    inputSchema: projectInput,
+    annotations: readOnlyAnnotations
+  },
+  validate_project: {
+    title: "Validate PlanWeave Project",
+    description: "Validate a registered PlanWeave project by projectId.",
+    inputSchema: projectInput,
+    annotations: readOnlyAnnotations
+  },
+  explain_validation_errors: {
+    title: "Explain PlanWeave Validation Errors",
+    description: "Validate a project and return issue explanations with suggested repair actions.",
+    inputSchema: projectInput,
+    annotations: readOnlyAnnotations
+  },
+  preview_execution_graph: {
+    title: "Preview PlanWeave Execution Graph",
+    description: "Preview the selected canvas DAG before or after graph edits.",
+    inputSchema: projectCanvasInput,
+    annotations: readOnlyAnnotations
+  },
+  get_project_graph: {
+    title: "Get PlanWeave Project Graph",
+    description: "Return the selected canvas DAG with task nodes, dependency edges, block previews, and diagnostics.",
+    inputSchema: projectCanvasInput,
+    annotations: readOnlyAnnotations
+  },
+  get_task_detail: {
+    title: "Get PlanWeave Task Detail",
+    description: "Return a task's prompt, acceptance criteria, status, executor, and ordered block refs.",
+    inputSchema: { ...projectCanvasInput, taskId: z.string().min(1) },
+    annotations: readOnlyAnnotations
+  },
+  get_block_detail: {
+    title: "Get PlanWeave Block Detail",
+    description: "Return a block's prompt, rendered prompt surface, status, dependencies, run/review refs, and review gate metadata.",
+    inputSchema: { ...projectCanvasInput, ...blockRefInput },
+    annotations: readOnlyAnnotations
+  },
+  get_review_pipeline: {
+    title: "Get PlanWeave Review Pipeline",
+    description: "Return review gates configured for a task, including presets, pass criteria, feedback format, and prompt markdown.",
+    inputSchema: { ...projectCanvasInput, taskId: z.string().min(1) },
+    annotations: readOnlyAnnotations
+  },
+  update_review_pipeline: {
+    title: "Update PlanWeave Review Pipeline",
+    description: "Replace review gate steps and package review defaults for a task.",
+    inputSchema: {
+      ...projectCanvasInput,
+      taskId: z.string().min(1),
+      packageDefaults: z.object({
+        maxFeedbackCycles: z.number().int().nonnegative(),
+        completionPolicy: z.literal("strict")
+      }).optional(),
+      steps: z.array(reviewPipelineStepInput)
+    },
+    annotations: writeAnnotations
+  },
+  create_task: {
+    title: "Create PlanWeave Task",
+    description: "Create a task node and initial blocks in the selected canvas.",
+    inputSchema: {
+      ...projectCanvasInput,
+      title: z.string().min(1),
+      promptMarkdown: z.string(),
+      acceptance: z.array(z.string().min(1)).optional(),
+      blockTypes: z.array(blockTypeSchema).optional(),
+      executor: z.string().min(1).nullable().optional()
+    },
+    annotations: writeAnnotations
+  },
+  update_task: {
+    title: "Update PlanWeave Task",
+    description: "Update a task title, prompt markdown, or executor.",
+    inputSchema: {
+      ...projectCanvasInput,
+      taskId: z.string().min(1),
+      title: z.string().min(1).optional(),
+      promptMarkdown: z.string().optional(),
+      executor: z.string().min(1).nullable().optional()
+    },
+    annotations: writeAnnotations
+  },
+  update_task_acceptance: {
+    title: "Update PlanWeave Task Acceptance",
+    description: "Replace a task's acceptance criteria.",
+    inputSchema: { ...projectCanvasInput, taskId: z.string().min(1), acceptance: z.array(z.string().min(1)).min(1) },
+    annotations: writeAnnotations
+  },
+  remove_task: {
+    title: "Remove PlanWeave Task",
+    description: "Remove a task node and its package files from the selected canvas.",
+    inputSchema: { ...projectCanvasInput, taskId: z.string().min(1) },
+    annotations: writeAnnotations
+  },
+  create_block: {
+    title: "Create PlanWeave Block",
+    description: "Create an implementation or review block under a task.",
+    inputSchema: {
+      ...projectCanvasInput,
+      taskId: z.string().min(1),
+      type: blockTypeSchema,
+      title: z.string().min(1),
+      promptMarkdown: z.string(),
+      executor: z.string().min(1).nullable().optional(),
+      dependsOn: z.array(z.string().min(1)).optional()
+    },
+    annotations: writeAnnotations
+  },
+  update_block: {
+    title: "Update PlanWeave Block",
+    description: "Update a block title, prompt markdown, or executor.",
+    inputSchema: {
+      ...projectCanvasInput,
+      ...blockRefInput,
+      title: z.string().min(1).optional(),
+      promptMarkdown: z.string().optional(),
+      executor: z.string().min(1).nullable().optional()
+    },
+    annotations: writeAnnotations
+  },
+  update_block_planning: {
+    title: "Update PlanWeave Block Planning",
+    description: "Update implementation parallel policy or review block planning fields.",
+    inputSchema: {
+      ...projectCanvasInput,
+      ...blockRefInput,
+      parallelSafe: z.boolean().optional(),
+      parallelLocks: z.array(z.string().min(1)).optional(),
+      reviewRequired: z.boolean().optional(),
+      maxFeedbackCycles: z.number().int().nonnegative().optional(),
+      reviewHook: reviewHookSchema.nullable().optional()
+    },
+    annotations: writeAnnotations
+  },
+  update_block_dependencies: {
+    title: "Update PlanWeave Block Dependencies",
+    description: "Replace a block's intra-task depends_on block id list.",
+    inputSchema: { ...projectCanvasInput, ...blockRefInput, dependsOn: z.array(z.string().min(1)) },
+    annotations: writeAnnotations
+  },
+  remove_block: {
+    title: "Remove PlanWeave Block",
+    description: "Remove a block and its package prompt file from the selected canvas.",
+    inputSchema: { ...projectCanvasInput, ...blockRefInput },
+    annotations: writeAnnotations
+  },
+  add_dependency: {
+    title: "Add PlanWeave Dependency",
+    description: "Add a task dependency edge from fromTaskId to toTaskId.",
+    inputSchema: { ...projectCanvasInput, fromTaskId: z.string().min(1), toTaskId: z.string().min(1) },
+    annotations: writeAnnotations
+  },
+  remove_dependency: {
+    title: "Remove PlanWeave Dependency",
+    description: "Remove a task dependency edge from fromTaskId to toTaskId.",
+    inputSchema: { ...projectCanvasInput, fromTaskId: z.string().min(1), toTaskId: z.string().min(1) },
+    annotations: writeAnnotations
+  },
+  add_canvas_dependency: {
+    title: "Add PlanWeave Canvas Dependency",
+    description: "Add a project graph dependency edge from one canvas to another canvas.",
+    inputSchema: { ...projectInput, fromCanvasId: z.string().min(1), toCanvasId: z.string().min(1) },
+    annotations: writeAnnotations
+  },
+  remove_canvas_dependency: {
+    title: "Remove PlanWeave Canvas Dependency",
+    description: "Remove a project graph dependency edge from one canvas to another canvas.",
+    inputSchema: { ...projectInput, fromCanvasId: z.string().min(1), toCanvasId: z.string().min(1) },
+    annotations: writeAnnotations
+  },
+  add_cross_task_dependency: {
+    title: "Add PlanWeave Cross-Task Dependency",
+    description: "Add a project graph dependency from a task in one canvas to a task in another canvas.",
+    inputSchema: {
+      ...projectInput,
+      fromCanvasId: z.string().min(1),
+      fromTaskId: z.string().min(1),
+      toCanvasId: z.string().min(1),
+      toTaskId: z.string().min(1)
+    },
+    annotations: writeAnnotations
+  },
+  remove_cross_task_dependency: {
+    title: "Remove PlanWeave Cross-Task Dependency",
+    description: "Remove a project graph dependency from a task in one canvas to a task in another canvas.",
+    inputSchema: {
+      ...projectInput,
+      fromCanvasId: z.string().min(1),
+      fromTaskId: z.string().min(1),
+      toCanvasId: z.string().min(1),
+      toTaskId: z.string().min(1)
+    },
+    annotations: writeAnnotations
+  },
+  read_prompt: {
+    title: "Read PlanWeave Prompt",
+    description: "Read project, task, or block prompt markdown.",
+    inputSchema: {
+      ...projectCanvasInput,
+      target: z.enum(["project", "task", "block"]),
+      taskId: z.string().min(1).optional(),
+      blockId: z.string().min(1).optional(),
+      blockRef: z.string().min(1).optional(),
+      rendered: z.boolean().optional()
+    },
+    annotations: readOnlyAnnotations
+  },
+  write_task_prompt: {
+    title: "Write PlanWeave Task Prompt",
+    description: "Replace a task prompt markdown file.",
+    inputSchema: taskPromptInput,
+    annotations: writeAnnotations
+  },
+  write_block_prompt: {
+    title: "Write PlanWeave Block Prompt",
+    description: "Replace a block prompt markdown file.",
+    inputSchema: blockPromptInput,
+    annotations: writeAnnotations
+  },
+  update_project_prompt: {
+    title: "Update PlanWeave Project Prompt",
+    description: "Replace the project-level prompt policy markdown.",
+    inputSchema: { ...projectInput, markdown: z.string() },
+    annotations: writeAnnotations
+  },
+  refresh_prompts: {
+    title: "Refresh PlanWeave Prompts",
+    description: "Render block prompt surfaces for the selected canvas.",
+    inputSchema: projectCanvasInput,
+    annotations: writeAnnotations
+  },
+  export_project: {
+    title: "Export PlanWeave Project",
+    description: "Export project prompt and all PlanWeave package file sets as structured content.",
+    inputSchema: projectInput,
+    annotations: readOnlyAnnotations
+  },
+  export_plan_package: {
+    title: "Export PlanWeave Package",
+    description: "Export the selected canvas PlanWeave package file set as structured content.",
+    inputSchema: projectCanvasInput,
+    annotations: readOnlyAnnotations
+  },
+  import_plan_package: {
+    title: "Import PlanWeave Package",
+    description: "Validate and import a structured PlanWeave package file set into a managed project.",
+    inputSchema: {
+      name: z.string().min(1),
+      files: z.array(packageFileSchema).min(1),
+      overwrite: z.boolean().optional()
+    },
+    annotations: writeAnnotations
+  }
+};

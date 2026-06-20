@@ -8,7 +8,15 @@ import {
 } from "../../graph/fieldEditMutation.js";
 import { buildPlanPackageGraphMutation } from "../../graph/mutation.js";
 import { loadPackage } from "../../package/loadPackage.js";
-import type { BlockType, GraphEditResult, ManifestBlock, ManifestTaskNode, PackageWorkspaceRef, PlanPackageManifest } from "../../types.js";
+import type {
+  BlockType,
+  GraphEditResult,
+  ManifestBlock,
+  ManifestTaskNode,
+  PackageWorkspaceRef,
+  PlanPackageManifest,
+  ReviewHookDefinition
+} from "../../types.js";
 import type { DesktopAddBlockInput, DesktopAddTaskInput, DesktopGraphEditValidationInput } from "../types.js";
 import { getTask } from "./graphHelpers.js";
 import { invalidateDesktopProjectProjection } from "./projectProjectionModel.js";
@@ -251,8 +259,30 @@ export async function updateTaskExecutor(projectRoot: PackageWorkspaceRef, taskI
   return commitTaskEdit(projectRoot, { taskId, executor: executorName });
 }
 
+export async function updateTaskAcceptance(projectRoot: PackageWorkspaceRef, taskId: string, acceptance: string[]): Promise<GraphEditResult> {
+  return commitTaskEdit(projectRoot, { taskId, acceptance });
+}
+
 export async function updateBlockExecutor(projectRoot: PackageWorkspaceRef, ref: string, executorName: string | null): Promise<GraphEditResult> {
   return commitBlockEdit(projectRoot, { blockRef: ref, executor: executorName });
+}
+
+export async function updateBlockDependencies(projectRoot: PackageWorkspaceRef, ref: string, dependsOn: string[]): Promise<GraphEditResult> {
+  return commitBlockEdit(projectRoot, { blockRef: ref, dependsOn });
+}
+
+export async function updateBlockPlanning(
+  projectRoot: PackageWorkspaceRef,
+  ref: string,
+  input: {
+    parallelSafe?: boolean;
+    parallelLocks?: string[];
+    reviewRequired?: boolean;
+    maxFeedbackCycles?: number;
+    reviewHook?: ReviewHookDefinition | null;
+  }
+): Promise<GraphEditResult> {
+  return commitBlockEdit(projectRoot, { blockRef: ref, ...input });
 }
 
 export async function addDependencyEdge(projectRoot: PackageWorkspaceRef, fromTaskId: string, toTaskId: string): Promise<GraphEditResult> {

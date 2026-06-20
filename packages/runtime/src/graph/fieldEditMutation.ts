@@ -19,6 +19,7 @@ export type PlanPackageTaskFieldEditInput = {
   title?: string;
   promptMarkdown?: string;
   executor?: string | null;
+  acceptance?: string[];
 };
 
 export type PlanPackageTaskFieldEditMutation = PlanPackageGraphMutation & {
@@ -31,6 +32,7 @@ export type PlanPackageBlockFieldEditInput = {
   title?: string;
   promptMarkdown?: string;
   executor?: string | null;
+  dependsOn?: string[];
   parallelSafe?: boolean;
   parallelLocks?: string[];
   reviewRequired?: boolean;
@@ -59,6 +61,18 @@ function optionalText(value: string | null): string | undefined {
     return undefined;
   }
   return nonEmpty(value, "executor");
+}
+
+function nonEmptyStringArray(value: string[], field: string): string[] {
+  const normalized = value.map((item, index) => nonEmpty(item, `${field}[${index}]`));
+  if (normalized.length === 0) {
+    throw new Error(`${field} must include at least one item.`);
+  }
+  return normalized;
+}
+
+function stringArray(value: string[], field: string): string[] {
+  return value.map((item, index) => nonEmpty(item, `${field}[${index}]`));
 }
 
 function normalizeMaxFeedbackCycles(value: number): number {
@@ -156,6 +170,10 @@ export function buildPlanPackageTaskFieldEditMutation(
     };
     updatedFields.push("executor");
   }
+  if (input.acceptance !== undefined) {
+    nextTask = { ...nextTask, acceptance: nonEmptyStringArray(input.acceptance, "acceptance") };
+    updatedFields.push("acceptance");
+  }
   if (updatedFields.length === 0) {
     throw new Error("edit-task requires at least one field to update.");
   }
@@ -194,6 +212,10 @@ export function buildPlanPackageBlockFieldEditMutation(
     const executor = optionalText(input.executor);
     nextBlock = executor === undefined ? { ...nextBlock, executor: undefined } : { ...nextBlock, executor };
     updatedFields.push("executor");
+  }
+  if (input.dependsOn !== undefined) {
+    nextBlock = { ...nextBlock, depends_on: stringArray(input.dependsOn, "dependsOn") };
+    updatedFields.push("depends_on");
   }
   if (nextBlock.type === "implementation") {
     const edited = editImplementationBlock(nextBlock, input);

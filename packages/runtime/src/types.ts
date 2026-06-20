@@ -884,6 +884,7 @@ export type EditTaskInput = {
   title?: string;
   promptMarkdown?: string;
   executor?: string | null;
+  acceptance?: string[];
 };
 
 export type EditTaskResult = GraphEditResult & {
@@ -897,6 +898,7 @@ export type EditBlockInput = {
   title?: string;
   promptMarkdown?: string;
   executor?: string | null;
+  dependsOn?: string[];
   parallelSafe?: boolean;
   parallelLocks?: string[];
   reviewRequired?: boolean;

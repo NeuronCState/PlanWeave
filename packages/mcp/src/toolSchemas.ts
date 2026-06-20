@@ -13,6 +13,12 @@ const validationIssueSchema = z.object({
   path: z.string().optional()
 }).passthrough();
 
+const validationReportSchema = z.object({
+  ok: z.boolean(),
+  errors: z.array(validationIssueSchema),
+  warnings: z.array(validationIssueSchema)
+}).passthrough();
+
 const taskCanvasSummarySchema = z.object({
   canvasId: z.string(),
   name: z.string(),
@@ -28,16 +34,6 @@ const sanitizedProjectSchema = z.object({
   name: z.string(),
   activeCanvasId: z.string().nullable(),
   taskCanvases: z.array(taskCanvasSummarySchema)
-}).passthrough();
-
-const reviewGateHintSchema = z.object({
-  isGate: z.literal(true),
-  required: z.boolean(),
-  requiredReason: z.string(),
-  executorRole: z.literal("reviewer"),
-  downstreamTasks: z.array(z.string()),
-  unlocksTasks: z.array(z.string()),
-  needsChangesReturnsTo: z.array(z.string())
 }).passthrough();
 
 const blockPreviewSchema = z.object({
@@ -68,11 +64,7 @@ const graphSchema = z.object({
     blockPreview: z.array(blockPreviewSchema),
     hiddenBlockRefs: z.array(z.string()),
     overflowBlockCount: z.number(),
-    exceptions: z.array(z.object({
-      ref: z.string(),
-      reason: z.string(),
-      source: z.enum(["blocked", "diverged", "feedback", "needs_changes"])
-    }).passthrough())
+    exceptions: z.array(z.unknown())
   }).passthrough()),
   edges: z.array(z.object({
     from: z.string(),
@@ -94,16 +86,6 @@ const taskDetailSchema = z.object({
   blockOrder: z.array(z.string())
 }).passthrough();
 
-const promptSourceSchema = z.object({
-  kind: z.enum(["global", "projectCanvas", "projectGraph", "taskNode", "block"]),
-  label: z.string(),
-  included: z.boolean(),
-  empty: z.boolean(),
-  missing: z.boolean(),
-  disabledReason: z.string().nullable(),
-  preview: z.string()
-}).passthrough();
-
 const blockDetailSchema = z.object({
   ref: z.string(),
   taskId: z.string(),
@@ -116,13 +98,13 @@ const blockDetailSchema = z.object({
   promptMarkdown: z.string(),
   promptMissing: z.boolean(),
   promptSurfaceMarkdown: z.string(),
-  promptSources: z.array(promptSourceSchema),
+  promptSources: z.array(z.unknown()),
   dependencies: z.array(z.string()),
   latestRunId: z.string().nullable(),
   latestReviewAttemptId: z.string().nullable(),
   activeFeedbackId: z.string().nullable(),
   exceptionReason: z.string().nullable(),
-  reviewGate: reviewGateHintSchema.nullable()
+  reviewGate: z.unknown().nullable()
 }).passthrough();
 
 const reviewPipelineSchema = z.object({
@@ -158,10 +140,83 @@ const schemaDocumentSchema = z.object({
   notes: z.array(z.string())
 }).passthrough();
 
+const graphEditSchema = z.object({
+  ok: z.boolean(),
+  affectedTasks: z.array(z.string()),
+  diagnostics: z.array(validationIssueSchema)
+}).passthrough();
+
+const packageFileSchema = z.object({
+  path: z.string(),
+  content: z.string(),
+  encoding: z.literal("utf8")
+}).passthrough();
+
+const planPackageExportSchema = z.object({
+  canvasId: z.string().nullable(),
+  files: z.array(packageFileSchema)
+}).passthrough();
+
+const promptOutputSchema = {
+  target: z.string(),
+  markdown: z.string(),
+  taskId: z.string().optional(),
+  blockRef: z.string().optional(),
+  promptMissing: z.boolean().optional(),
+  rendered: z.boolean().optional()
+};
+
+const graphEditOutputSchema = {
+  edit: graphEditSchema
+};
+
+const projectTaskRefSchema = z.object({
+  canvasId: z.string(),
+  taskId: z.string()
+}).passthrough();
+
+const projectGraphSchema = z.object({
+  version: z.string(),
+  canvases: z.array(z.object({
+    id: z.string(),
+    type: z.literal("canvas"),
+    title: z.string(),
+    description: z.string().optional(),
+    packageDir: z.string(),
+    stateFile: z.string(),
+    resultsDir: z.string()
+  }).passthrough()),
+  edges: z.array(z.object({
+    from: z.string(),
+    to: z.string(),
+    type: z.literal("depends_on")
+  }).passthrough()),
+  crossTaskEdges: z.array(z.object({
+    from: projectTaskRefSchema,
+    to: projectTaskRefSchema,
+    type: z.literal("depends_on")
+  }).passthrough())
+}).passthrough();
+
+const projectGraphEditOutputSchema = {
+  projectGraphEdit: z.object({
+    ok: z.boolean(),
+    diagnostics: z.array(validationIssueSchema),
+    graph: projectGraphSchema
+  }).passthrough()
+};
+
 export const planweaveToolOutputSchemas = {
   get_schema: {
     topic: z.enum(["manifest", "project"]).nullable(),
     documents: z.record(z.string(), schemaDocumentSchema)
+  },
+  get_authoring_rules: {
+    rules: z.array(z.string())
+  },
+  get_plan_package_example: {
+    files: z.array(packageFileSchema),
+    notes: z.array(z.string())
   },
   list_projects: {
     projects: z.array(sanitizedProjectSchema)
@@ -169,13 +224,29 @@ export const planweaveToolOutputSchemas = {
   open_project: {
     project: sanitizedProjectSchema
   },
-  validate_project: {
-    ok: z.boolean(),
-    errors: z.array(validationIssueSchema),
-    warnings: z.array(validationIssueSchema)
+  init_project: {
+    project: sanitizedProjectSchema
+  },
+  create_canvas: {
+    canvas: taskCanvasSummarySchema
   },
   get_project_overview: {
     project: sanitizedProjectSchema
+  },
+  validate_project: validationReportSchema.shape,
+  explain_validation_errors: {
+    ok: z.boolean(),
+    issues: z.array(validationIssueSchema.passthrough()),
+    explanations: z.array(z.object({
+      code: z.string(),
+      severity: z.enum(["error", "warning"]),
+      path: z.string().nullable(),
+      explanation: z.string(),
+      suggestedAction: z.string()
+    }).passthrough())
+  },
+  preview_execution_graph: {
+    graph: graphSchema
   },
   get_project_graph: {
     graph: graphSchema
@@ -188,5 +259,49 @@ export const planweaveToolOutputSchemas = {
   },
   get_review_pipeline: {
     reviewPipeline: reviewPipelineSchema
+  },
+  update_review_pipeline: graphEditOutputSchema,
+  create_task: graphEditOutputSchema,
+  update_task: graphEditOutputSchema,
+  update_task_acceptance: graphEditOutputSchema,
+  remove_task: graphEditOutputSchema,
+  create_block: graphEditOutputSchema,
+  update_block: graphEditOutputSchema,
+  update_block_planning: graphEditOutputSchema,
+  update_block_dependencies: graphEditOutputSchema,
+  remove_block: graphEditOutputSchema,
+  add_dependency: graphEditOutputSchema,
+  remove_dependency: graphEditOutputSchema,
+  add_canvas_dependency: projectGraphEditOutputSchema,
+  remove_canvas_dependency: projectGraphEditOutputSchema,
+  add_cross_task_dependency: projectGraphEditOutputSchema,
+  remove_cross_task_dependency: projectGraphEditOutputSchema,
+  read_prompt: promptOutputSchema,
+  write_task_prompt: graphEditOutputSchema,
+  write_block_prompt: graphEditOutputSchema,
+  update_project_prompt: {
+    markdown: z.string()
+  },
+  refresh_prompts: {
+    refresh: z.object({
+      prompts: z.array(z.object({
+        ref: z.string(),
+        path: z.string(),
+        markdown: z.string()
+      }).passthrough())
+    }).passthrough()
+  },
+  export_project: {
+    project: sanitizedProjectSchema,
+    projectPromptMarkdown: z.string(),
+    planPackages: z.array(planPackageExportSchema)
+  },
+  export_plan_package: {
+    planPackage: planPackageExportSchema
+  },
+  import_plan_package: {
+    project: sanitizedProjectSchema,
+    validation: validationReportSchema,
+    importedFiles: z.number()
   }
 } satisfies Record<PlanweaveToolName, z.core.$ZodLooseShape>;

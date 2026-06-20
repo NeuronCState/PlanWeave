@@ -1,179 +1,6 @@
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type {
-  DesktopBlockDetail,
-  DesktopGraphViewModel,
-  DesktopProjectSummary,
-  DesktopReviewPipeline,
-  DesktopTaskDetail,
-  RuntimeSchemaTopicName,
-  SchemaDocument,
-  ValidationReport
-} from "@planweave-ai/runtime";
-import { describe, expect, it, vi } from "vitest";
-import { handlePlanweaveTool, type RuntimeGateway } from "../tools.js";
-
-const project: DesktopProjectSummary = {
-  projectId: "project-1",
-  name: "Project One",
-  rootPath: "/sensitive/source",
-  workspaceRoot: "/sensitive/home/projects/project-1",
-  activeCanvasId: "default",
-  taskCanvases: [
-    {
-      canvasId: "default",
-      name: "Default",
-      taskCount: 1,
-      diagnostics: [],
-      missingPromptCount: 0,
-      createdAt: "2026-06-19T00:00:00.000Z",
-      updatedAt: "2026-06-19T00:00:00.000Z"
-    }
-  ]
-};
-
-const schemaDocument: SchemaDocument = {
-  name: "manifest",
-  summary: "Manifest schema",
-  path: "package/manifest.json",
-  ownership: "runtime",
-  validation: ["validatePackage"],
-  schema: { type: "object" },
-  notes: []
-};
-
-function readJson(result: CallToolResult): unknown {
-  const first = result.content[0];
-  if (first?.type !== "text") {
-    throw new Error("Expected text tool content.");
-  }
-  return JSON.parse(first.text);
-}
-
-function createGateway(): RuntimeGateway & {
-  openProject: ReturnType<typeof vi.fn<(projectId: string) => Promise<DesktopProjectSummary>>>;
-  validateProject: ReturnType<typeof vi.fn<(projectId: string) => Promise<ValidationReport>>>;
-  getProjectOverview: ReturnType<typeof vi.fn<(projectId: string) => Promise<DesktopProjectSummary>>>;
-  getProjectGraph: ReturnType<typeof vi.fn<(projectId: string, canvasId?: string) => Promise<DesktopGraphViewModel>>>;
-  getTaskDetail: ReturnType<typeof vi.fn<(projectId: string, taskId: string, canvasId?: string) => Promise<DesktopTaskDetail>>>;
-  getBlockDetail: ReturnType<typeof vi.fn<(projectId: string, blockRef: string, canvasId?: string) => Promise<DesktopBlockDetail>>>;
-  getReviewPipeline: ReturnType<typeof vi.fn<(projectId: string, taskId: string, canvasId?: string) => Promise<DesktopReviewPipeline>>>;
-} {
-  const taskDetail: DesktopTaskDetail = {
-    taskId: "T-001",
-    title: "Implement feature",
-    status: "planned",
-    executor: null,
-    promptMarkdown: "# Task",
-    promptMissing: false,
-    acceptance: ["Works"],
-    blockOrder: ["T-001#I-001", "T-001#R-001"]
-  };
-  const blockDetail: DesktopBlockDetail = {
-    ref: "T-001#I-001",
-    taskId: "T-001",
-    blockId: "I-001",
-    type: "implementation",
-    title: "Implement",
-    status: "ready",
-    executor: null,
-    effectiveExecutor: "codex",
-    promptMarkdown: "# Block",
-    promptMissing: false,
-    promptSurfaceMarkdown: "# Surface",
-    promptSources: [],
-    dependencies: [],
-    latestRunId: null,
-    latestReviewAttemptId: null,
-    activeFeedbackId: null,
-    exceptionReason: null,
-    reviewGate: null
-  };
-  const graph: DesktopGraphViewModel = {
-    projectId: "project-1",
-    projectTitle: "Project One",
-    executorOptions: ["codex"],
-    tasks: [
-      {
-        taskId: "T-001",
-        title: "Implement feature",
-        status: "planned",
-        executor: null,
-        executorLabel: "default",
-        promptMarkdown: "# Task",
-        promptMissing: false,
-        promptPreview: "Task",
-        blocks: [
-          {
-            ref: "T-001#I-001",
-            blockId: "I-001",
-            type: "implementation",
-            title: "Implement",
-            status: "ready",
-            executor: null,
-            promptMissing: false,
-            exceptionReason: null
-          }
-        ],
-        blockPreview: [],
-        hiddenBlockRefs: [],
-        overflowBlockCount: 0,
-        exceptions: []
-      }
-    ],
-    edges: [],
-    diagnostics: [],
-    dirtyPromptRefs: []
-  };
-  const reviewPipeline: DesktopReviewPipeline = {
-    taskId: "T-001",
-    taskTitle: "Implement feature",
-    packageDefaults: {
-      maxFeedbackCycles: 2,
-      completionPolicy: "strict"
-    },
-    steps: [
-      {
-        blockRef: "T-001#R-001",
-        blockId: "R-001",
-        title: "Review",
-        enabled: true,
-        preset: "general",
-        triggerCondition: "after_required_work_completed",
-        inputContext: "latest implementation reports",
-        passCriteria: "All acceptance criteria are satisfied.",
-        feedbackFormat: "Actionable feedback.",
-        maxFeedbackCycles: 2,
-        hook: null,
-        promptMarkdown: "# Review"
-      }
-    ]
-  };
-  return {
-    getSchemaDocuments() {
-      return {
-        manifest: schemaDocument,
-        project: {
-          ...schemaDocument,
-          name: "project"
-        }
-      } satisfies Record<RuntimeSchemaTopicName, SchemaDocument>;
-    },
-    async listProjects() {
-      return [project];
-    },
-    openProject: vi.fn(async () => project),
-    validateProject: vi.fn(async () => ({
-      ok: true,
-      errors: [],
-      warnings: []
-    })),
-    getProjectOverview: vi.fn(async () => project),
-    getProjectGraph: vi.fn(async () => graph),
-    getTaskDetail: vi.fn(async () => taskDetail),
-    getBlockDetail: vi.fn(async () => blockDetail),
-    getReviewPipeline: vi.fn(async () => reviewPipeline)
-  };
-}
+import { describe, expect, it } from "vitest";
+import { createGateway, project, readJson, schemaDocument } from "./toolTestHelpers.js";
+import { handlePlanweaveTool } from "../tools.js";
 
 describe("handlePlanweaveTool", () => {
   it("returns schema documents as JSON text content", async () => {
@@ -290,6 +117,265 @@ describe("handlePlanweaveTool", () => {
     expect(gateway.getTaskDetail).toHaveBeenCalledWith("project-1", "T-001", "default");
     expect(gateway.getBlockDetail).toHaveBeenCalledWith("project-1", "T-001#I-001", "default");
     expect(gateway.getReviewPipeline).toHaveBeenCalledWith("project-1", "T-001", "default");
+  });
+
+  it("returns authoring rules and an importable package example", async () => {
+    const rules = readJson(await handlePlanweaveTool("get_authoring_rules", undefined, createGateway()));
+    const example = readJson(await handlePlanweaveTool("get_plan_package_example", undefined, createGateway()));
+
+    expect(rules).toMatchObject({
+      rules: expect.arrayContaining([expect.stringContaining("projectId")])
+    });
+    expect(example).toMatchObject({
+      files: expect.arrayContaining([expect.objectContaining({ path: "manifest.json", encoding: "utf8" })])
+    });
+  });
+
+  it("initializes managed projects without accepting root paths", async () => {
+    const gateway = createGateway();
+    const result = readJson(await handlePlanweaveTool("init_project", { name: "New Project", rootPath: "/ignored" }, gateway));
+
+    expect(gateway.initProject).toHaveBeenCalledWith("New Project");
+    expect(result).toEqual({
+      project: {
+        projectId: "project-1",
+        name: "Project One",
+        activeCanvasId: "default",
+        taskCanvases: project.taskCanvases
+      }
+    });
+    expect(JSON.stringify(result)).not.toContain("/ignored");
+  });
+
+  it("creates a new task canvas in a registered project", async () => {
+    const gateway = createGateway();
+    const result = readJson(await handlePlanweaveTool("create_canvas", { projectId: "project-1", name: "Release plan", canvasId: "ignored" }, gateway));
+
+    expect(gateway.createCanvas).toHaveBeenCalledWith("project-1", "Release plan");
+    expect(result).toEqual({
+      canvas: {
+        canvasId: "canvas-new",
+        name: "Release plan",
+        taskCount: 0,
+        missingPromptCount: 0,
+        diagnostics: [],
+        createdAt: "2026-06-19T00:00:00.000Z",
+        updatedAt: "2026-06-19T00:00:00.000Z"
+      }
+    });
+  });
+
+  it("dispatches graph write tools through the runtime gateway", async () => {
+    const gateway = createGateway();
+
+    await handlePlanweaveTool(
+      "create_task",
+      { projectId: "project-1", canvasId: "default", title: "New task", promptMarkdown: "# Task", blockTypes: ["implementation", "review"] },
+      gateway
+    );
+    await handlePlanweaveTool(
+      "update_block",
+      { projectId: "project-1", canvasId: "default", taskId: "T-001", blockId: "I-001", title: "Implement v2", executor: null },
+      gateway
+    );
+    await handlePlanweaveTool("add_dependency", { projectId: "project-1", fromTaskId: "T-001", toTaskId: "T-002" }, gateway);
+
+    expect(gateway.createTask).toHaveBeenCalledWith("project-1", "default", {
+      title: "New task",
+      promptMarkdown: "# Task",
+      acceptance: undefined,
+      blockTypes: ["implementation", "review"],
+      executor: undefined
+    });
+    expect(gateway.updateBlock).toHaveBeenCalledWith("project-1", "default", "T-001#I-001", {
+      title: "Implement v2",
+      promptMarkdown: undefined,
+      executor: null
+    });
+    expect(gateway.addDependency).toHaveBeenCalledWith("project-1", undefined, "T-001", "T-002");
+  });
+
+  it("dispatches planning write tools through the runtime gateway", async () => {
+    const gateway = createGateway();
+
+    await handlePlanweaveTool("update_task_acceptance", {
+      projectId: "project-1",
+      canvasId: "default",
+      taskId: "T-001",
+      acceptance: ["Acceptance one", "Acceptance two"]
+    }, gateway);
+    await handlePlanweaveTool("update_block_dependencies", {
+      projectId: "project-1",
+      canvasId: "default",
+      blockRef: "T-001#B-002",
+      dependsOn: ["B-001"]
+    }, gateway);
+    await handlePlanweaveTool("update_block_planning", {
+      projectId: "project-1",
+      canvasId: "default",
+      blockRef: "T-001#B-001",
+      parallelSafe: true,
+      parallelLocks: ["repo"]
+    }, gateway);
+    await handlePlanweaveTool("update_review_pipeline", {
+      projectId: "project-1",
+      canvasId: "default",
+      taskId: "T-001",
+      packageDefaults: { maxFeedbackCycles: 3, completionPolicy: "strict" },
+      steps: [
+        {
+          blockRef: "T-001#R-001",
+          title: "Architecture review",
+          enabled: true,
+          preset: "architecture",
+          triggerCondition: "manual",
+          inputContext: "implementation report",
+          passCriteria: "Boundaries remain clear.",
+          feedbackFormat: "Findings by severity.",
+          maxFeedbackCycles: 2,
+          hook: null,
+          promptMarkdown: "# Architecture review"
+        }
+      ]
+    }, gateway);
+
+    expect(gateway.updateTaskAcceptance).toHaveBeenCalledWith("project-1", "default", "T-001", [
+      "Acceptance one",
+      "Acceptance two"
+    ]);
+    expect(gateway.updateBlockDependencies).toHaveBeenCalledWith("project-1", "default", "T-001#B-002", ["B-001"]);
+    expect(gateway.updateBlockPlanning).toHaveBeenCalledWith("project-1", "default", "T-001#B-001", {
+      parallelSafe: true,
+      parallelLocks: ["repo"],
+      reviewRequired: undefined,
+      maxFeedbackCycles: undefined,
+      reviewHook: undefined
+    });
+    expect(gateway.updateReviewPipeline).toHaveBeenCalledWith("project-1", "default", "T-001", {
+      packageDefaults: { maxFeedbackCycles: 3, completionPolicy: "strict" },
+      steps: [
+        {
+          blockId: "R-001",
+          blockRef: "T-001#R-001",
+          title: "Architecture review",
+          enabled: true,
+          preset: "architecture",
+          triggerCondition: "manual",
+          inputContext: "implementation report",
+          passCriteria: "Boundaries remain clear.",
+          feedbackFormat: "Findings by severity.",
+          maxFeedbackCycles: 2,
+          hook: null,
+          promptMarkdown: "# Architecture review"
+        }
+      ]
+    });
+  });
+
+  it("dispatches project graph dependency tools through the runtime gateway", async () => {
+    const gateway = createGateway();
+
+    const canvasResult = readJson(await handlePlanweaveTool("add_canvas_dependency", {
+      projectId: "project-1",
+      fromCanvasId: "canvas-new",
+      toCanvasId: "default"
+    }, gateway));
+    await handlePlanweaveTool("remove_canvas_dependency", {
+      projectId: "project-1",
+      fromCanvasId: "canvas-new",
+      toCanvasId: "default"
+    }, gateway);
+    await handlePlanweaveTool("add_cross_task_dependency", {
+      projectId: "project-1",
+      fromCanvasId: "canvas-new",
+      fromTaskId: "T-001",
+      toCanvasId: "default",
+      toTaskId: "T-001"
+    }, gateway);
+    await handlePlanweaveTool("remove_cross_task_dependency", {
+      projectId: "project-1",
+      fromCanvasId: "canvas-new",
+      fromTaskId: "T-001",
+      toCanvasId: "default",
+      toTaskId: "T-001"
+    }, gateway);
+
+    expect(canvasResult).toMatchObject({ projectGraphEdit: { ok: true } });
+    expect(gateway.addCanvasDependency).toHaveBeenCalledWith("project-1", "canvas-new", "default");
+    expect(gateway.removeCanvasDependency).toHaveBeenCalledWith("project-1", "canvas-new", "default");
+    expect(gateway.addCrossTaskDependency).toHaveBeenCalledWith(
+      "project-1",
+      { canvasId: "canvas-new", taskId: "T-001" },
+      { canvasId: "default", taskId: "T-001" }
+    );
+    expect(gateway.removeCrossTaskDependency).toHaveBeenCalledWith(
+      "project-1",
+      { canvasId: "canvas-new", taskId: "T-001" },
+      { canvasId: "default", taskId: "T-001" }
+    );
+  });
+
+  it("reads and writes prompt surfaces through the matching tools", async () => {
+    const gateway = createGateway();
+    const projectPrompt = readJson(await handlePlanweaveTool("read_prompt", { projectId: "project-1", target: "project" }, gateway));
+    const blockPrompt = readJson(
+      await handlePlanweaveTool("read_prompt", { projectId: "project-1", target: "block", blockRef: "T-001#I-001", rendered: true }, gateway)
+    );
+
+    await handlePlanweaveTool("write_task_prompt", { projectId: "project-1", taskId: "T-001", markdown: "# Changed" }, gateway);
+    await handlePlanweaveTool("update_project_prompt", { projectId: "project-1", markdown: "# Project v2" }, gateway);
+
+    expect(projectPrompt).toMatchObject({ target: "project", markdown: "# Project" });
+    expect(blockPrompt).toMatchObject({ target: "block", blockRef: "T-001#I-001", markdown: "# Surface", rendered: true });
+    expect(gateway.updateTask).toHaveBeenCalledWith("project-1", undefined, "T-001", { promptMarkdown: "# Changed" });
+    expect(gateway.updateProjectPrompt).toHaveBeenCalledWith("project-1", "# Project v2");
+  });
+
+  it("exports and imports package file sets as structured content", async () => {
+    const gateway = createGateway();
+    const exported = readJson(await handlePlanweaveTool("export_plan_package", { projectId: "project-1", canvasId: "default" }, gateway));
+    const imported = readJson(
+      await handlePlanweaveTool(
+        "import_plan_package",
+        { name: "Imported", files: [{ path: "manifest.json", content: "{}", encoding: "utf8" }] },
+        gateway
+      )
+    );
+
+    expect(exported).toMatchObject({
+      planPackage: {
+        canvasId: "default",
+        files: [{ path: "manifest.json", content: "{}", encoding: "utf8" }]
+      }
+    });
+    expect(gateway.importPlanPackage).toHaveBeenCalledWith({
+      name: "Imported",
+      files: [{ path: "manifest.json", content: "{}", encoding: "utf8" }],
+      overwrite: false
+    });
+    expect(imported).toMatchObject({ importedFiles: 1, validation: { ok: true } });
+  });
+
+  it("explains validation errors with repair suggestions", async () => {
+    const gateway = createGateway();
+    gateway.validateProject.mockResolvedValueOnce({
+      ok: false,
+      errors: [{ code: "missing_prompt", message: "Prompt is missing.", path: "nodes/T-001/prompt.md" }],
+      warnings: []
+    });
+
+    const result = readJson(await handlePlanweaveTool("explain_validation_errors", { projectId: "project-1" }, gateway));
+
+    expect(result).toMatchObject({
+      ok: false,
+      explanations: [
+        {
+          code: "missing_prompt",
+          severity: "error",
+          suggestedAction: expect.stringContaining("write_*_prompt")
+        }
+      ]
+    });
   });
 
   it("rejects missing projectId", async () => {

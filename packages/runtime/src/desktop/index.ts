@@ -36,14 +36,24 @@ export {
   removeTaskNode,
   searchProject,
   searchProjectWithDiagnostics,
+  updateBlockDependencies,
   updateBlockExecutor,
+  updateBlockPlanning,
   updateBlockPrompt,
   updateBlockTitle,
+  updateTaskAcceptance,
   updateTaskExecutor,
   updateTaskPrompt,
   updateTaskTitle,
   validateGraphEdit
 } from "./graphApi.js";
+export {
+  addCanvasDependency,
+  addCrossTaskDependency,
+  removeCanvasDependency,
+  removeCrossTaskDependency
+} from "./projectGraphEditApi.js";
+export type { ProjectGraphEditResult } from "./projectGraphEditApi.js";
 export { readProjectPrompt, readProjectPromptPolicy, updateProjectPrompt, updateProjectPromptPolicy } from "../projectPromptPolicy.js";
 export type { ProjectPromptPolicy } from "../projectPromptPolicy.js";
 export { getDesktopLayout, resetDesktopLayout, saveDesktopLayout } from "./layoutApi.js";

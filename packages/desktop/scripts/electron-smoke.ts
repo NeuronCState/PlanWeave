@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { cp, mkdtemp, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { initWorkspace } from "@planweave-ai/runtime";
@@ -7,6 +7,18 @@ import { initWorkspace } from "@planweave-ai/runtime";
 const mainEntry = resolve(process.cwd(), "dist", "main", "main.js");
 const electronBin = resolve(process.cwd(), "node_modules", ".bin", "electron");
 const repoRoot = resolve(process.cwd(), "../..");
+const usePackagedApp = process.env.PLANWEAVE_DESKTOP_SMOKE_PACKAGED === "1";
+
+async function resolvePackagedExecutable(): Promise<string> {
+  const releaseDir = resolve(process.cwd(), "release");
+  const entries = await readdir(releaseDir, { withFileTypes: true }).catch(() => []);
+  const appPath = entries
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith("mac"))
+    .map((entry) => resolve(releaseDir, entry.name, "PlanWeave.app"))
+    .sort()[0];
+  return resolve(appPath ?? resolve(releaseDir, "mac-arm64", "PlanWeave.app"), "Contents", "MacOS", "PlanWeave");
+}
+
 const smokeHome = await mkdtemp(join(tmpdir(), "planweave-desktop-smoke-home-"));
 const smokeUserData = await mkdtemp(join(tmpdir(), "planweave-desktop-smoke-user-data-"));
 const smokeProjectRoot = await mkdtemp(join(tmpdir(), "planweave-desktop-smoke-project-"));
@@ -19,7 +31,10 @@ await cp(resolve(repoRoot, "examples", "basic-plan-package", "package"), init.wo
 });
 await writeFile(init.workspace.projectPromptFile, "Desktop smoke project prompt.\n", "utf8");
 
-const child = spawn(electronBin, [mainEntry], {
+const smokeCommand = usePackagedApp ? await resolvePackagedExecutable() : electronBin;
+const smokeArgs = usePackagedApp ? [] : [mainEntry];
+
+const child = spawn(smokeCommand, smokeArgs, {
   cwd: process.cwd(),
   env: {
     ...process.env,

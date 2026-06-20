@@ -39,6 +39,7 @@
     "release:win": "pnpm build && electron-builder --win nsis zip --publish always",
     "start": "electron dist/main/main.js",
     "smoke": "tsx scripts/electron-smoke.ts",
+    "smoke:packaged:mac": "PLANWEAVE_DESKTOP_SMOKE_PACKAGED=1 tsx scripts/electron-smoke.ts",
     "verify:packaged:mac": "pnpm pack:mac && node scripts/verify-packaged-app.mjs"
   },
   "dependencies": {

@@ -37,7 +37,7 @@ app.whenReady().then(() => {
       return;
     }
     void autoStartMcpTunnel();
-    if (app.isPackaged) {
+    if (app.isPackaged && !isSmokeRun) {
       void checkForAppUpdate();
     }
   })().catch((error: unknown) => {

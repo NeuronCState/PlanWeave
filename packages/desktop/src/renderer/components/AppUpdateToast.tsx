@@ -71,7 +71,7 @@ export function AppUpdateToast({ onCheck, onDismiss, onDownload, onInstall, stat
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-text-strong">{title}</div>
-          <div className="mt-1 text-xs text-text-muted">
+          <div className="mt-1 max-h-36 overflow-auto whitespace-pre-wrap break-words text-xs text-text-muted [overflow-wrap:anywhere]">
             {state.status === "error" ? state.error : updateLabel(state, t)}
           </div>
         </div>

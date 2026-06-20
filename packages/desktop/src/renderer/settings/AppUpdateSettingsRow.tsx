@@ -32,9 +32,9 @@ export function AppUpdateSettingsRow({ t }: AppUpdateSettingsRowProps) {
 
   return (
     <Field orientation="horizontal" className="items-center justify-between gap-4 border-b px-5 py-4 last:border-b-0">
-      <FieldContent>
+      <FieldContent className="min-w-0">
         <FieldLabel className="text-sm font-semibold">{t("appUpdate")}</FieldLabel>
-        <FieldDescription>{appUpdateDescription(appUpdateState, t)}</FieldDescription>
+        <FieldDescription className="break-words [overflow-wrap:anywhere]">{appUpdateDescription(appUpdateState, t)}</FieldDescription>
       </FieldContent>
       <Button disabled={!appUpdateAvailable || appUpdateState.status === "checking" || appUpdateState.status === "downloading"} size="sm" variant="outline" onClick={() => void checkForAppUpdate()}>
         {appUpdateState.status === "checking" ? t("checkingForAppUpdate") : t("checkForAppUpdate")}

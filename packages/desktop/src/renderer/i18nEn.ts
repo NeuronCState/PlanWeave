@@ -384,6 +384,8 @@ export const enCatalog = {
     mcpRuntimeApiKeyHint: "Saved with Electron safeStorage after starting; requires Tunnels Read + Use.",
     mcpRuntimeApiKeySavedHint: "A saved runtime API key will be used if this field is left blank.",
     mcpRuntimeApiKeySavedPlaceholder: "Saved key",
+    mcpTunnelAutoStart: "Start tunnel when PlanWeave opens",
+    mcpTunnelAutoStartHint: "Automatically starts the local MCP server and tunnel using the saved Tunnel ID and runtime API key.",
     mcpTunnelStatus: "Tunnel",
     mcpTunnelStatusHint: "Starting the tunnel will also start the local MCP server when needed.",
     mcpTunnelReadyStatus: "ready",

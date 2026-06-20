@@ -386,6 +386,8 @@ export const zhCnCatalog = {
     mcpRuntimeApiKeyHint: "启动后通过 Electron safeStorage 加密保存；需要 Tunnels Read + Use 权限。",
     mcpRuntimeApiKeySavedHint: "留空时会使用已保存的 runtime API key。",
     mcpRuntimeApiKeySavedPlaceholder: "已保存 key",
+    mcpTunnelAutoStart: "打开 PlanWeave 时启动 tunnel",
+    mcpTunnelAutoStartHint: "使用已保存的 Tunnel ID 和 runtime API key 自动启动本机 MCP server 与 tunnel。",
     mcpTunnelStatus: "Tunnel",
     mcpTunnelStatusHint: "启动 tunnel 时会按需自动启动本机 MCP server。",
     mcpTunnelReadyStatus: "ready",

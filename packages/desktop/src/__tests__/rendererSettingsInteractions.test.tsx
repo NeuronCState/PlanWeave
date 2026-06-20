@@ -277,7 +277,8 @@ describe("desktop renderer settings interactions", () => {
           config: {
             tunnelId: "tunnel_0123456789abcdef0123456789abcdef",
             hasRuntimeApiKey: true,
-            runtimeApiKeyStorage: "available"
+            runtimeApiKeyStorage: "available",
+            autoStart: true
           },
           downloadUrl: "https://github.com/openai/tunnel-client/releases/latest",
           updatedAt: "2026-06-19T00:00:00.000Z"
@@ -285,6 +286,7 @@ describe("desktop renderer settings interactions", () => {
         onMcpTunnelChanged: vi.fn(() => () => undefined),
         downloadTunnelClient: vi.fn(),
         setTunnelClientPath: vi.fn(),
+        setTunnelAutoStart: vi.fn().mockResolvedValue(undefined),
         startLocalMcp: vi.fn(),
         stopLocalMcp: vi.fn(),
         startTunnel: vi.fn(),
@@ -318,6 +320,7 @@ describe("desktop renderer settings interactions", () => {
     expect(screen.getByText("A saved runtime API key will be used if this field is left blank.")).toBeInTheDocument();
     expect(screen.getByText("ready")).toBeInTheDocument();
     expect(screen.getByText("Ready: http://127.0.0.1:58902")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Start tunnel when PlanWeave opens" })).toBeChecked();
     expect(screen.getByRole("link", { name: "Open release page" })).toHaveAttribute("href", "https://github.com/openai/tunnel-client/releases/latest");
     expect(window.localStorage.setItem).not.toHaveBeenCalledWith(expect.any(String), expect.stringContaining("Runtime API key"));
   });

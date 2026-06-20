@@ -4,31 +4,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import type { McpTunnelPhase } from "../../shared/mcpTunnel";
+import { SettingsSwitchRow } from "../components/SettingsSwitchRow";
 import { useMcpTunnelStatus } from "../hooks/useMcpTunnelStatus";
 import type { createTranslator } from "../i18n";
+import { phaseVariant, tunnelStatusLabel } from "./mcpTunnelStatusView";
 
 type SettingsMcpSectionProps = {
   setError: (message: string | null) => void;
   t: ReturnType<typeof createTranslator>;
 };
-
-function phaseVariant(phase: McpTunnelPhase): "default" | "secondary" | "destructive" | "outline" {
-  if (phase === "running") {
-    return "default";
-  }
-  if (phase === "error") {
-    return "destructive";
-  }
-  if (phase === "starting" || phase === "stopping") {
-    return "secondary";
-  }
-  return "outline";
-}
-
-function tunnelStatusLabel(status: { phase: McpTunnelPhase; ready: boolean }, t: ReturnType<typeof createTranslator>): string {
-  return status.phase === "running" && status.ready ? t("mcpTunnelReadyStatus") : status.phase;
-}
 
 export function SettingsMcpSection({ setError, t }: SettingsMcpSectionProps) {
   const {
@@ -38,6 +22,7 @@ export function SettingsMcpSection({ setError, t }: SettingsMcpSectionProps) {
     setTunnelClientPath,
     startLocalMcp,
     stopLocalMcp,
+    setTunnelAutoStart,
     startTunnel,
     stopTunnel
   } = useMcpTunnelStatus({ setError });
@@ -168,6 +153,13 @@ export function SettingsMcpSection({ setError, t }: SettingsMcpSectionProps) {
               onChange={(event) => setRuntimeApiKey(event.target.value)}
             />
           </Field>
+          <SettingsSwitchRow
+            checked={status.config.autoStart}
+            description={t("mcpTunnelAutoStartHint")}
+            disabled={!available}
+            title={t("mcpTunnelAutoStart")}
+            onCheckedChange={(checked) => void setTunnelAutoStart(checked)}
+          />
           <Field orientation="horizontal" className="items-center justify-between gap-4 border-b px-5 py-4 last:border-b-0">
             <FieldContent>
               <FieldLabel className="flex items-center gap-2 text-sm font-semibold">

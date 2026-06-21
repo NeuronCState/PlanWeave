@@ -14,7 +14,7 @@ import {
 import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { ChevronRightIcon, NetworkIcon, Redo2Icon, Undo2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { AppNodeTypes } from "../graph/flowModel";
+import { styleGraphEdgesForInteraction, type AppNodeTypes } from "../graph/flowModel";
 import { useEdgeReconnect } from "../hooks/useEdgeReconnect";
 import type { AppView } from "../types";
 import type { createTranslator } from "../i18n";
@@ -109,10 +109,16 @@ export function GraphView({
 }: GraphViewProps) {
   const fittedGraphScopeId = useRef<string | null>(null);
   const [localFlowInstance, setLocalFlowInstance] = useState<ReactFlowInstance<AppFlowNode, Edge> | null>(null);
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const dirtyPromptCount = Math.max(dirtyPromptRefs.length, graph?.dirtyPromptRefs.length ?? 0);
   const visibleNodes = visibleTasks ? nodes.filter((node) => node.type !== "task" || visibleTaskIds.has(node.id)) : nodes;
   const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
   const visibleEdges = visibleTasks ? edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)) : edges;
+  const styledVisibleEdges = useMemo(
+    () => styleGraphEdgesForInteraction(visibleEdges, { hoveredEdgeId, hoveredNodeId }),
+    [hoveredEdgeId, hoveredNodeId, visibleEdges]
+  );
   const currentCanvasName = selectedProject?.taskCanvases.find((canvas) => canvas.canvasId === selectedCanvasId)?.name ?? t("taskCanvas");
   const graphScopeId = useMemo(() => {
     if (!graph || !selectedProject) {
@@ -184,7 +190,7 @@ export function GraphView({
       ) : (
         <ReactFlow
           nodes={visibleNodes}
-          edges={visibleEdges}
+          edges={styledVisibleEdges}
           nodeTypes={nodeTypes}
           onConnect={(connection) => void handleConnect(connection)}
           onEdgesDelete={(deletedEdges) => void handleEdgesDelete(deletedEdges)}
@@ -198,6 +204,14 @@ export function GraphView({
             if (node.type === "task") {
               onTaskPanelSelect(node.id);
             }
+          }}
+          onNodeMouseEnter={(_event, node) => setHoveredNodeId(node.id)}
+          onNodeMouseLeave={(_event, node) => setHoveredNodeId((current) => (current === node.id ? null : current))}
+          onEdgeMouseEnter={(_event, edge) => setHoveredEdgeId(edge.id)}
+          onEdgeMouseLeave={(_event, edge) => setHoveredEdgeId((current) => (current === edge.id ? null : current))}
+          onPaneMouseEnter={() => {
+            setHoveredEdgeId(null);
+            setHoveredNodeId(null);
           }}
           onNodeDragStop={(event, node) => void onNodeDragStop(event, node)}
           onInit={handleFlowInit}

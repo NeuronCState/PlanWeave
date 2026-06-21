@@ -13,10 +13,36 @@ export type AppNodeTypes = typeof nodeTypes;
 const defaultLayoutOrigin = { x: 80, y: 80 };
 const defaultLayoutColumnGap = 460;
 const defaultLayoutRowGap = 360;
+const defaultEdgeOpacity = 0.56;
+const highlightedEdgeOpacity = 0.96;
+const dimmedEdgeOpacity = 0.12;
+const edgeSourcePalette = [
+  "#2563eb",
+  "#16a34a",
+  "#dc2626",
+  "#9333ea",
+  "#0891b2",
+  "#ca8a04",
+  "#db2777",
+  "#4f46e5",
+  "#059669",
+  "#ea580c"
+];
 
 type FlowPosition = {
   x: number;
   y: number;
+};
+
+export type GraphEdgeInteraction = {
+  hoveredEdgeId?: string | null;
+  hoveredNodeId?: string | null;
+};
+
+type GraphEdgeData = ReturnType<typeof displayEdgeManifestData> & {
+  sourceTaskId: string;
+  targetTaskId: string;
+  sourceColor: string;
 };
 
 export function defaultTaskNodePositions(graph: DesktopGraphViewModel): Map<string, FlowPosition> {
@@ -194,29 +220,113 @@ export function graphNodes(
 
 export function graphEdges(graph: DesktopGraphViewModel): Edge[] {
   const nodeIds = new Set(graph.tasks.map((task) => task.taskId));
+  const sourceColors = edgeSourceColors(graph);
   return graph.edges
     .filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to))
     .map((edge) => {
       const isTaskDependency = edge.type === "depends_on";
       const endpoints = executionFlowEndpoints(edge);
+      const color = sourceColors.get(endpoints.source) ?? edgeSourcePalette[0];
       return {
         id: `${edge.from}-${edge.type}-${edge.to}`,
         source: endpoints.source,
         target: endpoints.target,
-        data: displayEdgeManifestData(edge),
+        data: {
+          ...displayEdgeManifestData(edge),
+          sourceTaskId: endpoints.source,
+          targetTaskId: endpoints.target,
+          sourceColor: color
+        } satisfies GraphEdgeData,
         animated: false,
         type: isTaskDependency ? "smoothstep" : "default",
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: isTaskDependency ? "#ea580c" : "#2563eb",
+          color,
           width: 18,
           height: 18
         },
         style: {
-          stroke: isTaskDependency ? "#ea580c" : "#2563eb",
-          strokeWidth: isTaskDependency ? 2.4 : 2,
-          opacity: 0.95
+          stroke: color,
+          strokeWidth: isTaskDependency ? 2.2 : 1.9,
+          opacity: defaultEdgeOpacity,
+          transition: "opacity 120ms ease, stroke-width 120ms ease"
         }
       } satisfies Edge;
     });
+}
+
+export function styleGraphEdgesForInteraction(edges: Edge[], interaction: GraphEdgeInteraction): Edge[] {
+  const hoveredNodeId = interaction.hoveredNodeId ?? null;
+  const hoveredEdgeId = interaction.hoveredEdgeId ?? null;
+  const hasHoveredNode = hoveredNodeId !== null && edges.some((edge) => edge.source === hoveredNodeId || edge.target === hoveredNodeId);
+  const hasHoveredEdge = hoveredEdgeId !== null && edges.some((edge) => edge.id === hoveredEdgeId);
+  const hasInteraction = hasHoveredNode || hasHoveredEdge;
+  return edges.map((edge) => {
+    const relatedToNode = hasHoveredNode && (edge.source === hoveredNodeId || edge.target === hoveredNodeId);
+    const relatedToEdge = hasHoveredEdge && edge.id === hoveredEdgeId;
+    const related = !hasInteraction || relatedToNode || relatedToEdge;
+    const highlighted = relatedToNode || relatedToEdge;
+    const color = edgeSourceColor(edge);
+    return {
+      ...edge,
+      markerEnd: markerEndWithColor(edge.markerEnd, color),
+      style: {
+        ...edge.style,
+        stroke: color,
+        strokeWidth: highlighted ? 3.2 : related ? edge.style?.strokeWidth ?? 2 : 1.4,
+        opacity: highlighted ? highlightedEdgeOpacity : related ? edge.style?.opacity ?? defaultEdgeOpacity : dimmedEdgeOpacity
+      }
+    };
+  });
+}
+
+function edgeSourceColors(graph: DesktopGraphViewModel): Map<string, string> {
+  const adjacency = new Map(graph.tasks.map((task) => [task.taskId, new Set<string>()]));
+  for (const edge of graph.edges) {
+    const endpoints = executionFlowEndpoints(edge);
+    adjacency.get(endpoints.source)?.add(endpoints.target);
+    adjacency.get(endpoints.target)?.add(endpoints.source);
+  }
+  const assigned = new Map<string, string>();
+  for (const task of graph.tasks) {
+    const unavailable = new Set([...adjacency.get(task.taskId) ?? []].flatMap((taskId) => {
+      const color = assigned.get(taskId);
+      return color ? [color] : [];
+    }));
+    const baseIndex = stablePaletteIndex(task.taskId);
+    let selected = edgeSourcePalette[baseIndex];
+    for (let offset = 0; offset < edgeSourcePalette.length; offset += 1) {
+      const candidate = edgeSourcePalette[(baseIndex + offset) % edgeSourcePalette.length];
+      if (!unavailable.has(candidate)) {
+        selected = candidate;
+        break;
+      }
+    }
+    assigned.set(task.taskId, selected);
+  }
+  return assigned;
+}
+
+function stablePaletteIndex(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash % edgeSourcePalette.length;
+}
+
+function edgeSourceColor(edge: Edge): string {
+  const data = edge.data;
+  if (data && typeof data === "object" && "sourceColor" in data && typeof data.sourceColor === "string") {
+    return data.sourceColor;
+  }
+  const stroke = edge.style?.stroke;
+  return typeof stroke === "string" ? stroke : edgeSourcePalette[0];
+}
+
+function markerEndWithColor(markerEnd: Edge["markerEnd"], color: string): Edge["markerEnd"] {
+  if (!markerEnd || typeof markerEnd !== "object") {
+    return markerEnd;
+  }
+  return { ...markerEnd, color };
 }

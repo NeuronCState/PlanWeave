@@ -6,7 +6,7 @@ import {
   displayEdgeManifestData,
   executionFlowEndpoints
 } from "../renderer/graph/dependencyEdges";
-import { graphEdges } from "../renderer/graph/flowModel";
+import { graphEdges, styleGraphEdgesForInteraction } from "../renderer/graph/flowModel";
 
 describe("desktop graph dependency edge direction", () => {
   it("renders depends_on arrows as execution flow from prerequisite to dependent", () => {
@@ -67,13 +67,48 @@ describe("desktop graph dependency edge direction", () => {
         id: "T-001-depends_on-T-002",
         source: "T-002",
         target: "T-001",
-        data: {
+        data: expect.objectContaining({
           manifestEdgeType: "depends_on",
           manifestFrom: "T-001",
-          manifestTo: "T-002"
-        }
+          manifestTo: "T-002",
+          sourceTaskId: "T-002",
+          targetTaskId: "T-001",
+          sourceColor: expect.any(String)
+        }),
+        style: expect.objectContaining({
+          opacity: expect.any(Number),
+          stroke: expect.any(String)
+        })
       })
     ]);
+  });
+
+  it("highlights hovered node edges and dims unrelated edges", () => {
+    const graph: DesktopGraphViewModel = {
+      projectId: "P-001",
+      projectTitle: "Execution flow",
+      graphVersion: "pgv-test",
+      packageFingerprint: "pkg-test",
+      executorOptions: [],
+      tasks: [
+        task("T-001", "Dependent task", "planned"),
+        task("T-002", "Prerequisite task", "ready"),
+        task("T-003", "Other task", "planned")
+      ],
+      edges: [
+        { from: "T-001", to: "T-002", type: "depends_on" },
+        { from: "T-003", to: "T-001", type: "depends_on" }
+      ],
+      diagnostics: [],
+      dirtyPromptRefs: []
+    };
+
+    const styled = styleGraphEdgesForInteraction(graphEdges(graph), { hoveredNodeId: "T-002" });
+    const related = styled.find((edge) => edge.source === "T-002" || edge.target === "T-002");
+    const unrelated = styled.find((edge) => edge.source !== "T-002" && edge.target !== "T-002");
+
+    expect(related?.style?.opacity).toBeGreaterThan(unrelated?.style?.opacity as number);
+    expect(related?.style?.strokeWidth).toBeGreaterThan(unrelated?.style?.strokeWidth as number);
   });
 });
 

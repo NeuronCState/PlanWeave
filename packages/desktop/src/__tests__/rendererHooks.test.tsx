@@ -91,6 +91,16 @@ function projectSnapshot(overrides: Partial<DesktopProjectSnapshot> = {}): Deskt
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, reject, resolve };
+}
+
 const reviewPipeline: DesktopReviewPipeline = {
   taskId: "T-ALPHA",
   taskTitle: "Alpha task",
@@ -164,6 +174,91 @@ describe("desktop renderer hook interfaces", () => {
     expect(bridge.getTodoGroups).not.toHaveBeenCalled();
     expect(bridge.watchPackageFiles).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
     expect(updateSettings).toHaveBeenCalledWith({ runtimePath: project.workspaceRoot });
+  });
+
+  it("keeps startup in a loading state until the default project snapshot is ready", async () => {
+    const pendingProjects = deferred<DesktopProjectSummary[]>();
+    const bridge = createDesktopBridgeMock({
+      listProjects: vi.fn().mockReturnValue(pendingProjects.promise),
+      getDesktopProjectSnapshot: vi.fn().mockResolvedValue(projectSnapshot()),
+      refreshPackageFileChanges: vi.fn().mockResolvedValue({ diagnostics: [], dirtyPromptRefs: [] }),
+      watchPackageFiles: vi.fn().mockResolvedValue(undefined)
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
+
+    const setError = vi.fn();
+    const updateSettings = vi.fn();
+    const { result } = renderHook(() =>
+      useDesktopProject({
+        setError,
+        t: createTranslator("en"),
+        updateSettings
+      })
+    );
+
+    expect(result.current.projectLoading).toBe(true);
+    expect(result.current.graph).toBeNull();
+
+    await act(async () => {
+      pendingProjects.resolve([project]);
+      await pendingProjects.promise;
+    });
+
+    await waitFor(() => expect(result.current.graph?.tasks.map((task) => task.taskId)).toEqual(["T-ALPHA", "T-BETA"]));
+    expect(result.current.projectLoading).toBe(false);
+  });
+
+  it("keeps the current canvas graph visible while reloading the same canvas", async () => {
+    const pendingReload = deferred<DesktopProjectSnapshot>();
+    const nextGraph: DesktopGraphViewModel = {
+      ...graph,
+      tasks: graph.tasks.map((task) => (task.taskId === "T-ALPHA" ? { ...task, promptPreview: "Updated alpha" } : task))
+    };
+    const bridge = createDesktopBridgeMock({
+      listProjects: vi.fn().mockResolvedValue([]),
+      getDesktopProjectSnapshot: vi.fn().mockResolvedValueOnce(projectSnapshot()).mockReturnValueOnce(pendingReload.promise),
+      refreshPackageFileChanges: vi.fn().mockResolvedValue({ diagnostics: [], dirtyPromptRefs: [] }),
+      watchPackageFiles: vi.fn().mockResolvedValue(undefined)
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
+
+    const setError = vi.fn();
+    const updateSettings = vi.fn();
+    const { result } = renderHook(() =>
+      useDesktopProject({
+        setError,
+        t: createTranslator("en"),
+        updateSettings
+      })
+    );
+
+    await waitFor(() => expect(result.current.projectLoading).toBe(false));
+    await act(async () => {
+      await result.current.loadProject(project, "canvas-main");
+    });
+
+    expect(result.current.graph).toBe(graph);
+
+    let reloadPromise: Promise<void>;
+    await act(async () => {
+      reloadPromise = result.current.loadProject(project, "canvas-main");
+      await Promise.resolve();
+    });
+
+    expect(bridge.getDesktopProjectSnapshot).toHaveBeenCalledTimes(2);
+    expect(result.current.graph).toBe(graph);
+
+    await act(async () => {
+      pendingReload.resolve(projectSnapshot({ graph: nextGraph }));
+      await reloadPromise;
+    });
+
+    expect(result.current.projectLoading).toBe(false);
+    expect(result.current.graph).toBe(nextGraph);
   });
 
   it("reports a visible error when project folder selection is unavailable", async () => {
@@ -355,6 +450,7 @@ describe("desktop renderer hook interfaces", () => {
       handleOpenProject: vi.fn(),
       layout: null,
       loadProject,
+      projectLoading: false,
       projects: [project],
       refreshGraph: vi.fn(),
       refreshProjectSummary: vi.fn().mockResolvedValue(project),
@@ -416,6 +512,7 @@ describe("desktop renderer hook interfaces", () => {
       handleOpenProject: vi.fn(),
       layout: null,
       loadProject: vi.fn(),
+      projectLoading: false,
       projects: [project],
       refreshGraph: vi.fn(),
       refreshProjectSummary: vi.fn(),
@@ -474,10 +571,13 @@ describe("desktop renderer hook interfaces", () => {
     });
   });
 
-  it("refreshes package files through the Desktop Project Session reload action", async () => {
+  it("refreshes graph data without reloading the canvas for prompt-only package changes", async () => {
     const bridge = createDesktopBridgeMock({
       refreshPackageFileChanges: vi.fn().mockResolvedValue({
         ok: true,
+        fullRefresh: false,
+        primed: false,
+        affectedTasks: ["T-ALPHA"],
         diagnostics: [],
         dirtyPromptRefs: ["tasks/T-ALPHA/prompt.md"]
       })
@@ -487,10 +587,12 @@ describe("desktop renderer hook interfaces", () => {
     const { usePackageFileSync } = await import("../renderer/hooks/usePackageFileSync");
 
     const reloadCurrentCanvas = vi.fn().mockResolvedValue(undefined);
+    const refreshGraph = vi.fn().mockResolvedValue(undefined);
     const setDirtyPromptRefs = vi.fn();
     const setFileSyncDiagnostics = vi.fn();
     const { result } = renderHook(() =>
       usePackageFileSync({
+        refreshGraph,
         reloadCurrentCanvas,
         selectedCanvasId: "canvas-main",
         selectedProject: project,
@@ -506,9 +608,48 @@ describe("desktop renderer hook interfaces", () => {
     });
 
     expect(bridge.refreshPackageFileChanges).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
-    expect(reloadCurrentCanvas).toHaveBeenCalled();
+    expect(refreshGraph).toHaveBeenCalledTimes(1);
+    expect(reloadCurrentCanvas).not.toHaveBeenCalled();
     expect(setFileSyncDiagnostics).toHaveBeenCalledWith([]);
     expect(setDirtyPromptRefs).toHaveBeenLastCalledWith(["tasks/T-ALPHA/prompt.md"]);
+  });
+
+  it("reloads the current canvas for package changes that require a full refresh", async () => {
+    const bridge = createDesktopBridgeMock({
+      refreshPackageFileChanges: vi.fn().mockResolvedValue({
+        ok: true,
+        fullRefresh: true,
+        primed: false,
+        affectedTasks: ["T-ALPHA"],
+        diagnostics: [],
+        dirtyPromptRefs: []
+      })
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { usePackageFileSync } = await import("../renderer/hooks/usePackageFileSync");
+
+    const reloadCurrentCanvas = vi.fn().mockResolvedValue(undefined);
+    const refreshGraph = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      usePackageFileSync({
+        refreshGraph,
+        reloadCurrentCanvas,
+        selectedCanvasId: "canvas-main",
+        selectedProject: project,
+        setDirtyPromptRefs: vi.fn(),
+        setError: vi.fn(),
+        setFileSyncDiagnostics: vi.fn(),
+        setLastFileChange: vi.fn()
+      })
+    );
+
+    await act(async () => {
+      await result.current.refreshPackageFiles();
+    });
+
+    expect(reloadCurrentCanvas).toHaveBeenCalledTimes(1);
+    expect(refreshGraph).not.toHaveBeenCalled();
   });
 
   it("reloads the current Desktop Project Session after saving a review pipeline", async () => {

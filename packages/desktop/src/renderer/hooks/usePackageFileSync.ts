@@ -4,6 +4,7 @@ import { bridge, desktopCanvasReference } from "../bridge";
 
 type UsePackageFileSyncArgs = {
   reloadCurrentCanvas: () => Promise<void>;
+  refreshGraph: () => Promise<void>;
   selectedCanvasId: string | null;
   selectedProject: DesktopProjectSummary | null;
   setDirtyPromptRefs: (refs: string[]) => void;
@@ -14,6 +15,7 @@ type UsePackageFileSyncArgs = {
 
 export function usePackageFileSync({
   reloadCurrentCanvas,
+  refreshGraph,
   selectedCanvasId,
   selectedProject,
   setDirtyPromptRefs,
@@ -33,12 +35,16 @@ export function usePackageFileSync({
         setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
         return;
       }
-      await reloadCurrentCanvas();
+      if (result.fullRefresh) {
+        await reloadCurrentCanvas();
+      } else {
+        await refreshGraph();
+      }
       setDirtyPromptRefs(result.dirtyPromptRefs);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [reloadCurrentCanvas, selectedCanvasId, selectedProject, setDirtyPromptRefs, setError, setFileSyncDiagnostics]);
+  }, [refreshGraph, reloadCurrentCanvas, selectedCanvasId, selectedProject, setDirtyPromptRefs, setError, setFileSyncDiagnostics]);
 
   useEffect(() => {
     if (!bridge || !selectedProject) {

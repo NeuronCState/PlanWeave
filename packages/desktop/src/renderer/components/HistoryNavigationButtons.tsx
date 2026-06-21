@@ -44,10 +44,10 @@ export function HistoryNavigationButtons({ t }: HistoryNavigationButtonsProps) {
 
   return (
     <>
-      <Button size="icon-sm" variant="ghost" aria-label={t("undo")} disabled={!canGoBack} onClick={goBack}>
+      <Button size="icon-sm" variant="ghost" aria-label={t("navigateBack")} disabled={!canGoBack} onClick={goBack}>
         <ArrowLeftIcon data-icon="inline-start" />
       </Button>
-      <Button size="icon-sm" variant="ghost" aria-label={t("redo")} disabled={!canGoForward} onClick={goForward}>
+      <Button size="icon-sm" variant="ghost" aria-label={t("navigateForward")} disabled={!canGoForward} onClick={goForward}>
         <ArrowRightIcon data-icon="inline-start" />
       </Button>
     </>

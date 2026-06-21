@@ -1,4 +1,4 @@
-import type { CSSProperties, Dispatch, DragEvent, MouseEvent, PointerEvent, SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type DragEvent, type MouseEvent, type PointerEvent, type SetStateAction } from "react";
 import {
   Background,
   type Connection,
@@ -12,11 +12,13 @@ import {
   type OnNodesChange
 } from "@xyflow/react";
 import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopProjectSummary } from "@planweave-ai/runtime";
-import { ChevronRightIcon, FolderOpenIcon, NetworkIcon } from "lucide-react";
+import { ChevronRightIcon, NetworkIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AppNodeTypes } from "../graph/flowModel";
+import { useEdgeReconnect } from "../hooks/useEdgeReconnect";
 import type { AppView } from "../types";
 import type { createTranslator } from "../i18n";
+import { GraphEmptyState } from "./GraphEmptyState";
 import { FloatingAutoRunControl } from "../run/FloatingAutoRunControl";
 import type { AppFlowNode, AutoRunScopeMode } from "../types";
 
@@ -38,6 +40,7 @@ type GraphViewProps = {
   moveAutoRunControl: (event: PointerEvent<HTMLButtonElement>) => void;
   nodeTypes: AppNodeTypes;
   nodes: AppFlowNode[];
+  projectLoading: boolean;
   onEdgesChange: OnEdgesChange<Edge>;
   onNodesChange: OnNodesChange<AppFlowNode>;
   onTaskPanelSelect: (taskId: string | null) => void;
@@ -77,6 +80,7 @@ export function GraphView({
   moveAutoRunControl,
   nodeTypes,
   nodes,
+  projectLoading,
   onEdgesChange,
   onNodeDragStop,
   onNodesChange,
@@ -97,33 +101,53 @@ export function GraphView({
   visibleTaskIds,
   visibleTasks
 }: GraphViewProps) {
+  const fittedGraphScopeId = useRef<string | null>(null);
+  const [localFlowInstance, setLocalFlowInstance] = useState<ReactFlowInstance<AppFlowNode, Edge> | null>(null);
   const dirtyPromptCount = Math.max(dirtyPromptRefs.length, graph?.dirtyPromptRefs.length ?? 0);
   const visibleNodes = visibleTasks ? nodes.filter((node) => node.type !== "task" || visibleTaskIds.has(node.id)) : nodes;
   const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
   const visibleEdges = visibleTasks ? edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)) : edges;
   const currentCanvasName = selectedProject?.taskCanvases.find((canvas) => canvas.canvasId === selectedCanvasId)?.name ?? t("taskCanvas");
+  const graphScopeId = useMemo(() => {
+    if (!graph || !selectedProject) {
+      return null;
+    }
+    return `${selectedProject.projectId}:${selectedCanvasId ?? "default"}`;
+  }, [graph, selectedCanvasId, selectedProject]);
+  const handleFlowInit = useCallback(
+    (instance: ReactFlowInstance<AppFlowNode, Edge>) => {
+      setLocalFlowInstance(instance);
+      setFlowInstance(instance);
+    },
+    [setFlowInstance]
+  );
+  const { handleReconnect, handleReconnectEnd, handleReconnectStart } = useEdgeReconnect({
+    handleConnect,
+    handleEdgesDelete
+  });
+
+  useEffect(() => {
+    if (!graphScopeId || !localFlowInstance || visibleNodes.length === 0) {
+      return undefined;
+    }
+    if (fittedGraphScopeId.current === graphScopeId) {
+      return undefined;
+    }
+    fittedGraphScopeId.current = graphScopeId;
+    if (selectedTaskPanelId) {
+      return undefined;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      void localFlowInstance.fitView({ maxZoom: 1 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [graphScopeId, localFlowInstance, selectedTaskPanelId, visibleNodes.length]);
 
   return (
     <div className="relative h-full min-h-0 bg-app-canvas text-text" data-graph-surface onDragOver={handleGraphDragOver} onDrop={handleGraphDrop}>
       {!graph ? (
         <div className="flex h-full items-center justify-center p-6">
-          <div className="flex max-w-[380px] flex-col gap-3 rounded-md border border-border/80 bg-surface-raised p-4 text-left shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border/80 bg-surface-muted text-text-muted">
-                <FolderOpenIcon className="size-4" aria-hidden="true" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-text-strong">{t("noProject")}</div>
-                <div className="text-xs text-text-muted">{t("openProjectSecondaryHint")}</div>
-              </div>
-            </div>
-            <div className="text-sm leading-5 text-text-muted">{t("openProjectHint")}</div>
-            <div className="rounded-md border border-border/70 bg-surface-muted/70 px-3 py-2 text-xs text-text-muted">{t("exampleProjectHint")}</div>
-            <Button className="h-8 w-fit gap-2 border-border/80 bg-surface-base text-text hover:bg-surface-muted hover:text-text-strong" variant="outline" onClick={handleOpenProject}>
-              <FolderOpenIcon data-icon="inline-start" />
-              {t("openProject")}
-            </Button>
-          </div>
+          <GraphEmptyState handleOpenProject={handleOpenProject} projectLoading={projectLoading} t={t} />
         </div>
       ) : (
         <ReactFlow
@@ -132,6 +156,10 @@ export function GraphView({
           nodeTypes={nodeTypes}
           onConnect={(connection) => void handleConnect(connection)}
           onEdgesDelete={(deletedEdges) => void handleEdgesDelete(deletedEdges)}
+          onReconnect={handleReconnect}
+          onReconnectStart={handleReconnectStart}
+          onReconnectEnd={handleReconnectEnd}
+          edgesReconnectable
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeClick={(_event, node) => {
@@ -140,11 +168,9 @@ export function GraphView({
             }
           }}
           onNodeDragStop={(event, node) => void onNodeDragStop(event, node)}
-          onInit={setFlowInstance}
+          onInit={handleFlowInit}
           proOptions={{ hideAttribution: true }}
           minZoom={0.1}
-          fitView
-          fitViewOptions={{ maxZoom: 1 }}
         >
           <Background color="var(--border)" gap={24} />
           <Controls />

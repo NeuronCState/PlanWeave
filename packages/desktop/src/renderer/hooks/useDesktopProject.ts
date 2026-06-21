@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   DesktopGraphViewModel,
   DesktopLayout,
@@ -38,6 +38,7 @@ export function useDesktopProject({
   updateSettings
 }: UseDesktopProjectArgs) {
   const [projects, setProjects] = useState<DesktopProjectSummary[]>([]);
+  const [projectLoading, setProjectLoading] = useState(Boolean(bridge));
   const [selectedProject, setSelectedProject] = useState<DesktopProjectSummary | null>(null);
   const [selectedCanvasId, setSelectedCanvasId] = useState<string | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
@@ -48,24 +49,48 @@ export function useDesktopProject({
   const [statistics, setStatistics] = useState<DesktopStatistics | null>(null);
   const [projectPromptMarkdown, setProjectPromptMarkdown] = useState<string | null>(null);
   const [projectPromptPolicy, setProjectPromptPolicy] = useState<ProjectPromptPolicy | null>(null);
+  const currentCanvasRef = useRef<{
+    canvasId: string | null;
+    hasGraph: boolean;
+    projectRoot: string | null;
+  }>({
+    canvasId: null,
+    hasGraph: false,
+    projectRoot: null
+  });
+
+  useEffect(() => {
+    currentCanvasRef.current = {
+      canvasId: selectedCanvasId,
+      hasGraph: Boolean(graph),
+      projectRoot: selectedProject?.rootPath ?? null
+    };
+  }, [graph, selectedCanvasId, selectedProject?.rootPath]);
 
   const loadProject = useCallback(
     async (project: DesktopProjectSummary, requestedCanvasId?: string | null) => {
       if (!bridge) {
+        setProjectLoading(false);
         return;
       }
+      setProjectLoading(true);
       const canvasId = resolveProjectCanvasId(project, requestedCanvasId);
+      const currentCanvas = currentCanvasRef.current;
+      const canKeepCurrentCanvas =
+        currentCanvas.hasGraph && currentCanvas.projectRoot === project.rootPath && currentCanvas.canvasId === canvasId;
       setSelectedProject(project);
       setSelectedCanvasId(canvasId);
       setExpandedProjectId(project.projectId);
       setError(null);
-      setGraph(null);
-      setLayout(null);
-      setTodoGroups(null);
-      setExecutionPlan(null);
-      setStatistics(null);
-      setProjectPromptMarkdown(null);
-      setProjectPromptPolicy(null);
+      if (!canKeepCurrentCanvas) {
+        setGraph(null);
+        setLayout(null);
+        setTodoGroups(null);
+        setExecutionPlan(null);
+        setStatistics(null);
+        setProjectPromptMarkdown(null);
+        setProjectPromptPolicy(null);
+      }
       const canvasRef = desktopCanvasReference(project, canvasId);
       const errors: string[] = [];
       try {
@@ -93,28 +118,45 @@ export function useDesktopProject({
         setError(errors.join("\n"));
       }
       updateSettings({ runtimePath: project.workspaceRoot });
+      setProjectLoading(false);
     },
     [setError, updateSettings]
   );
 
   useEffect(() => {
     if (!bridge) {
+      setProjectLoading(false);
       return;
     }
+    let cancelled = false;
     bridge
       .listProjects()
       .then((items) => {
+        if (cancelled) {
+          return;
+        }
         setProjects(items);
         if (items[0]) {
           void loadProject(items[0]);
+          return;
         }
+        setProjectLoading(false);
       })
-      .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught)));
+      .catch((caught: unknown) => {
+        if (cancelled) {
+          return;
+        }
+        setProjectLoading(false);
+        setError(caught instanceof Error ? caught.message : String(caught));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [loadProject, setError]);
 
   useEffect(() => {
-  const projectRoot = selectedProject?.rootPath;
-  const canvasId = selectedCanvasId;
+    const projectRoot = selectedProject?.rootPath;
+    const canvasId = selectedCanvasId;
     return () => {
       if (bridge && projectRoot) {
         void bridge.unwatchPackageFiles({ projectRoot, canvasId });
@@ -224,6 +266,7 @@ export function useDesktopProject({
     handleOpenProject,
     layout,
     loadProject,
+    projectLoading,
     projects,
     projectPromptMarkdown,
     projectPromptPolicy,

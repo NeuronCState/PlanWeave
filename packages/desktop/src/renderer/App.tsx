@@ -110,6 +110,7 @@ export function App() {
     handleOpenProject,
     layout,
     projects,
+    projectLoading,
     projectPromptMarkdown,
     projectPromptPolicy,
     refreshGraph,
@@ -381,6 +382,7 @@ export function App() {
     t
   });
   const { refreshPackageFiles } = usePackageFileSync({
+    refreshGraph,
     reloadCurrentCanvas,
     selectedCanvasId,
     selectedProject,
@@ -503,6 +505,7 @@ export function App() {
           nodeTypes={nodeTypes}
           nodes={nodes}
           notificationItems={notificationItems}
+          projectLoading={projectLoading}
           onMarkNotificationRead={handleMarkNotificationRead}
           onEdgesChange={onEdgesChange}
           onNodeDragStop={handleNodeDragStop}

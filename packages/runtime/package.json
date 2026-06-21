@@ -31,7 +31,7 @@
     "workflow"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22.5"
   },
   "publishConfig": {
     "access": "public"

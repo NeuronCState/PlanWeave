@@ -33,7 +33,7 @@
     "model-context-protocol"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22.5"
   },
   "publishConfig": {
     "access": "public"

@@ -1,9 +1,14 @@
 import * as z from "zod/v4";
+import {
+  createTaskInputShape,
+  updateBlockInputShape,
+  updateReviewPipelineInputShape,
+  updateTaskInputShape
+} from "./toolInputSchemas.js";
 import type { PlanweaveToolName } from "./tools.js";
 
 const blockTypeSchema = z.enum(["implementation", "review"]);
 const searchResultKindSchema = z.enum(["task", "block", "prompt", "run_record", "review_attempt", "feedback"]);
-const reviewTriggerConditionSchema = z.enum(["after_required_work_completed", "manual"]);
 const reviewHookSchema = z.object({
   id: z.string().min(1),
   type: z.literal("executable"),
@@ -65,21 +70,6 @@ const blockPromptInput = {
   ...blockRefInput,
   markdown: z.string()
 };
-
-const reviewPipelineStepInput = z.object({
-  blockRef: z.string().min(1).optional(),
-  blockId: z.string().min(1).optional(),
-  title: z.string().min(1),
-  enabled: z.boolean(),
-  preset: z.string().min(1),
-  triggerCondition: reviewTriggerConditionSchema.optional(),
-  inputContext: z.string().min(1),
-  passCriteria: z.string().min(1),
-  feedbackFormat: z.string().min(1),
-  maxFeedbackCycles: z.number().int().nonnegative(),
-  hook: reviewHookSchema.nullable().optional(),
-  promptMarkdown: z.string()
-});
 
 export const planweaveToolDefinitions: Record<PlanweaveToolName, ToolDefinition> = {
   get_schema: {
@@ -201,40 +191,19 @@ export const planweaveToolDefinitions: Record<PlanweaveToolName, ToolDefinition>
   update_review_pipeline: {
     title: "Update PlanWeave Review Pipeline",
     description: "Replace review gate steps and package review defaults for a task.",
-    inputSchema: {
-      ...projectCanvasInput,
-      taskId: z.string().min(1),
-      packageDefaults: z.object({
-        maxFeedbackCycles: z.number().int().nonnegative(),
-        completionPolicy: z.literal("strict")
-      }).optional(),
-      steps: z.array(reviewPipelineStepInput)
-    },
+    inputSchema: updateReviewPipelineInputShape,
     annotations: writeAnnotations
   },
   create_task: {
     title: "Create PlanWeave Task",
     description: "Create a task node and initial blocks in the selected canvas.",
-    inputSchema: {
-      ...projectCanvasInput,
-      title: z.string().min(1),
-      promptMarkdown: z.string(),
-      acceptance: z.array(z.string().min(1)).optional(),
-      blockTypes: z.array(blockTypeSchema).optional(),
-      executor: z.string().min(1).nullable().optional()
-    },
+    inputSchema: createTaskInputShape,
     annotations: writeAnnotations
   },
   update_task: {
     title: "Update PlanWeave Task",
     description: "Update a task title, prompt markdown, or executor.",
-    inputSchema: {
-      ...projectCanvasInput,
-      taskId: z.string().min(1),
-      title: z.string().min(1).optional(),
-      promptMarkdown: z.string().optional(),
-      executor: z.string().min(1).nullable().optional()
-    },
+    inputSchema: updateTaskInputShape,
     annotations: writeAnnotations
   },
   update_task_acceptance: {
@@ -266,13 +235,7 @@ export const planweaveToolDefinitions: Record<PlanweaveToolName, ToolDefinition>
   update_block: {
     title: "Update PlanWeave Block",
     description: "Update a block title, prompt markdown, or executor.",
-    inputSchema: {
-      ...projectCanvasInput,
-      ...blockRefInput,
-      title: z.string().min(1).optional(),
-      promptMarkdown: z.string().optional(),
-      executor: z.string().min(1).nullable().optional()
-    },
+    inputSchema: updateBlockInputShape,
     annotations: writeAnnotations
   },
   update_block_planning: {

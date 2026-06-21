@@ -1,25 +1,22 @@
-import type { BlockType, DesktopUpdateReviewPipelineInput, ProjectTaskRef, ReviewHookDefinition, ReviewTriggerCondition } from "@planweave-ai/runtime";
+import type { BlockType, ProjectTaskRef, ReviewHookDefinition } from "@planweave-ai/runtime";
 import {
   blockRefFromArgs,
   jsonToolResult,
   nonEmptyString,
-  optionalNonEmptyString,
   optionalNullableString,
   optionalStringArray,
   parseProjectCanvasArgs,
   readObjectArgs
 } from "./toolHelpers.js";
+import {
+  parseCreateTaskToolArgs,
+  parseUpdateBlockToolArgs,
+  parseUpdateReviewPipelineToolArgs,
+  parseUpdateTaskToolArgs
+} from "./toolInputSchemas.js";
 import type { RuntimeGateway } from "./toolTypes.js";
 
-export function parseCreateTaskInput(record: Record<string, unknown>) {
-  return {
-    title: nonEmptyString(record.title, "title"),
-    promptMarkdown: requiredMarkdown(record.promptMarkdown),
-    acceptance: optionalStringArray(record.acceptance, "acceptance"),
-    blockTypes: parseBlockTypes(record.blockTypes),
-    executor: optionalNullableString(record.executor, "executor")
-  };
-}
+export { parseCreateTaskToolArgs, parseUpdateBlockToolArgs, parseUpdateReviewPipelineToolArgs, parseUpdateTaskToolArgs };
 
 export function parseCreateBlockInput(record: Record<string, unknown>) {
   return {
@@ -30,18 +27,6 @@ export function parseCreateBlockInput(record: Record<string, unknown>) {
     executor: optionalNullableString(record.executor, "executor"),
     dependsOn: optionalStringArray(record.dependsOn, "dependsOn")
   };
-}
-
-export function parseUpdateInput(record: Record<string, unknown>) {
-  const input = {
-    title: optionalNonEmptyString(record.title, "title"),
-    promptMarkdown: record.promptMarkdown === undefined ? undefined : requiredMarkdown(record.promptMarkdown),
-    executor: optionalNullableString(record.executor, "executor")
-  };
-  if (input.title === undefined && input.promptMarkdown === undefined && input.executor === undefined) {
-    throw new Error("At least one of title, promptMarkdown, or executor must be provided.");
-  }
-  return input;
 }
 
 export function parseTaskAcceptanceInput(record: Record<string, unknown>): string[] {
@@ -74,13 +59,6 @@ export function parseBlockPlanningInput(record: Record<string, unknown>) {
     throw new Error("At least one block planning field must be provided.");
   }
   return input;
-}
-
-export function parseReviewPipelineInput(record: Record<string, unknown>): DesktopUpdateReviewPipelineInput {
-  return {
-    packageDefaults: parsePackageDefaults(record.packageDefaults),
-    steps: parseReviewSteps(record.steps)
-  };
 }
 
 export function parseProjectTaskRefs(record: Record<string, unknown>): { from: ProjectTaskRef; to: ProjectTaskRef } {
@@ -125,16 +103,6 @@ export async function readPrompt(args: unknown, gateway: RuntimeGateway) {
     });
   }
   throw new Error("target must be one of: project, task, block.");
-}
-
-function parseBlockTypes(value: unknown): BlockType[] | undefined {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  if (!Array.isArray(value)) {
-    throw new Error("blockTypes must be an array.");
-  }
-  return value.map((item, index) => parseBlockType(item, `blockTypes[${index}]`));
 }
 
 function parseBlockType(value: unknown, field = "type"): BlockType {
@@ -205,67 +173,4 @@ function parseOptionalReviewHook(value: unknown, field: string): ReviewHookDefin
     return null;
   }
   return parseReviewHook(value, field);
-}
-
-function parseTriggerCondition(value: unknown, field: string): ReviewTriggerCondition {
-  if (value === undefined) {
-    return "after_required_work_completed";
-  }
-  if (value !== "after_required_work_completed" && value !== "manual") {
-    throw new Error(`${field} must be one of: after_required_work_completed, manual.`);
-  }
-  return value;
-}
-
-function parsePackageDefaults(value: unknown): DesktopUpdateReviewPipelineInput["packageDefaults"] {
-  if (value === undefined) {
-    return undefined;
-  }
-  const record = recordValue(value, "packageDefaults");
-  const maxFeedbackCycles = optionalNonNegativeInteger(record.maxFeedbackCycles, "packageDefaults.maxFeedbackCycles");
-  if (maxFeedbackCycles === undefined) {
-    throw new Error("packageDefaults.maxFeedbackCycles is required.");
-  }
-  if (record.completionPolicy !== "strict") {
-    throw new Error("packageDefaults.completionPolicy must be strict.");
-  }
-  return { maxFeedbackCycles, completionPolicy: "strict" };
-}
-
-function blockIdFromStep(record: Record<string, unknown>, index: number): string | undefined {
-  if (record.blockId !== undefined) {
-    return nonEmptyString(record.blockId, `steps[${index}].blockId`);
-  }
-  if (record.blockRef === undefined) {
-    return undefined;
-  }
-  const blockRef = nonEmptyString(record.blockRef, `steps[${index}].blockRef`);
-  const separator = blockRef.indexOf("#");
-  if (separator <= 0 || separator === blockRef.length - 1) {
-    throw new Error(`steps[${index}].blockRef must use '<taskId>#<blockId>'.`);
-  }
-  return blockRef.slice(separator + 1);
-}
-
-function parseReviewSteps(value: unknown): DesktopUpdateReviewPipelineInput["steps"] {
-  if (!Array.isArray(value)) {
-    throw new Error("steps must be an array.");
-  }
-  return value.map((item, index) => {
-    const record = recordValue(item, `steps[${index}]`);
-    return {
-      blockId: blockIdFromStep(record, index) ?? "",
-      blockRef: typeof record.blockRef === "string" ? record.blockRef : null,
-      title: nonEmptyString(record.title, `steps[${index}].title`),
-      enabled: optionalBoolean(record.enabled, `steps[${index}].enabled`) ?? true,
-      preset: nonEmptyString(record.preset, `steps[${index}].preset`),
-      triggerCondition: parseTriggerCondition(record.triggerCondition, `steps[${index}].triggerCondition`),
-      inputContext: nonEmptyString(record.inputContext, `steps[${index}].inputContext`),
-      passCriteria: nonEmptyString(record.passCriteria, `steps[${index}].passCriteria`),
-      feedbackFormat: nonEmptyString(record.feedbackFormat, `steps[${index}].feedbackFormat`),
-      maxFeedbackCycles: optionalNonNegativeInteger(record.maxFeedbackCycles, `steps[${index}].maxFeedbackCycles`) ?? 1,
-      hook: parseOptionalReviewHook(record.hook, `steps[${index}].hook`) ?? null,
-      promptMarkdown: requiredMarkdown(record.promptMarkdown)
-    };
-  });
 }

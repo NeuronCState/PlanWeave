@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import * as z from "zod/v4";
 import { createGateway, project, readJson, schemaDocument } from "./toolTestHelpers.js";
+import { planweaveToolDefinitions } from "../toolDefinitions.js";
 import { handlePlanweaveTool } from "../tools.js";
 
 describe("handlePlanweaveTool", () => {
@@ -439,6 +441,111 @@ describe("handlePlanweaveTool", () => {
         }
       ]
     });
+  });
+
+  it("uses update_review_pipeline input defaults in both definition and parser paths", async () => {
+    const gateway = createGateway();
+    const input = {
+      projectId: " project-1 ",
+      canvasId: " default ",
+      taskId: " T-001 ",
+      steps: [
+        {
+          blockRef: " T-001#R-001 ",
+          title: " Architecture review ",
+          preset: " architecture ",
+          inputContext: " implementation report ",
+          passCriteria: " Boundaries remain clear. ",
+          feedbackFormat: " Findings by severity. ",
+          promptMarkdown: "# Architecture review"
+        }
+      ]
+    };
+    const definitionShape = planweaveToolDefinitions.update_review_pipeline.inputSchema;
+
+    expect(definitionShape).toBeDefined();
+    expect(z.object(definitionShape!).parse(input)).toMatchObject({
+      projectId: "project-1",
+      canvasId: "default",
+      taskId: "T-001",
+      steps: [
+        {
+          blockId: "R-001",
+          blockRef: "T-001#R-001",
+          title: "Architecture review",
+          enabled: true,
+          preset: "architecture",
+          triggerCondition: "after_required_work_completed",
+          inputContext: "implementation report",
+          passCriteria: "Boundaries remain clear.",
+          feedbackFormat: "Findings by severity.",
+          maxFeedbackCycles: 1,
+          hook: null,
+          promptMarkdown: "# Architecture review"
+        }
+      ]
+    });
+
+    await handlePlanweaveTool("update_review_pipeline", input, gateway);
+
+    expect(gateway.updateReviewPipeline).toHaveBeenCalledWith("project-1", "default", "T-001", {
+      packageDefaults: undefined,
+      steps: [
+        {
+          blockId: "R-001",
+          blockRef: "T-001#R-001",
+          title: "Architecture review",
+          enabled: true,
+          preset: "architecture",
+          triggerCondition: "after_required_work_completed",
+          inputContext: "implementation report",
+          passCriteria: "Boundaries remain clear.",
+          feedbackFormat: "Findings by severity.",
+          maxFeedbackCycles: 1,
+          hook: null,
+          promptMarkdown: "# Architecture review"
+        }
+      ]
+    });
+  });
+
+  it("normalizes target write tool inputs through shared schemas", async () => {
+    const gateway = createGateway();
+
+    await handlePlanweaveTool(
+      "create_task",
+      {
+        projectId: " project-1 ",
+        canvasId: " default ",
+        title: " New task ",
+        promptMarkdown: "# Task",
+        acceptance: null,
+        blockTypes: null,
+        executor: ""
+      },
+      gateway
+    );
+    await handlePlanweaveTool(
+      "update_block",
+      { projectId: "project-1", canvasId: "default", blockRef: " T-001#I-001 ", title: " Implement v2 ", executor: "" },
+      gateway
+    );
+
+    expect(gateway.createTask).toHaveBeenCalledWith("project-1", "default", {
+      title: "New task",
+      promptMarkdown: "# Task",
+      acceptance: undefined,
+      blockTypes: undefined,
+      executor: null
+    });
+    expect(gateway.updateBlock).toHaveBeenCalledWith("project-1", "default", "T-001#I-001", {
+      title: "Implement v2",
+      promptMarkdown: undefined,
+      executor: null
+    });
+    await expect(handlePlanweaveTool("update_task", { projectId: "project-1", taskId: "T-001" }, gateway)).rejects.toThrow(
+      "At least one of title, promptMarkdown, or executor must be provided."
+    );
   });
 
   it("dispatches project graph dependency tools through the runtime gateway", async () => {

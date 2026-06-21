@@ -22,11 +22,12 @@ import {
   parseBlockDependenciesInput,
   parseBlockPlanningInput,
   parseCreateBlockInput,
-  parseCreateTaskInput,
+  parseCreateTaskToolArgs,
   parseProjectTaskRefs,
-  parseReviewPipelineInput,
   parseTaskAcceptanceInput,
-  parseUpdateInput,
+  parseUpdateBlockToolArgs,
+  parseUpdateReviewPipelineToolArgs,
+  parseUpdateTaskToolArgs,
   readPrompt,
   requiredMarkdown
 } from "./toolParsers.js";
@@ -134,20 +135,18 @@ export async function handlePlanweaveTool(
     }
     case "update_review_pipeline": {
       const record = readObjectArgs(args);
-      const { projectId, canvasId } = parseProjectCanvasArgs(record);
-      return graphEditResult(
-        await gateway.updateReviewPipeline(projectId, canvasId, nonEmptyString(record.taskId, "taskId"), parseReviewPipelineInput(record))
-      );
+      const { projectId, canvasId, taskId, input } = parseUpdateReviewPipelineToolArgs(record);
+      return graphEditResult(await gateway.updateReviewPipeline(projectId, canvasId, taskId, input));
     }
     case "create_task": {
       const record = readObjectArgs(args);
-      const { projectId, canvasId } = parseProjectCanvasArgs(record);
-      return graphEditResult(await gateway.createTask(projectId, canvasId, parseCreateTaskInput(record)));
+      const { projectId, canvasId, input } = parseCreateTaskToolArgs(record);
+      return graphEditResult(await gateway.createTask(projectId, canvasId, input));
     }
     case "update_task": {
       const record = readObjectArgs(args);
-      const { projectId, canvasId } = parseProjectCanvasArgs(record);
-      return graphEditResult(await gateway.updateTask(projectId, canvasId, nonEmptyString(record.taskId, "taskId"), parseUpdateInput(record)));
+      const { projectId, canvasId, taskId, input } = parseUpdateTaskToolArgs(record);
+      return graphEditResult(await gateway.updateTask(projectId, canvasId, taskId, input));
     }
     case "update_task_acceptance": {
       const record = readObjectArgs(args);
@@ -168,8 +167,8 @@ export async function handlePlanweaveTool(
     }
     case "update_block": {
       const record = readObjectArgs(args);
-      const { projectId, canvasId } = parseProjectCanvasArgs(record);
-      return graphEditResult(await gateway.updateBlock(projectId, canvasId, blockRefFromArgs(record), parseUpdateInput(record)));
+      const { projectId, canvasId, blockRef, input } = parseUpdateBlockToolArgs(record);
+      return graphEditResult(await gateway.updateBlock(projectId, canvasId, blockRef, input));
     }
     case "update_block_planning": {
       const record = readObjectArgs(args);

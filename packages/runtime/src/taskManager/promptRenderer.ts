@@ -3,9 +3,12 @@ import { join } from "node:path";
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import { resolvePackagePath } from "../package/resolvePackagePath.js";
 import { resolvePlanweaveHome } from "../paths.js";
+import { loadPlanGraphPackage } from "../plangraph/packageRepository.js";
+import { buildAgentClaimMarkdown } from "../plangraph/projections/agentContextProjection.js";
 import { readProjectPromptPolicy } from "../projectPromptPolicy.js";
 import type { ExecutionGraphSession, PackageWorkspaceRef } from "../types.js";
 import { canvasCommandFlagForWorkspace } from "./canvasCommandScope.js";
+import { buildExecutionStatus } from "./executionStatus.js";
 import { renderProjectCanvasContext } from "./projectCanvasContext.js";
 import { loadRuntime, type RuntimeContext } from "./runtimeContext.js";
 import { getBlock, getTask, requiredImplementationRefs } from "./selectors.js";
@@ -160,6 +163,11 @@ export async function renderPromptSurface(options: {
     allowMissing: allowMissingPromptSources
   });
   const projectCanvasContext = await renderProjectCanvasContext(context, taskId);
+  const planGraphContext = buildAgentClaimMarkdown({
+    graph: (await loadPlanGraphPackage(workspace)).graph,
+    ref: options.ref,
+    status: await buildExecutionStatus(context)
+  });
   const promptSources = [
     promptSourceSummary({
       kind: "global",
@@ -235,6 +243,8 @@ export async function renderPromptSurface(options: {
     projectPrompt.markdown.trim() || "- No project/canvas prompt.",
     "## Project Canvas Context",
     projectCanvasContext.markdown.trim(),
+    "## PlanGraph Claim Context",
+    planGraphContext.trim(),
     "## Task Node Prompt",
     taskPrompt.markdown.trim(),
     "## Block Prompt",

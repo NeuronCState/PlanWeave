@@ -109,7 +109,15 @@ describe("manifest edit commands", () => {
         ref: "T-001#B-001",
         reviewRequired: false
       })
-    ).rejects.toThrow("review fields can only be edited on review blocks");
+    ).resolves.toMatchObject({
+      ok: false,
+      diagnostics: [
+        {
+          code: "command_validation_failed",
+          message: "review fields can only be edited on review blocks."
+        }
+      ]
+    });
 
     const result = await editBlock({
       projectRoot: root,

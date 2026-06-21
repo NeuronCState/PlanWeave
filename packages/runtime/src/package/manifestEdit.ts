@@ -1,48 +1,129 @@
-import { commitPlanPackageGraphMutation } from "../graph/editGraph.js";
-import { buildPlanPackageBlockFieldEditMutation, buildPlanPackageTaskFieldEditMutation } from "../graph/fieldEditMutation.js";
-import type { EditBlockInput, EditBlockResult, EditTaskInput, EditTaskResult } from "../types.js";
+import { parseBlockRef } from "../graph/compileTaskGraph.js";
+import { compileTaskGraph } from "../graph/compileTaskGraph.js";
+import { executePlanGraphCommand, type PlanGraphCommandResult } from "../plangraph/index.js";
+import type { EditBlockInput, EditBlockResult, EditTaskInput, EditTaskResult, PlanPackageManifest } from "../types.js";
 import { loadPackage } from "./loadPackage.js";
 
+function taskUpdatedFields(options: EditTaskInput): string[] {
+  const fields: string[] = [];
+  if (options.title !== undefined) {
+    fields.push("title");
+  }
+  if (options.promptMarkdown !== undefined) {
+    fields.push("prompt");
+  }
+  if (options.executor !== undefined) {
+    fields.push("executor");
+  }
+  if (options.acceptance !== undefined) {
+    fields.push("acceptance");
+  }
+  return fields;
+}
+
+function blockUpdatedFields(manifest: PlanPackageManifest, options: EditBlockInput): string[] {
+  const { taskId, blockId } = parseBlockRef(options.ref);
+  const task = manifest.nodes.find((node) => node.type === "task" && node.id === taskId);
+  const block = task?.type === "task" ? task.blocks.find((item) => item.id === blockId) : undefined;
+  if (!block) {
+    throw new Error(`Block '${options.ref}' does not exist.`);
+  }
+  const fields: string[] = [];
+  if (options.title !== undefined) {
+    fields.push("title");
+  }
+  if (options.promptMarkdown !== undefined) {
+    fields.push("prompt");
+  }
+  if (options.executor !== undefined) {
+    fields.push("executor");
+  }
+  if (options.dependsOn !== undefined) {
+    fields.push("depends_on");
+  }
+  if (block.type === "implementation") {
+    if (options.parallelSafe !== undefined) {
+      fields.push("parallel.safe");
+    }
+    if (options.parallelLocks !== undefined) {
+      fields.push("parallel.locks");
+    }
+  } else {
+    if (options.reviewRequired !== undefined) {
+      fields.push("review.required");
+    }
+    if (options.maxFeedbackCycles !== undefined) {
+      fields.push("review.maxFeedbackCycles");
+    }
+    if (options.reviewHook !== undefined) {
+      fields.push("review.hook");
+    }
+  }
+  return fields;
+}
+
+async function graphEditResult(projectRoot: EditTaskInput["projectRoot"], commandResult: PlanGraphCommandResult) {
+  const { manifest } = await loadPackage(projectRoot);
+  const graph = compileTaskGraph(manifest);
+  return {
+    ok: commandResult.ok && graph.diagnostics.errors.length === 0,
+    affectedTasks: commandResult.ok ? commandResult.affected.tasks : [],
+    diagnostics: commandResult.ok ? graph.diagnostics.errors : commandResult.diagnostics,
+    graph
+  };
+}
+
 export async function editTask(options: EditTaskInput): Promise<EditTaskResult> {
-  const { manifest } = await loadPackage(options.projectRoot);
-  const mutation = buildPlanPackageTaskFieldEditMutation(manifest, {
-    taskId: options.taskId,
-    title: options.title,
-    promptMarkdown: options.promptMarkdown,
-    executor: options.executor,
-    acceptance: options.acceptance
-  });
-  const result = await commitPlanPackageGraphMutation({
+  const updatedFields = taskUpdatedFields(options);
+  const commandResult = await executePlanGraphCommand({
     projectRoot: options.projectRoot,
-    mutation
+    command: {
+      type: "updateTaskFields",
+      taskId: options.taskId,
+      fields: {
+        title: options.title,
+        promptMarkdown: options.promptMarkdown,
+        executor: options.executor,
+        acceptance: options.acceptance
+      }
+    }
   });
-  return { ...result, taskId: mutation.taskId, updatedFields: mutation.updatedFields };
+  return { ...(await graphEditResult(options.projectRoot, commandResult)), taskId: options.taskId, updatedFields };
 }
 
 export async function editBlock(options: EditBlockInput): Promise<EditBlockResult> {
   const { manifest } = await loadPackage(options.projectRoot);
-  const mutation = buildPlanPackageBlockFieldEditMutation(manifest, {
-    blockRef: options.ref,
-    title: options.title,
-    promptMarkdown: options.promptMarkdown,
-    executor: options.executor,
-    dependsOn: options.dependsOn,
-    parallelSafe: options.parallelSafe,
-    parallelLocks: options.parallelLocks,
-    reviewRequired: options.reviewRequired,
-    maxFeedbackCycles: options.maxFeedbackCycles,
-    reviewHook: options.reviewHook
-  });
-  const result = await commitPlanPackageGraphMutation({
+  const { taskId, blockId } = parseBlockRef(options.ref);
+  const task = manifest.nodes.find((node) => node.type === "task" && node.id === taskId);
+  const block = task?.type === "task" ? task.blocks.find((item) => item.id === blockId) : undefined;
+  if (!block) {
+    throw new Error(`Block '${options.ref}' does not exist.`);
+  }
+  const updatedFields = blockUpdatedFields(manifest, options);
+  const commandResult = await executePlanGraphCommand({
     projectRoot: options.projectRoot,
-    mutation
+    command: {
+      type: "updateBlockFields",
+      blockRef: options.ref,
+      fields: {
+        title: options.title,
+        promptMarkdown: options.promptMarkdown,
+        executor: options.executor,
+        dependsOn: options.dependsOn,
+        parallelSafe: options.parallelSafe,
+        parallelLocks: options.parallelLocks,
+        reviewRequired: options.reviewRequired,
+        maxFeedbackCycles: options.maxFeedbackCycles,
+        reviewHook: options.reviewHook
+      }
+    }
   });
   return {
-    ...result,
-    ref: mutation.blockRef,
-    taskId: mutation.taskId,
-    blockId: mutation.blockId,
-    blockType: mutation.blockType,
-    updatedFields: mutation.updatedFields
+    ...(await graphEditResult(options.projectRoot, commandResult)),
+    ref: options.ref,
+    taskId,
+    blockId,
+    blockType: block.type,
+    updatedFields
   };
 }

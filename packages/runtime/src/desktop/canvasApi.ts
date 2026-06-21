@@ -13,6 +13,12 @@ import type { ProjectWorkspace, ValidationIssue } from "../types.js";
 import { canvasDiagnostics } from "./canvasDiagnostics.js";
 import { normalizeRegistry, registryVersion, type TaskCanvasRecord, type TaskCanvasRegistry } from "./canvasRegistry.js";
 import { readActiveTaskCanvasSelection } from "./canvasSelectionStore.js";
+import {
+  commitCanvasWorkspaceWrite,
+  quarantineCanvasWorkspace,
+  restoreQuarantinedCanvasWorkspace,
+  stageCanvasWorkspaceWrite
+} from "../projectGraph/canvasWorkspaceRecovery.js";
 import { appendDesktopDiagnostics, desktopDiagnostic, errorMessage } from "./graph/desktopDiagnostics.js";
 import { invalidateDesktopProjectProjection } from "./graph/projectProjectionModel.js";
 import type { DesktopTaskCanvasSummary } from "./types.js";
@@ -251,6 +257,25 @@ function assertProjectCanvasUnreferenced(manifest: Awaited<ReturnType<typeof loa
   throw new Error(`Cannot remove project canvas '${canvasId}' because it is referenced by project graph dependencies: ${references.join(", ")}. Remove those dependencies first.`);
 }
 
+async function restoreQuarantineAfterFailedRemoval(
+  projectWorkspace: ProjectWorkspace,
+  canvasId: string,
+  workspaceRoot: string,
+  quarantineRoot: string | null,
+  removalError: unknown
+): Promise<void> {
+  if (!quarantineRoot) {
+    return;
+  }
+  try {
+    await restoreQuarantinedCanvasWorkspace(projectWorkspace, { quarantineRoot, workspaceRoot });
+  } catch (rollbackError) {
+    throw new Error(
+      `Task canvas '${canvasId}' removal failed, and its quarantined workspace could not be restored: ${errorMessage(removalError)}; rollback failed: ${errorMessage(rollbackError)}`
+    );
+  }
+}
+
 export async function listTaskCanvases(projectRoot: string): Promise<DesktopTaskCanvasSummary[]> {
   let loaded: Awaited<ReturnType<typeof loadProjectGraph>>;
   try {
@@ -326,10 +351,12 @@ export async function createTaskCanvas(projectRoot: string, input: { name?: stri
       resultsDir: `canvases/${canvasId}/results`
     };
     const workspace = workspaceForProjectCanvas(loaded.workspace, canvas);
-    await mkdir(join(workspace.packageDir, "nodes"), { recursive: true });
-    await mkdir(workspace.resultsDir, { recursive: true });
-    await writeJsonFile(workspace.manifestFile, initialManifest(canvas.title));
-    await writeJsonFile(workspace.stateFile, createEmptyState());
+    const staged = await stageCanvasWorkspaceWrite(loaded.workspace, { canvasId, finalRoot: workspace.workspaceRoot });
+    await mkdir(join(staged.workspace.packageDir, "nodes"), { recursive: true });
+    await mkdir(staged.workspace.resultsDir, { recursive: true });
+    await writeJsonFile(staged.workspace.manifestFile, initialManifest(canvas.title));
+    await writeJsonFile(staged.workspace.stateFile, createEmptyState());
+    await commitCanvasWorkspaceWrite(loaded.workspace, staged);
     await writeProjectGraph(loaded.workspace, {
       ...loaded.manifest,
       canvases: [...loaded.manifest.canvases, canvas]
@@ -349,10 +376,12 @@ export async function createTaskCanvas(projectRoot: string, input: { name?: stri
     updatedAt: new Date().toISOString()
   };
   const workspace = canvasWorkspace(projectWorkspace, record);
-  await mkdir(join(workspace.packageDir, "nodes"), { recursive: true });
-  await mkdir(workspace.resultsDir, { recursive: true });
-  await writeJsonFile(workspace.manifestFile, initialManifest(record.name));
-  await writeJsonFile(workspace.stateFile, createEmptyState());
+  const staged = await stageCanvasWorkspaceWrite(projectWorkspace, { canvasId, finalRoot: workspace.workspaceRoot });
+  await mkdir(join(staged.workspace.packageDir, "nodes"), { recursive: true });
+  await mkdir(staged.workspace.resultsDir, { recursive: true });
+  await writeJsonFile(staged.workspace.manifestFile, initialManifest(record.name));
+  await writeJsonFile(staged.workspace.stateFile, createEmptyState());
+  await commitCanvasWorkspaceWrite(projectWorkspace, staged);
   const nextRegistry = { ...registry, canvases: [...registry.canvases, record] };
   await writeRegistry(projectWorkspace, nextRegistry);
   invalidateDesktopProjectProjection(projectRoot);
@@ -379,11 +408,16 @@ export async function removeTaskCanvas(projectRoot: string, canvasId: string): P
       invalidateDesktopProjectProjection(projectRoot);
       return listTaskCanvases(projectRoot);
     }
-    await writeProjectGraph(loaded.workspace, {
-      ...loaded.manifest,
-      canvases: loaded.manifest.canvases.filter((candidate) => candidate.id !== canvasId)
-    });
-    await rm(workspace.workspaceRoot, { recursive: true, force: true });
+    const quarantineRoot = await quarantineCanvasWorkspace(loaded.workspace, { canvasId, workspaceRoot: workspace.workspaceRoot });
+    try {
+      await writeProjectGraph(loaded.workspace, {
+        ...loaded.manifest,
+        canvases: loaded.manifest.canvases.filter((candidate) => candidate.id !== canvasId)
+      });
+    } catch (error) {
+      await restoreQuarantineAfterFailedRemoval(loaded.workspace, canvasId, workspace.workspaceRoot, quarantineRoot, error);
+      throw error;
+    }
     invalidateDesktopProjectProjection(projectRoot);
     return listTaskCanvases(projectRoot);
   }
@@ -401,12 +435,17 @@ export async function removeTaskCanvas(projectRoot: string, canvasId: string): P
     invalidateDesktopProjectProjection(projectRoot);
     return listTaskCanvases(projectRoot);
   }
-  await rm(dirname(workspace.packageDir), { recursive: true, force: true });
+  const quarantineRoot = await quarantineCanvasWorkspace(projectWorkspace, { canvasId, workspaceRoot: workspace.workspaceRoot });
   const nextRegistry = {
     ...registry,
     canvases: registry.canvases.filter((canvas) => canvas.canvasId !== canvasId)
   };
-  await writeRegistry(projectWorkspace, nextRegistry);
+  try {
+    await writeRegistry(projectWorkspace, nextRegistry);
+  } catch (error) {
+    await restoreQuarantineAfterFailedRemoval(projectWorkspace, canvasId, workspace.workspaceRoot, quarantineRoot, error);
+    throw error;
+  }
   invalidateDesktopProjectProjection(projectRoot);
   return listTaskCanvases(projectRoot);
 }

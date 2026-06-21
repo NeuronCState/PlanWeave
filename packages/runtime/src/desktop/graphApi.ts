@@ -6,6 +6,8 @@ export {
   removeBlock,
   removeDependencyEdge,
   removeTaskNode,
+  reconnectDependencyEdge,
+  redoDesktopPlanGraphCommand,
   updateBlockDependencies,
   updateBlockExecutor,
   updateBlockPlanning,
@@ -15,6 +17,7 @@ export {
   updateTaskExecutor,
   updateTaskPrompt,
   updateTaskTitle,
+  undoDesktopPlanGraphCommand,
   validateGraphEdit
 } from "./graph/editModel.js";
 export { getBlockDetail, getGraphViewModel, getTaskDetail, getTaskExecutionOrder } from "./graph/readModel.js";

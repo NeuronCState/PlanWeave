@@ -60,6 +60,33 @@ export {
   enqueueGraphEditOperations,
   enqueuePackageFileChanges
 } from "./graph/session.js";
+export {
+  createSqlitePlanGraphStore,
+  defaultPlanGraphIndexPath,
+  emptyAffectedRefs,
+  buildAgentClaimMarkdown,
+  buildCanvasMapProjection,
+  buildPlanGraphViewProjection,
+  buildProjectExecutionPlanProjection,
+  buildReviewProjection,
+  buildStatisticsProjection,
+  buildTodoGroupsFromContext,
+  buildTodoProjection,
+  emptyTodoGroups as emptyPlanGraphTodoGroups,
+  executePlanGraphCommand,
+  loadPlanGraphPackage,
+  redoPlanGraphCommand,
+  selectBlock,
+  selectBlockedReason,
+  selectCanvasTasks,
+  selectClaimableTasks,
+  selectDownstreamTasks,
+  selectReviewReadyBlocks,
+  selectTask,
+  selectTaskBlocks,
+  selectUpstreamTasks,
+  undoPlanGraphCommand
+} from "./plangraph/index.js";
 export { consumeAutoRunClaim } from "./autoRun/contract.js";
 export type { AutoRunDecision, AutoRunExecutorAdapter } from "./autoRun/contract.js";
 export {
@@ -135,6 +162,8 @@ export {
   removeBlock,
   removeTaskCanvas,
   removeDependencyEdge,
+  reconnectDependencyEdge,
+  redoDesktopPlanGraphCommand,
   removeCanvasDependency,
   removeCrossTaskDependency,
   removeProject,
@@ -147,6 +176,7 @@ export {
   saveDesktopLayout,
   searchProject,
   searchProjectWithDiagnostics,
+  selectTaskCanvas,
   startAutoRun,
   stopAutoRun,
   subscribeAutoRunEvents,
@@ -160,6 +190,7 @@ export {
   updateTaskExecutor,
   updateTaskPrompt,
   updateTaskTitle,
+  undoDesktopPlanGraphCommand,
   updateReviewPipeline,
   validateGraphEdit
 } from "./desktop/index.js";
@@ -173,6 +204,7 @@ export {
 } from "./projectGraph/index.js";
 export type * from "./desktop/index.js";
 export type * from "./autoRun/executorPreflightTypes.js";
+export type * from "./plangraph/index.js";
 export type * from "./projectGraph/index.js";
 export type * from "./schemaDocs/index.js";
 export type * from "./types.js";

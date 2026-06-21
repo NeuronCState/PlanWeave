@@ -1,13 +1,7 @@
 import { readFile } from "node:fs/promises";
-import { commitPlanPackageGraphMutation } from "../graph/editGraph.js";
-import {
-  buildPlanPackageManifestChangeMutation,
-  removePromptSideEffect,
-  writePromptSideEffects,
-  type PlanPackageGraphMutationSideEffect
-} from "../graph/mutation.js";
 import { compileTaskGraph } from "../graph/compileTaskGraph.js";
 import { loadPackage } from "../package/loadPackage.js";
+import { executePlanGraphCommand, type PlanGraphCommandResult } from "../plangraph/index.js";
 import { resolvePackagePath } from "../package/resolvePackagePath.js";
 import { invalidateDesktopProjectProjection } from "./graph/projectProjectionModel.js";
 import type {
@@ -16,7 +10,6 @@ import type {
   ManifestReviewBlock,
   ManifestTaskNode,
   PackageWorkspaceRef,
-  PlanPackageManifest,
   ReviewTriggerCondition
 } from "../types.js";
 import type { DesktopReviewPipeline, DesktopReviewPipelineStepInput, DesktopUpdateReviewPipelineInput } from "./types.js";
@@ -57,6 +50,17 @@ function defaultPrompt(title: string): string {
 
 function promptPath(taskId: string, blockId: string): string {
   return `nodes/${taskId}/blocks/${blockId}.prompt.md`;
+}
+
+async function graphEditResult(projectRoot: PackageWorkspaceRef, result: PlanGraphCommandResult): Promise<GraphEditResult> {
+  const { manifest } = await loadPackage(projectRoot);
+  const graph = compileTaskGraph(manifest);
+  return {
+    ok: result.ok && graph.diagnostics.errors.length === 0,
+    affectedTasks: result.ok ? result.affected.tasks : [],
+    diagnostics: result.ok ? graph.diagnostics.errors : result.diagnostics,
+    graph
+  };
 }
 
 function normalizeTrigger(value: ReviewTriggerCondition | undefined): ReviewTriggerCondition {
@@ -164,39 +168,30 @@ export async function updateReviewPipeline(
     fallbackDependency = block.id;
   }
 
-  const nextTask: ManifestTaskNode = {
-    ...task,
-    blocks: [...(nonReviewBlocks as ManifestBlock[]), ...nextReviewBlocks]
-  };
-  const nextManifest: PlanPackageManifest = {
-    ...manifest,
-    review: {
-      maxFeedbackCycles: Math.max(
-        0,
-        Math.trunc(input.packageDefaults?.maxFeedbackCycles ?? manifest.review.maxFeedbackCycles)
-      ),
-      completionPolicy: input.packageDefaults?.completionPolicy ?? manifest.review.completionPolicy
-    },
-    nodes: manifest.nodes.map((node) => (node.type === "task" && node.id === taskId ? nextTask : node))
-  };
-  const sideEffects: PlanPackageGraphMutationSideEffect[] = [];
-  const nextIds = new Set(nextReviewBlocks.map((block) => block.id));
-  for (const block of reviewBlocks(task)) {
-    if (!nextIds.has(block.id)) {
-      sideEffects.push(removePromptSideEffect(block.prompt));
-    }
-  }
+  const promptMarkdownByBlockId: Array<{ blockId: string; markdown: string }> = [];
   for (const [index, block] of nextReviewBlocks.entries()) {
     const promptMarkdown = input.steps[index]?.promptMarkdown.trim() || defaultPrompt(block.title);
-    sideEffects.push(...writePromptSideEffects(block.prompt, promptMarkdown.endsWith("\n") ? promptMarkdown : `${promptMarkdown}\n`));
+    promptMarkdownByBlockId.push({
+      blockId: block.id,
+      markdown: promptMarkdown.endsWith("\n") ? promptMarkdown : `${promptMarkdown}\n`
+    });
   }
-  const result = await commitPlanPackageGraphMutation({
+  const result = await executePlanGraphCommand({
     projectRoot,
-    mutation: buildPlanPackageManifestChangeMutation(manifest, nextManifest, {
-      affectedTasks: [task.id],
-      sideEffects
-    })
+    command: {
+      type: "updateReviewPipeline",
+      taskId: task.id,
+      packageDefaults: {
+        maxFeedbackCycles: Math.max(
+          0,
+          Math.trunc(input.packageDefaults?.maxFeedbackCycles ?? manifest.review.maxFeedbackCycles)
+        ),
+        completionPolicy: input.packageDefaults?.completionPolicy ?? manifest.review.completionPolicy
+      },
+      reviewBlocks: nextReviewBlocks,
+      promptMarkdownByBlockId
+    }
   });
   invalidateDesktopProjectProjection(projectRoot);
-  return result;
+  return graphEditResult(projectRoot, result);
 }

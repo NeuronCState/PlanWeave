@@ -6,18 +6,31 @@ import {
   addDependencyEdge,
   addTaskNode,
   createTaskDraft,
+  getDesktopLayout,
+  getProjectOverview,
   removeBlock,
   removeDependencyEdge,
   removeTaskNode,
+  redoDesktopPlanGraphCommand,
+  saveDesktopLayout,
+  selectTaskCanvas,
+  undoDesktopPlanGraphCommand,
+  updateBlockDependencies,
   updateBlockExecutor,
+  updateBlockPlanning,
   updateBlockTitle,
+  updateTaskAcceptance,
   updateTaskExecutor,
   updateTaskTitle,
+  createTaskCanvas,
+  resolveTaskCanvasWorkspace,
   validateGraphEdit
 } from "../desktop/index.js";
-import { readJsonFile } from "../json.js";
+import { createSqlitePlanGraphStore } from "../plangraph/index.js";
+import { readJsonFile, writeJsonFile } from "../json.js";
+import { loadProjectGraph, writeProjectGraph } from "../projectGraph/index.js";
 import type { PlanPackageManifest } from "../types.js";
-import { basicManifest, createTestWorkspace } from "./promptTestHelpers.js";
+import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
 
 afterEach(() => {
   delete process.env.PLANWEAVE_HOME;
@@ -93,6 +106,33 @@ describe("desktop graph edit API", () => {
     expect(firstTask.blocks.map((block) => block.id)).toEqual(["B-001", "R-001"]);
   });
 
+  it("persists dependency edge layout snapshots without adding a separate undo step", async () => {
+    const { root, init } = await createTestWorkspace(basicManifest({ includeSecondTask: true, taskDependsOn: ["T-002"] }));
+    const layoutSnapshot = {
+      version: "desktop-layout/v1" as const,
+      projectId: init.workspace.id,
+      nodes: [
+        { nodeId: "T-001", x: 120, y: 80 },
+        { nodeId: "T-002", x: 580, y: 80 }
+      ],
+      updatedAt: new Date(0).toISOString()
+    };
+
+    await expect(removeDependencyEdge(root, "T-001", "T-002", undefined, layoutSnapshot)).resolves.toMatchObject({ ok: true });
+    expect((await getDesktopLayout(root)).nodes).toEqual(layoutSnapshot.nodes);
+    let manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    expect(manifest.edges).not.toContainEqual({ from: "T-001", to: "T-002", type: "depends_on" });
+
+    await expect(undoDesktopPlanGraphCommand(root)).resolves.toMatchObject({ ok: true });
+    manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    expect(manifest.edges).toContainEqual({ from: "T-001", to: "T-002", type: "depends_on" });
+    expect((await getDesktopLayout(root)).nodes).toEqual(layoutSnapshot.nodes);
+    await expect(undoDesktopPlanGraphCommand(root)).resolves.toMatchObject({
+      ok: false,
+      diagnostics: [expect.objectContaining({ code: "history_empty" })]
+    });
+  });
+
   it("creates task drafts and writes new task nodes and blocks through package files", async () => {
     const { root, init } = await createTestWorkspace();
 
@@ -161,6 +201,28 @@ describe("desktop graph edit API", () => {
 
     await expect(
       addTaskNode(root, {
+        title: "Dropped task",
+        promptMarkdown: "# Dropped task\n",
+        layoutPosition: { x: 480, y: 240 }
+      })
+    ).resolves.toMatchObject({ ok: true });
+    expect((await getDesktopLayout(root)).nodes).toContainEqual({ nodeId: "T-DROPPED-TASK", x: 480, y: 240 });
+
+    await expect(undoDesktopPlanGraphCommand(root)).resolves.toMatchObject({ ok: true });
+    manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    expect(manifest.nodes.some((node) => node.type === "task" && node.id === "T-DROPPED-TASK")).toBe(false);
+    expect((await getDesktopLayout(root)).nodes).not.toContainEqual({ nodeId: "T-DROPPED-TASK", x: 480, y: 240 });
+    await expect(readJsonFile<{ nodes: Array<{ nodeId: string }> }>(join(init.workspace.workspaceRoot, "desktop/layout.json"))).resolves.toMatchObject({
+      nodes: expect.not.arrayContaining([expect.objectContaining({ nodeId: "T-DROPPED-TASK" })])
+    });
+
+    await expect(redoDesktopPlanGraphCommand(root)).resolves.toMatchObject({ ok: true });
+    manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    expect(manifest.nodes.some((node) => node.type === "task" && node.id === "T-DROPPED-TASK")).toBe(true);
+    expect((await getDesktopLayout(root)).nodes).toContainEqual({ nodeId: "T-DROPPED-TASK", x: 480, y: 240 });
+
+    await expect(
+      addTaskNode(root, {
         title: "Manual review gate",
         promptMarkdown: "# Manual review gate\n",
         acceptance: ["Manual review remains opt-in."],
@@ -185,6 +247,12 @@ describe("desktop graph edit API", () => {
 
   it("removes task/block package surfaces through graph APIs", async () => {
     const { root, init } = await createTestWorkspace(basicManifest({ includeSecondTask: true }));
+    await saveDesktopLayout(root, {
+      version: "desktop-layout/v1",
+      projectId: init.workspace.id,
+      nodes: [{ nodeId: "T-002", x: 320, y: 180 }],
+      updatedAt: new Date(0).toISOString()
+    });
 
     await expect(removeBlock(root, "T-001#R-001")).resolves.toMatchObject({ ok: true, affectedTasks: ["T-001"] });
     let manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
@@ -200,5 +268,180 @@ describe("desktop graph edit API", () => {
     expect(manifest.nodes.some((node) => node.id === "T-002")).toBe(false);
     expect(manifest.edges.some((edge) => edge.from === "T-002" || edge.to === "T-002")).toBe(false);
     await expect(readFile(join(init.workspace.packageDir, "nodes", "T-002", "prompt.md"), "utf8")).rejects.toThrow();
+
+    await expect(undoDesktopPlanGraphCommand(root)).resolves.toMatchObject({ ok: true });
+    const restoredLayout = await getDesktopLayout(root);
+    expect(restoredLayout.nodes).toContainEqual({ nodeId: "T-002", x: 320, y: 180 });
+  });
+
+  it("refuses to delete a task referenced by a project cross-task dependency", async () => {
+    const { root, init } = await createTestWorkspace();
+    const secondCanvas = await createTaskCanvas(root, { name: "Second plan" });
+    const secondWorkspace = await resolveTaskCanvasWorkspace(root, secondCanvas.canvasId);
+    const secondManifest = basicManifest();
+    await writeJsonFile(secondWorkspace.manifestFile, secondManifest);
+    await writePromptFiles(secondWorkspace.packageDir, secondManifest);
+    await writeProjectGraph(init.workspace, {
+      version: "plan-project/v1",
+      canvases: [
+        { id: "default", type: "canvas", title: "Runtime plan", packageDir: "package", stateFile: "state.json", resultsDir: "results" },
+        {
+          id: secondCanvas.canvasId,
+          type: "canvas",
+          title: "Second plan",
+          packageDir: `canvases/${secondCanvas.canvasId}/package`,
+          stateFile: `canvases/${secondCanvas.canvasId}/state.json`,
+          resultsDir: `canvases/${secondCanvas.canvasId}/results`
+        }
+      ],
+      edges: [],
+      crossTaskEdges: [
+        {
+          from: { canvasId: secondCanvas.canvasId, taskId: "T-001" },
+          to: { canvasId: "default", taskId: "T-001" },
+          type: "depends_on"
+        }
+      ]
+    });
+
+    const result = await removeTaskNode(secondWorkspace, "T-001");
+
+    expect(result.ok).toBe(false);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toContain("project_cross_task_edge_blocks_task_delete");
+    const written = await readJsonFile<PlanPackageManifest>(secondWorkspace.manifestFile);
+    expect(written.nodes.some((node) => node.id === "T-001")).toBe(true);
+    expect((await loadProjectGraph(root)).manifest.crossTaskEdges).toHaveLength(1);
+  });
+
+  it("records desktop field edits as undoable PlanGraph history", async () => {
+    const manifest = basicManifest();
+    const task = manifest.nodes[0];
+    if (task?.type !== "task") {
+      throw new Error("Fixture task missing.");
+    }
+    task.blocks.splice(1, 0, {
+      id: "B-002",
+      type: "implementation",
+      title: "Follow-up implementation",
+      prompt: "nodes/T-001/blocks/B-002.prompt.md",
+      depends_on: ["B-001"],
+      parallel: { safe: true, locks: ["shared"] }
+    });
+    task.blocks[2].depends_on = ["B-002"];
+    const { root, init } = await createTestWorkspace(manifest);
+
+    await expect(updateTaskAcceptance(root, "T-001", ["Desktop acceptance."])).resolves.toMatchObject({ ok: true });
+    await expect(undoDesktopPlanGraphCommand(root)).resolves.toMatchObject({ ok: true });
+    let written = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    let writtenTask = written.nodes[0];
+    if (writtenTask?.type !== "task") {
+      throw new Error("Fixture task missing.");
+    }
+    expect(writtenTask.acceptance).toEqual(["Implementation is complete.", "Review passes."]);
+
+    await expect(updateBlockDependencies(root, "T-001#B-002", [])).resolves.toMatchObject({ ok: true });
+    await expect(undoDesktopPlanGraphCommand(root)).resolves.toMatchObject({ ok: true });
+    written = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    writtenTask = written.nodes[0];
+    if (writtenTask?.type !== "task") {
+      throw new Error("Fixture task missing.");
+    }
+    expect(writtenTask.blocks.find((block) => block.id === "B-002")?.depends_on).toEqual(["B-001"]);
+
+    await expect(updateBlockPlanning(root, "T-001#B-002", { parallelSafe: false, parallelLocks: ["api"] })).resolves.toMatchObject({
+      ok: true
+    });
+    await expect(undoDesktopPlanGraphCommand(root)).resolves.toMatchObject({ ok: true });
+    written = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    writtenTask = written.nodes[0];
+    if (writtenTask?.type !== "task") {
+      throw new Error("Fixture task missing.");
+    }
+    expect(writtenTask.blocks.find((block) => block.id === "B-002")).toMatchObject({
+      parallel: { safe: true, locks: ["shared"] }
+    });
+  });
+
+  it("records desktop layout saves as undoable PlanGraph history", async () => {
+    const { root, init } = await createTestWorkspace(basicManifest({ includeSecondTask: true }));
+    const firstLayout = {
+      version: "desktop-layout/v1" as const,
+      projectId: init.workspace.id,
+      nodes: [{ nodeId: "T-001", x: 80, y: 120 }],
+      updatedAt: new Date(0).toISOString()
+    };
+    const secondLayout = {
+      ...firstLayout,
+      nodes: [{ nodeId: "T-001", x: 360, y: 220 }]
+    };
+
+    await saveDesktopLayout(root, firstLayout);
+    await saveDesktopLayout(root, secondLayout);
+    expect((await getDesktopLayout(root)).nodes).toEqual([{ nodeId: "T-001", x: 360, y: 220 }]);
+
+    await expect(undoDesktopPlanGraphCommand(root)).resolves.toMatchObject({ ok: true });
+    expect((await getDesktopLayout(root)).nodes).toEqual([{ nodeId: "T-001", x: 80, y: 120 }]);
+
+    await expect(redoDesktopPlanGraphCommand(root)).resolves.toMatchObject({ ok: true });
+    expect((await getDesktopLayout(root)).nodes).toEqual([{ nodeId: "T-001", x: 360, y: 220 }]);
+  });
+
+  it("uses one project-level PlanGraph history across task canvases", async () => {
+    const { root, init } = await createTestWorkspace();
+    const secondCanvas = await createTaskCanvas(root, { name: "Second plan" });
+    const secondWorkspace = await resolveTaskCanvasWorkspace(root, secondCanvas.canvasId);
+    await writeJsonFile(secondWorkspace.manifestFile, basicManifest());
+    await writePromptFiles(secondWorkspace.packageDir, basicManifest());
+
+    const defaultStore = await createSqlitePlanGraphStore({ projectRoot: init.workspace });
+    await defaultStore.rebuild();
+    await expect(updateTaskTitle(secondWorkspace, "T-001", "Second canvas title")).resolves.toMatchObject({ ok: true });
+    const secondStore = await createSqlitePlanGraphStore({ projectRoot: secondWorkspace });
+    expect(secondStore.indexPath).toBe(defaultStore.indexPath);
+    expect((await defaultStore.load())?.tasks.get("T-001")?.title).toBe("Implement test task");
+    expect((await secondStore.load())?.tasks.get("T-001")?.title).toBe("Second canvas title");
+
+    await expect(undoDesktopPlanGraphCommand(init.workspace)).resolves.toMatchObject({ ok: true });
+    const secondManifest = await readJsonFile<PlanPackageManifest>(secondWorkspace.manifestFile);
+    const secondTask = secondManifest.nodes.find((node) => node.type === "task" && node.id === "T-001");
+    expect(secondTask?.title).toBe("Implement test task");
+  });
+
+  it("applies cross-canvas task history layout side effects to the entry workspace", async () => {
+    const { root } = await createTestWorkspace();
+    const secondCanvas = await createTaskCanvas(root, { name: "Second plan" });
+    const secondWorkspace = await resolveTaskCanvasWorkspace(root, secondCanvas.canvasId);
+    await writeJsonFile(secondWorkspace.manifestFile, basicManifest());
+    await writePromptFiles(secondWorkspace.packageDir, basicManifest());
+
+    await expect(
+      addTaskNode(secondWorkspace, {
+        title: "Dropped task",
+        promptMarkdown: "# Dropped task\n",
+        layoutPosition: { x: 480, y: 240 }
+      })
+    ).resolves.toMatchObject({ ok: true });
+    expect((await getDesktopLayout(secondWorkspace)).nodes).toContainEqual({ nodeId: "T-DROPPED-TASK", x: 480, y: 240 });
+
+    await expect(undoDesktopPlanGraphCommand(root)).resolves.toMatchObject({ ok: true });
+    const secondManifest = await readJsonFile<PlanPackageManifest>(secondWorkspace.manifestFile);
+    expect(secondManifest.nodes.some((node) => node.type === "task" && node.id === "T-DROPPED-TASK")).toBe(false);
+    await expect(readJsonFile<{ nodes: Array<{ nodeId: string }> }>(join(secondWorkspace.workspaceRoot, "desktop/layout.json"))).resolves.toMatchObject({
+      nodes: expect.not.arrayContaining([expect.objectContaining({ nodeId: "T-DROPPED-TASK" })])
+    });
+  });
+
+  it("records active task canvas selection as undoable PlanGraph history", async () => {
+    const { root } = await createTestWorkspace();
+    const secondCanvas = await createTaskCanvas(root, { name: "Second plan" });
+
+    await expect(selectTaskCanvas(root, secondCanvas.canvasId)).resolves.toBe(secondCanvas.canvasId);
+    await expect(getProjectOverview(root)).resolves.toMatchObject({ activeCanvasId: secondCanvas.canvasId });
+
+    await expect(undoDesktopPlanGraphCommand(root)).resolves.toMatchObject({ ok: true });
+    await expect(getProjectOverview(root)).resolves.toMatchObject({ activeCanvasId: "default" });
+
+    await expect(redoDesktopPlanGraphCommand(root)).resolves.toMatchObject({ ok: true });
+    await expect(getProjectOverview(root)).resolves.toMatchObject({ activeCanvasId: secondCanvas.canvasId });
   });
 });

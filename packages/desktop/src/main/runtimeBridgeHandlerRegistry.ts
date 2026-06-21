@@ -41,6 +41,8 @@ import {
   removeProject,
   removeTaskCanvas,
   removeTaskNode,
+  reconnectDependencyEdge,
+  redoDesktopPlanGraphCommand,
   resetCanvasMapLayout,
   resetDesktopLayout,
   resolveTaskCanvasWorkspace,
@@ -48,6 +50,7 @@ import {
   saveCanvasMapLayout,
   saveDesktopLayout,
   searchProject,
+  selectTaskCanvas,
   startAutoRun,
   stopAutoRun,
   unblockBlock,
@@ -60,6 +63,7 @@ import {
   updateTaskExecutor,
   updateTaskPrompt,
   updateTaskTitle,
+  undoDesktopPlanGraphCommand,
   validateGraphEdit
 } from "@planweave-ai/runtime";
 import type {
@@ -129,6 +133,7 @@ export const runtimeBridgeHandlers = {
   removeProject: (_event, projectId) => removeProject(projectId),
   createTaskCanvas: (_event, projectRoot, input) => createTaskCanvas(projectRoot, input),
   removeTaskCanvas: (_event, projectRoot, canvasId) => removeTaskCanvas(projectRoot, canvasId),
+  selectTaskCanvas: (_event, projectRoot, canvasId) => selectTaskCanvas(projectRoot, canvasId),
   getProjectOverview: (_event, projectRoot) => getProjectOverview(projectRoot),
   getCanvasGraphViewModel: (_event, projectRoot) => getCanvasGraphViewModel(projectRoot),
   getCanvasMapLayout: (_event, projectRoot) => getCanvasMapLayout(projectRoot),
@@ -161,17 +166,21 @@ export const runtimeBridgeHandlers = {
   removeBlock: async (_event, ref, blockRef) => invokeGraphEdit(removeBlock(await resolveDesktopCanvasReference(ref), blockRef)),
   validateGraphEdit: async (_event, ref, input) => invokeGraphEdit(validateGraphEdit(await resolveDesktopCanvasReference(ref), input)),
   updateTaskTitle: async (_event, ref, taskId, title) => invokeGraphEdit(updateTaskTitle(await resolveDesktopCanvasReference(ref), taskId, title)),
-  updateTaskPrompt: async (_event, ref, taskId, markdown) => invokeGraphEdit(updateTaskPrompt(await resolveDesktopCanvasReference(ref), taskId, markdown)),
+  updateTaskPrompt: async (_event, ref, taskId, markdown, options) => invokeGraphEdit(updateTaskPrompt(await resolveDesktopCanvasReference(ref), taskId, markdown, options)),
   updateBlockTitle: async (_event, ref, blockRef, title) => invokeGraphEdit(updateBlockTitle(await resolveDesktopCanvasReference(ref), blockRef, title)),
-  updateBlockPrompt: async (_event, ref, blockRef, markdown) => invokeGraphEdit(updateBlockPrompt(await resolveDesktopCanvasReference(ref), blockRef, markdown)),
+  updateBlockPrompt: async (_event, ref, blockRef, markdown, options) => invokeGraphEdit(updateBlockPrompt(await resolveDesktopCanvasReference(ref), blockRef, markdown, options)),
   updateTaskExecutor: async (_event, ref, taskId, executorName) =>
     invokeGraphEdit(updateTaskExecutor(await resolveDesktopCanvasReference(ref), taskId, executorName)),
   updateBlockExecutor: async (_event, ref, blockRef, executorName) =>
     invokeGraphEdit(updateBlockExecutor(await resolveDesktopCanvasReference(ref), blockRef, executorName)),
-  addDependencyEdge: async (_event, ref, fromTaskId, toTaskId) =>
-    invokeGraphEdit(addDependencyEdge(await resolveDesktopCanvasReference(ref), fromTaskId, toTaskId)),
-  removeDependencyEdge: async (_event, ref, fromTaskId, toTaskId) =>
-    invokeGraphEdit(removeDependencyEdge(await resolveDesktopCanvasReference(ref), fromTaskId, toTaskId)),
+  addDependencyEdge: async (_event, ref, fromTaskId, toTaskId, baseGraphVersion, layoutSnapshot) =>
+    invokeGraphEdit(addDependencyEdge(await resolveDesktopCanvasReference(ref), fromTaskId, toTaskId, baseGraphVersion, layoutSnapshot)),
+  removeDependencyEdge: async (_event, ref, fromTaskId, toTaskId, baseGraphVersion, layoutSnapshot) =>
+    invokeGraphEdit(removeDependencyEdge(await resolveDesktopCanvasReference(ref), fromTaskId, toTaskId, baseGraphVersion, layoutSnapshot)),
+  reconnectDependencyEdge: async (_event, ref, fromTaskId, oldToTaskId, newFromTaskId, newToTaskId, baseGraphVersion, layoutSnapshot) =>
+    invokeGraphEdit(reconnectDependencyEdge(await resolveDesktopCanvasReference(ref), fromTaskId, oldToTaskId, newFromTaskId, newToTaskId, baseGraphVersion, layoutSnapshot)),
+  undoPlanGraphCommand: async (_event, ref) => invokeGraphEdit(undoDesktopPlanGraphCommand(await resolveDesktopCanvasReference(ref))),
+  redoPlanGraphCommand: async (_event, ref) => invokeGraphEdit(redoDesktopPlanGraphCommand(await resolveDesktopCanvasReference(ref))),
   getDesktopLayout: async (_event, ref) => getDesktopLayout(await resolveDesktopCanvasReference(ref)),
   saveDesktopLayout: async (_event, ref, layout: DesktopLayout) => saveDesktopLayout(await resolveDesktopCanvasReference(ref), layout),
   resetDesktopLayout: async (_event, ref) => resetDesktopLayout(await resolveDesktopCanvasReference(ref)),

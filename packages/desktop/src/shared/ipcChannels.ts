@@ -49,6 +49,8 @@ export const desktopBridgeInvokeChannels = {
   removeProject: "planweave:removeProject",
   removeTaskCanvas: "planweave:removeTaskCanvas",
   removeTaskNode: "planweave:removeTaskNode",
+  reconnectDependencyEdge: "planweave:reconnectDependencyEdge",
+  redoPlanGraphCommand: "planweave:redoPlanGraphCommand",
   resetDesktopLayout: "planweave:resetDesktopLayout",
   resetCanvasMapLayout: "planweave:resetCanvasMapLayout",
   resumeAutoRun: "planweave:resumeAutoRun",
@@ -57,6 +59,7 @@ export const desktopBridgeInvokeChannels = {
   saveCanvasMapLayout: "planweave:saveCanvasMapLayout",
   saveDesktopLayout: "planweave:saveDesktopLayout",
   searchProject: "planweave:searchProject",
+  selectTaskCanvas: "planweave:selectTaskCanvas",
   startAutoRun: "planweave:startAutoRun",
   stopAutoRun: "planweave:stopAutoRun",
   unblockBlock: "planweave:unblockBlock",
@@ -70,6 +73,7 @@ export const desktopBridgeInvokeChannels = {
   updateTaskExecutor: "planweave:updateTaskExecutor",
   updateTaskPrompt: "planweave:updateTaskPrompt",
   updateTaskTitle: "planweave:updateTaskTitle",
+  undoPlanGraphCommand: "planweave:undoPlanGraphCommand",
   validateGraphEdit: "planweave:validateGraphEdit",
   watchPackageFiles: "planweave:watchPackageFiles"
 } as const satisfies Record<DesktopBridgeInvokeMethod, string>;

@@ -3,9 +3,10 @@ import { access, mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readProject, resolveProjectWorkspace } from "../project.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
-import type { ProjectWorkspace, ValidationIssue } from "../types.js";
-import { buildCanvasHealth } from "./graph/canvasHealthModel.js";
+import type { ProjectWorkspace } from "../types.js";
 import { readDesktopProjectProjection } from "./graph/projectProjectionModel.js";
+import { buildCanvasMapProjection } from "../plangraph/projections/index.js";
+import { sha256Hex, stableJson } from "../plangraph/hash.js";
 import type {
   DesktopCanvasGraphViewModel,
   DesktopCanvasMapLayout,
@@ -80,21 +81,23 @@ function normalizeCanvasMapLayout(input: unknown, projectId: string, canvasIds: 
   };
 }
 
-function diagnosticsForCanvas(canvasId: string, diagnostics: ValidationIssue[]): ValidationIssue[] {
-  return diagnostics.filter((diagnostic) => {
-    if (diagnostic.path === canvasId) {
-      return true;
-    }
-    return (
-      diagnostic.message.includes(`'${canvasId}'`) ||
-      diagnostic.message.includes(`${canvasId}::`) ||
-      diagnostic.message.includes(`::${canvasId}`)
-    );
-  });
-}
-
 async function projectTitle(projectRoot: string, fallback: string): Promise<string> {
   return (await readProject(projectRoot))?.name ?? fallback;
+}
+
+function projectTodoGraphVersion(todoContext: Awaited<ReturnType<typeof readDesktopProjectProjection>>["todoContext"]): string {
+  return sha256Hex(stableJson({
+    projectGraph: todoContext.aggregation.graph.manifest,
+    orderedCanvasIds: todoContext.aggregation.orderedCanvasIds,
+    canvases: todoContext.aggregation.orderedCanvasIds.map((canvasId) => {
+      const snapshot = todoContext.snapshotsByCanvas.get(canvasId);
+      return {
+        canvasId,
+        graphVersion: snapshot?.graphVersion ?? null,
+        failed: Boolean(snapshot?.error)
+      };
+    })
+  }));
 }
 
 async function canvasIdsForProject(projectRoot: string): Promise<{ workspace: ProjectWorkspace; projectId: string; canvasIds: string[] }> {
@@ -109,31 +112,15 @@ async function canvasIdsForProject(projectRoot: string): Promise<{ workspace: Pr
 
 export async function getCanvasGraphViewModel(projectRoot: string): Promise<DesktopCanvasGraphViewModel> {
   const { todoContext } = await readDesktopProjectProjection(projectRoot);
-  const { loaded, graph, canvasesById } = todoContext.aggregation;
-  const diagnostics = [...graph.diagnostics.errors, ...graph.diagnostics.warnings];
-  const canvases = await Promise.all(
-    graph.canvasIdsInOrder.map(async (canvasId) => {
-      const canvas = canvasesById.get(canvasId);
-      if (!canvas) {
-        throw new Error(`Project canvas '${canvasId}' does not exist.`);
-      }
-      return {
-        canvasId: canvas.canvasId,
-        title: canvas.canvasName,
-        packageDir: canvas.projectCanvas.packageDir,
-        diagnostics: [...canvas.canvas.diagnostics, ...diagnosticsForCanvas(canvas.canvasId, diagnostics)]
-      };
-    })
-  );
-  return {
+  const { loaded } = todoContext.aggregation;
+  const firstCanvasId = todoContext.aggregation.graph.canvasIdsInOrder[0];
+  const titleFallback = firstCanvasId ? todoContext.aggregation.canvasesById.get(firstCanvasId)?.canvasName ?? loaded.workspace.id : loaded.workspace.id;
+  return buildCanvasMapProjection({
+    graphVersion: projectTodoGraphVersion(todoContext),
+    context: todoContext,
     projectId: loaded.workspace.id,
-    projectTitle: await projectTitle(projectRoot, canvases[0]?.title ?? loaded.workspace.id),
-    canvases,
-    edges: graph.manifest.edges.map((edge) => ({ from: edge.from, to: edge.to, type: edge.type })),
-    crossTaskEdges: graph.crossTaskEdges.map((edge) => ({ from: edge.from, to: edge.to, type: edge.type })),
-    diagnostics,
-    health: buildCanvasHealth(todoContext)
-  };
+    projectTitle: await projectTitle(projectRoot, titleFallback)
+  }).viewModel;
 }
 
 export async function getCanvasMapLayout(projectRoot: string): Promise<DesktopCanvasMapLayout> {

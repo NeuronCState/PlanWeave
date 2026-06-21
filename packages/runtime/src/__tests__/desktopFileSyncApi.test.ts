@@ -8,6 +8,14 @@ import {
   refreshChangedDesktopPackagePrompts,
   refreshPackageFileChanges
 } from "../desktop/index.js";
+import {
+  undoDesktopPlanGraphCommand,
+  updateTaskTitle
+} from "../desktop/graphApi.js";
+import {
+  executePlanGraphCommand,
+  undoPlanGraphCommand
+} from "../plangraph/index.js";
 import { createTestWorkspace } from "./promptTestHelpers.js";
 
 afterEach(() => {
@@ -122,5 +130,45 @@ describe("desktop file sync API", () => {
     await expect(createDesktopPackageFileSnapshot(init.workspace)).resolves.not.toMatchObject({
       projectRoot: init.workspace.workspaceRoot
     });
+  });
+
+  it("clears PlanGraph command history after detecting external package file changes", async () => {
+    const { root, init } = await createTestWorkspace();
+    await expect(
+      executePlanGraphCommand({
+        projectRoot: root,
+        command: {
+          type: "updateTaskFields",
+          taskId: "T-001",
+          fields: { title: "Local command edit" }
+        }
+      })
+    ).resolves.toMatchObject({ ok: true });
+
+    const snapshot = await createDesktopPackageFileSnapshot(root);
+    await writeFile(join(init.workspace.packageDir, "nodes", "T-001", "prompt.md"), "# external prompt edit\n", "utf8");
+    await expect(detectDesktopPackageFileChanges(root, snapshot.snapshotId)).resolves.toMatchObject({
+      ok: true,
+      fullRefresh: true,
+      dirtyPromptRefs: ["T-001"]
+    });
+
+    const undoResult = await undoPlanGraphCommand({ projectRoot: root });
+    expect(undoResult.ok).toBe(false);
+    expect(undoResult.diagnostics.map((diagnostic) => diagnostic.code)).toContain("history_empty");
+  });
+
+  it("keeps PlanGraph command history when refreshing package files after a local command save", async () => {
+    const { root } = await createTestWorkspace();
+    await createDesktopPackageFileSnapshot(root);
+    await expect(updateTaskTitle(root, "T-001", "Local command edit")).resolves.toMatchObject({ ok: true });
+
+    await expect(refreshPackageFileChanges(root)).resolves.toMatchObject({
+      ok: true,
+      primed: false
+    });
+
+    const undoResult = await undoDesktopPlanGraphCommand(root);
+    expect(undoResult.ok).toBe(true);
   });
 });

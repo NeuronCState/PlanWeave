@@ -34,6 +34,7 @@ export type DesktopTaskNodeViewModel = {
   executor: string | null;
   executorLabel: string;
   promptMarkdown: string;
+  promptHash?: string;
   promptMissing: boolean;
   promptPreview: string;
   blocks: DesktopBlockPreview[];
@@ -52,6 +53,8 @@ export type DesktopGraphEdgeViewModel = {
 export type DesktopGraphViewModel = {
   projectId: string;
   projectTitle: string;
+  graphVersion: string;
+  packageFingerprint: string;
   executorOptions: string[];
   tasks: DesktopTaskNodeViewModel[];
   edges: DesktopGraphEdgeViewModel[];
@@ -170,10 +173,12 @@ export type DesktopCanvasMapLayout = {
 
 export type DesktopTaskDetail = {
   taskId: string;
+  graphVersion?: string;
   title: string;
   status: TaskStatus;
   executor: string | null;
   promptMarkdown: string;
+  promptHash?: string;
   promptMissing: boolean;
   acceptance: string[];
   blockOrder: string[];
@@ -186,6 +191,7 @@ export type DesktopTaskExecutionOrder = {
 
 export type DesktopBlockDetail = {
   ref: string;
+  graphVersion?: string;
   taskId: string;
   blockId: string;
   type: BlockType;
@@ -194,6 +200,7 @@ export type DesktopBlockDetail = {
   executor: string | null;
   effectiveExecutor: string | null;
   promptMarkdown: string;
+  promptHash?: string;
   promptMissing: boolean;
   promptSurfaceMarkdown: string;
   promptSources: PromptSourceSummary[];
@@ -327,6 +334,10 @@ export type DesktopAddTaskInput = {
   acceptance?: string[];
   blockTypes?: BlockType[];
   executor?: string | null;
+  layoutPosition?: {
+    x: number;
+    y: number;
+  };
 };
 
 export type DesktopAddBlockInput = {

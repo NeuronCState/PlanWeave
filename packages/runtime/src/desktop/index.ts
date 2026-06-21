@@ -11,6 +11,7 @@ export {
   removeTaskCanvas,
   resolveTaskCanvasWorkspace
 } from "./canvasApi.js";
+export { selectTaskCanvas } from "./canvasSelectionApi.js";
 export {
   getCanvasGraphViewModel,
   getCanvasMapLayout,
@@ -34,6 +35,8 @@ export {
   removeBlock,
   removeDependencyEdge,
   removeTaskNode,
+  reconnectDependencyEdge,
+  redoDesktopPlanGraphCommand,
   searchProject,
   searchProjectWithDiagnostics,
   updateBlockDependencies,
@@ -45,6 +48,7 @@ export {
   updateTaskExecutor,
   updateTaskPrompt,
   updateTaskTitle,
+  undoDesktopPlanGraphCommand,
   validateGraphEdit
 } from "./graphApi.js";
 export {

@@ -1,148 +1,53 @@
-import { access, mkdir, rm } from "node:fs/promises";
-import { constants } from "node:fs";
-import { dirname, join } from "node:path";
-import { readJsonFile, writeJsonFile } from "../json.js";
-import { loadPackage, resolvePackageWorkspace } from "../package/loadPackage.js";
-import type { PackageWorkspaceRef, PlanPackageManifest, ProjectWorkspace } from "../types.js";
+import { resolvePackageWorkspace } from "../package/loadPackage.js";
+import type { PackageWorkspaceRef } from "../types.js";
+import { executePlanGraphCommand } from "../plangraph/index.js";
 import { validateDesktopLayout } from "../validation/desktopLayoutValidation.js";
-import type { DesktopLayout, DesktopLayoutNode } from "./types.js";
+import type { DesktopLayout } from "./types.js";
+import {
+  defaultDesktopLayout,
+  desktopLayoutCommandStore,
+  getDesktopLayoutDirect,
+  getDesktopLayoutForPackage,
+  resetDesktopLayoutDirect,
+  saveDesktopLayoutDirect
+} from "./layoutStore.js";
 
 export { validateDesktopLayout };
-
-async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.R_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function defaultLayout(projectId: string): DesktopLayout {
-  return {
-    version: "desktop-layout/v1",
-    projectId,
-    nodes: [],
-    updatedAt: new Date(0).toISOString()
-  };
-}
-
-function layoutPathForWorkspace(workspace: ProjectWorkspace): string {
-  return join(workspace.workspaceRoot, "desktop", "layout.json");
-}
-
-async function layoutPath(projectRoot: PackageWorkspaceRef): Promise<string> {
-  return layoutPathForWorkspace(await resolvePackageWorkspace(projectRoot));
-}
-
-function manifestNodeIds(manifest: PlanPackageManifest): Set<string> {
-  return new Set(manifest.nodes.map((node) => node.id));
-}
-
-function finiteNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function normalizeLayoutNode(value: unknown): DesktopLayoutNode | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  const nodeId = typeof record.nodeId === "string" && record.nodeId.trim() ? record.nodeId : null;
-  const x = finiteNumber(record.x);
-  const y = finiteNumber(record.y);
-  if (!nodeId || x === null || y === null) {
-    return null;
-  }
-  return { nodeId, x, y };
-}
-
-function normalizeLegacyLayoutNode(nodeId: string, value: unknown): DesktopLayoutNode | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  const position = record.position;
-  if (!position || typeof position !== "object" || Array.isArray(position)) {
-    return null;
-  }
-  const coordinates = position as Record<string, unknown>;
-  const x = finiteNumber(coordinates.x);
-  const y = finiteNumber(coordinates.y);
-  if (!nodeId.trim() || x === null || y === null) {
-    return null;
-  }
-  return { nodeId, x, y };
-}
-
-function normalizeLayout(input: unknown, projectId: string): DesktopLayout {
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
-    return defaultLayout(projectId);
-  }
-  const raw = input as Record<string, unknown>;
-  const updatedAt = typeof raw.updatedAt === "string" && raw.updatedAt.trim() ? raw.updatedAt : new Date(0).toISOString();
-  if (Array.isArray(raw.nodes)) {
-    return {
-      version: "desktop-layout/v1",
-      projectId,
-      nodes: raw.nodes.flatMap((node) => {
-        const normalized = normalizeLayoutNode(node);
-        return normalized ? [normalized] : [];
-      }),
-      updatedAt
-    };
-  }
-  if (raw.nodes && typeof raw.nodes === "object" && !Array.isArray(raw.nodes)) {
-    return {
-      version: "desktop-layout/v1",
-      projectId,
-      nodes: Object.entries(raw.nodes).flatMap(([nodeId, node]) => {
-        const normalized = normalizeLegacyLayoutNode(nodeId, node);
-        return normalized ? [normalized] : [];
-      }),
-      updatedAt
-    };
-  }
-  return defaultLayout(projectId);
-}
-
-function filterLayoutNodes(layout: DesktopLayout, manifest: PlanPackageManifest): DesktopLayout {
-  const nodeIds = manifestNodeIds(manifest);
-  return {
-    ...layout,
-    nodes: layout.nodes.filter((node) => nodeIds.has(node.nodeId))
-  };
-}
+export { getDesktopLayoutForPackage, saveDesktopLayoutDirect };
 
 export async function getDesktopLayout(projectRoot: PackageWorkspaceRef): Promise<DesktopLayout> {
-  const { workspace, manifest } = await loadPackage(projectRoot);
-  return getDesktopLayoutForPackage(workspace, manifest);
+  return getDesktopLayoutDirect(projectRoot);
 }
 
-export async function getDesktopLayoutForPackage(workspace: ProjectWorkspace, manifest: PlanPackageManifest): Promise<DesktopLayout> {
-  const path = layoutPathForWorkspace(workspace);
-  if (!(await exists(path))) {
-    return defaultLayout(workspace.id);
-  }
-  return filterLayoutNodes(normalizeLayout(await readJsonFile<unknown>(path), workspace.id), manifest);
+function graphCommandError(result: Awaited<ReturnType<typeof executePlanGraphCommand>>): Error {
+  return new Error(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
 }
 
 export async function saveDesktopLayout(projectRoot: PackageWorkspaceRef, layout: DesktopLayout): Promise<DesktopLayout> {
-  const { workspace, manifest } = await loadPackage(projectRoot);
-  const next = filterLayoutNodes({
-    ...layout,
-    version: "desktop-layout/v1",
-    projectId: workspace.id,
-    updatedAt: new Date().toISOString()
-  }, manifest);
-  const path = layoutPathForWorkspace(workspace);
-  await mkdir(dirname(path), { recursive: true });
-  await writeJsonFile(path, next);
-  return next;
+  const result = await executePlanGraphCommand({
+    projectRoot,
+    command: { type: "updateLayout", layoutScope: "desktop", layout },
+    dependencies: { layoutStore: desktopLayoutCommandStore }
+  });
+  if (!result.ok) {
+    throw graphCommandError(result);
+  }
+  return getDesktopLayoutDirect(projectRoot);
 }
 
 export async function resetDesktopLayout(projectRoot: PackageWorkspaceRef): Promise<DesktopLayout> {
   const workspace = await resolvePackageWorkspace(projectRoot);
-  await rm(await layoutPath(projectRoot), { force: true });
-  return defaultLayout(workspace.id);
+  const result = await executePlanGraphCommand({
+    projectRoot,
+    command: { type: "updateLayout", layoutScope: "desktop", layout: defaultDesktopLayout(workspace.id) },
+    dependencies: { layoutStore: desktopLayoutCommandStore }
+  });
+  if (!result.ok) {
+    throw graphCommandError(result);
+  }
+  const layout = await getDesktopLayoutDirect(projectRoot);
+  if (layout.nodes.length === 0) {
+    return resetDesktopLayoutDirect(projectRoot);
+  }
+  return layout;
 }

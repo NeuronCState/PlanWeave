@@ -12,6 +12,7 @@ import { createEmptyState } from "../state.js";
 import type { ProjectWorkspace, ValidationIssue } from "../types.js";
 import { canvasDiagnostics } from "./canvasDiagnostics.js";
 import { normalizeRegistry, registryVersion, type TaskCanvasRecord, type TaskCanvasRegistry } from "./canvasRegistry.js";
+import { readActiveTaskCanvasSelection } from "./canvasSelectionStore.js";
 import { appendDesktopDiagnostics, desktopDiagnostic, errorMessage } from "./graph/desktopDiagnostics.js";
 import { invalidateDesktopProjectProjection } from "./graph/projectProjectionModel.js";
 import type { DesktopTaskCanvasSummary } from "./types.js";
@@ -265,17 +266,11 @@ export async function listTaskCanvases(projectRoot: string): Promise<DesktopTask
 }
 
 export async function getActiveTaskCanvasId(projectRoot: string): Promise<string | null> {
-  let loaded: Awaited<ReturnType<typeof loadProjectGraph>>;
   try {
-    loaded = await loadProjectGraph(projectRoot);
+    return (await readActiveTaskCanvasSelection(projectRoot)).activeCanvasId;
   } catch {
     return null;
   }
-  if (loaded.source === "project_graph") {
-    return loaded.manifest.canvases[0]?.id ?? null;
-  }
-  const { registry } = await readRegistry(projectRoot);
-  return selectedCanvasRecord(registry)?.canvasId ?? null;
 }
 
 export async function listTaskCanvasWorkspaces(

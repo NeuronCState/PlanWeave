@@ -1,15 +1,11 @@
 import {
-  compileProjectGraph,
   loadProjectGraph,
-  projectCanvasEdgeKey,
-  projectCrossTaskEdgeKey,
-  writeProjectGraph,
-  type ProjectCanvasEdge,
-  type ProjectCrossTaskEdge,
   type ProjectGraphManifest,
   type ProjectTaskRef
 } from "../projectGraph/index.js";
 import type { ValidationIssue } from "../types.js";
+import { executePlanGraphCommand, type PlanGraphCommandResult, type ProjectGraphCommand } from "../plangraph/index.js";
+import { invalidateDesktopProjectProjection } from "./graph/projectProjectionModel.js";
 
 export type ProjectGraphEditResult = {
   ok: boolean;
@@ -25,65 +21,29 @@ function result(graph: ProjectGraphManifest, diagnostics: ValidationIssue[] = []
   };
 }
 
-async function commitProjectGraphEdit(projectRoot: string, graph: ProjectGraphManifest): Promise<ProjectGraphEditResult> {
+async function graphEditResult(projectRoot: string, commandResult: PlanGraphCommandResult): Promise<ProjectGraphEditResult> {
   const loaded = await loadProjectGraph(projectRoot);
-  const compiled = await compileProjectGraph({
-    workspace: loaded.workspace,
-    manifest: graph,
-    source: "project_graph",
-    diagnostics: []
-  });
-  if (compiled.diagnostics.errors.length > 0) {
-    return result(graph, compiled.diagnostics.errors);
-  }
-  await writeProjectGraph(loaded.workspace, graph);
-  return result(graph, compiled.diagnostics.warnings);
+  return result(loaded.manifest, commandResult.diagnostics);
 }
 
-function canvasEdge(fromCanvasId: string, toCanvasId: string): ProjectCanvasEdge {
-  return { from: fromCanvasId, to: toCanvasId, type: "depends_on" };
-}
-
-function crossTaskEdge(from: ProjectTaskRef, to: ProjectTaskRef): ProjectCrossTaskEdge {
-  return { from, to, type: "depends_on" };
+async function executeProjectGraphEdit(projectRoot: string, command: ProjectGraphCommand): Promise<ProjectGraphEditResult> {
+  const commandResult = await executePlanGraphCommand({ projectRoot, command });
+  invalidateDesktopProjectProjection(projectRoot);
+  return graphEditResult(projectRoot, commandResult);
 }
 
 export async function addCanvasDependency(projectRoot: string, fromCanvasId: string, toCanvasId: string): Promise<ProjectGraphEditResult> {
-  const loaded = await loadProjectGraph(projectRoot);
-  const edge = canvasEdge(fromCanvasId, toCanvasId);
-  const key = projectCanvasEdgeKey(edge);
-  const graph = loaded.manifest.edges.some((candidate) => projectCanvasEdgeKey(candidate) === key)
-    ? loaded.manifest
-    : { ...loaded.manifest, edges: [...loaded.manifest.edges, edge] };
-  return commitProjectGraphEdit(projectRoot, graph);
+  return executeProjectGraphEdit(projectRoot, { type: "addCanvasDependency", fromCanvasId, toCanvasId });
 }
 
 export async function removeCanvasDependency(projectRoot: string, fromCanvasId: string, toCanvasId: string): Promise<ProjectGraphEditResult> {
-  const loaded = await loadProjectGraph(projectRoot);
-  const edge = canvasEdge(fromCanvasId, toCanvasId);
-  const key = projectCanvasEdgeKey(edge);
-  return commitProjectGraphEdit(projectRoot, {
-    ...loaded.manifest,
-    edges: loaded.manifest.edges.filter((candidate) => projectCanvasEdgeKey(candidate) !== key)
-  });
+  return executeProjectGraphEdit(projectRoot, { type: "removeCanvasDependency", fromCanvasId, toCanvasId });
 }
 
 export async function addCrossTaskDependency(projectRoot: string, from: ProjectTaskRef, to: ProjectTaskRef): Promise<ProjectGraphEditResult> {
-  const loaded = await loadProjectGraph(projectRoot);
-  const edge = crossTaskEdge(from, to);
-  const key = projectCrossTaskEdgeKey(edge);
-  const graph = loaded.manifest.crossTaskEdges.some((candidate) => projectCrossTaskEdgeKey(candidate) === key)
-    ? loaded.manifest
-    : { ...loaded.manifest, crossTaskEdges: [...loaded.manifest.crossTaskEdges, edge] };
-  return commitProjectGraphEdit(projectRoot, graph);
+  return executeProjectGraphEdit(projectRoot, { type: "addCrossTaskDependency", from, to });
 }
 
 export async function removeCrossTaskDependency(projectRoot: string, from: ProjectTaskRef, to: ProjectTaskRef): Promise<ProjectGraphEditResult> {
-  const loaded = await loadProjectGraph(projectRoot);
-  const edge = crossTaskEdge(from, to);
-  const key = projectCrossTaskEdgeKey(edge);
-  return commitProjectGraphEdit(projectRoot, {
-    ...loaded.manifest,
-    crossTaskEdges: loaded.manifest.crossTaskEdges.filter((candidate) => projectCrossTaskEdgeKey(candidate) !== key)
-  });
+  return executeProjectGraphEdit(projectRoot, { type: "removeCrossTaskDependency", from, to });
 }

@@ -72,6 +72,11 @@ export type DesktopCanvasReference = {
   canvasId?: string | null;
 };
 
+export type DesktopPromptSaveOptions = {
+  baseGraphVersion?: string;
+  basePromptHash?: string;
+};
+
 export type DesktopBridgeApi = {
   listProjects(): Promise<DesktopProjectSummary[]>;
   chooseProjectFolder(): Promise<string | null>;
@@ -86,6 +91,7 @@ export type DesktopBridgeApi = {
   removeProject(projectId: string): Promise<void>;
   createTaskCanvas(projectRoot: string, input?: { name?: string | null }): Promise<DesktopTaskCanvasSummary>;
   removeTaskCanvas(projectRoot: string, canvasId: string): Promise<DesktopTaskCanvasSummary[]>;
+  selectTaskCanvas(projectRoot: string, canvasId: string): Promise<string>;
   getProjectOverview(projectRoot: string): Promise<DesktopProjectSummary>;
   getCanvasGraphViewModel(projectRoot: string): Promise<DesktopCanvasGraphViewModel>;
   getCanvasMapLayout(projectRoot: string): Promise<DesktopCanvasMapLayout>;
@@ -115,13 +121,36 @@ export type DesktopBridgeApi = {
   removeBlock(ref: DesktopCanvasReference, blockRef: string): Promise<DesktopGraphEditResult>;
   validateGraphEdit(ref: DesktopCanvasReference, input: DesktopGraphEditValidationInput): Promise<DesktopGraphEditResult>;
   updateTaskTitle(ref: DesktopCanvasReference, taskId: string, title: string): Promise<DesktopGraphEditResult>;
-  updateTaskPrompt(ref: DesktopCanvasReference, taskId: string, markdown: string): Promise<DesktopGraphEditResult>;
+  updateTaskPrompt(ref: DesktopCanvasReference, taskId: string, markdown: string, options?: DesktopPromptSaveOptions): Promise<DesktopGraphEditResult>;
   updateBlockTitle(ref: DesktopCanvasReference, blockRef: string, title: string): Promise<DesktopGraphEditResult>;
-  updateBlockPrompt(ref: DesktopCanvasReference, blockRef: string, markdown: string): Promise<DesktopGraphEditResult>;
+  updateBlockPrompt(ref: DesktopCanvasReference, blockRef: string, markdown: string, options?: DesktopPromptSaveOptions): Promise<DesktopGraphEditResult>;
   updateTaskExecutor(ref: DesktopCanvasReference, taskId: string, executorName: string | null): Promise<DesktopGraphEditResult>;
   updateBlockExecutor(ref: DesktopCanvasReference, blockRef: string, executorName: string | null): Promise<DesktopGraphEditResult>;
-  addDependencyEdge(ref: DesktopCanvasReference, fromTaskId: string, toTaskId: string): Promise<DesktopGraphEditResult>;
-  removeDependencyEdge(ref: DesktopCanvasReference, fromTaskId: string, toTaskId: string): Promise<DesktopGraphEditResult>;
+  addDependencyEdge(
+    ref: DesktopCanvasReference,
+    fromTaskId: string,
+    toTaskId: string,
+    baseGraphVersion?: string,
+    layoutSnapshot?: DesktopLayout
+  ): Promise<DesktopGraphEditResult>;
+  removeDependencyEdge(
+    ref: DesktopCanvasReference,
+    fromTaskId: string,
+    toTaskId: string,
+    baseGraphVersion?: string,
+    layoutSnapshot?: DesktopLayout
+  ): Promise<DesktopGraphEditResult>;
+  reconnectDependencyEdge(
+    ref: DesktopCanvasReference,
+    fromTaskId: string,
+    oldToTaskId: string,
+    newFromTaskId: string,
+    newToTaskId: string,
+    baseGraphVersion?: string,
+    layoutSnapshot?: DesktopLayout
+  ): Promise<DesktopGraphEditResult>;
+  undoPlanGraphCommand(ref: DesktopCanvasReference): Promise<DesktopGraphEditResult>;
+  redoPlanGraphCommand(ref: DesktopCanvasReference): Promise<DesktopGraphEditResult>;
   getDesktopLayout(ref: DesktopCanvasReference): Promise<DesktopLayout>;
   saveDesktopLayout(ref: DesktopCanvasReference, layout: DesktopLayout): Promise<DesktopLayout>;
   resetDesktopLayout(ref: DesktopCanvasReference): Promise<DesktopLayout>;

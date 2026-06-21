@@ -44,6 +44,7 @@ export async function runTerminalAgentBlock(options: {
   executorName: string;
   profile: TerminalAgentProfile;
   tmuxEnabled?: boolean;
+  tmuxOwnerRunId?: string;
 }): Promise<ExecutorAdapterResult> {
   const run = await prepareBlockRun({
     projectRoot: options.projectRoot,
@@ -64,7 +65,14 @@ export async function runTerminalAgentBlock(options: {
   const prompt = reviewContract ? appendReviewResultFileInstruction(options.prompt, reviewContract) : options.prompt;
   const stdoutPath = join(run.runDir, "stdout.md");
   const stderrPath = join(run.runDir, "stderr.log");
-  const tmux = await createTmuxSessionInfo({ runDir: run.runDir, runId: run.runId, ref: options.claim.ref, kind: "block", enabled: options.tmuxEnabled });
+  const tmux = await createTmuxSessionInfo({
+    runDir: run.runDir,
+    runId: run.runId,
+    tmuxOwnerRunId: options.tmuxOwnerRunId,
+    ref: options.claim.ref,
+    kind: "block",
+    enabled: options.tmuxEnabled
+  });
   await finishRunMetadata(run.metadataPath, tmuxMetadataPatch(tmux));
   const result = await streamedResult({
     command: options.profile.command,
@@ -113,6 +121,7 @@ export async function runTerminalAgentFeedback(options: {
   executorName: string;
   profile: TerminalAgentProfile;
   tmuxEnabled?: boolean;
+  tmuxOwnerRunId?: string;
 }): Promise<ExecutorAdapterResult> {
   const runRoot = join(options.workspaceResultsDir, "feedback-runs");
   const runId = await nextRunId(runRoot);
@@ -120,7 +129,7 @@ export async function runTerminalAgentFeedback(options: {
   const metadataPath = join(runDir, "metadata.json");
   await mkdir(runDir, { recursive: true });
   await writeFile(join(runDir, "prompt.md"), options.claim.content, "utf8");
-  const tmux = await createTmuxSessionInfo({ runDir, runId, kind: "feedback", enabled: options.tmuxEnabled });
+  const tmux = await createTmuxSessionInfo({ runDir, runId, tmuxOwnerRunId: options.tmuxOwnerRunId, kind: "feedback", enabled: options.tmuxEnabled });
   await writeJsonFile(metadataPath, {
     runId,
     feedbackId: options.claim.feedbackId,

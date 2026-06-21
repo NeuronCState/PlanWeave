@@ -14,7 +14,8 @@ export const opencodeIntegration: ExecutorIntegration = {
       prompt: input.prompt,
       executorName: input.executorName,
       profile: input.profile,
-      tmuxEnabled: input.runtime?.tmuxEnabled
+      tmuxEnabled: input.runtime?.tmuxEnabled,
+      tmuxOwnerRunId: input.runtime?.tmuxOwnerRunId
     });
   },
   runFeedback(input: ExecutorFeedbackInput) {
@@ -28,7 +29,8 @@ export const opencodeIntegration: ExecutorIntegration = {
       claim: input.claim,
       executorName: input.executorName,
       profile: input.profile,
-      tmuxEnabled: input.runtime?.tmuxEnabled
+      tmuxEnabled: input.runtime?.tmuxEnabled,
+      tmuxOwnerRunId: input.runtime?.tmuxOwnerRunId
     });
   }
 };

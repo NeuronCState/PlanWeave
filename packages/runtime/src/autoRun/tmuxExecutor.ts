@@ -7,8 +7,14 @@ import { tmuxRunnerSource } from "./tmuxRunnerScript.js";
 
 export type TmuxSessionInfo = {
   sessionName: string;
+  tmuxOwnerRunId?: string;
   attachCommand: string;
   readOnlyAttachCommand: string;
+};
+
+type ActiveTmuxSessionRecord = {
+  sessionName: string;
+  tmuxOwnerRunId?: string;
 };
 
 type RunInTmuxOptions = {
@@ -31,7 +37,7 @@ type TmuxDone = {
 };
 
 let tmuxAvailable: boolean | null = null;
-const activeTmuxSessions = new Set<string>();
+const activeTmuxSessions = new Map<string, ActiveTmuxSessionRecord>();
 const runtimePathEntries = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
 
 function sleep(ms: number): Promise<void> {
@@ -72,7 +78,7 @@ async function hasTmuxSession(sessionName: string): Promise<boolean> {
 }
 
 export async function killActiveTmuxSessions(): Promise<string[]> {
-  const sessionNames = [...activeTmuxSessions];
+  const sessionNames = [...activeTmuxSessions.keys()];
   const killed: string[] = [];
   await Promise.all(
     sessionNames.map(async (sessionName) => {
@@ -80,6 +86,21 @@ export async function killActiveTmuxSessions(): Promise<string[]> {
       activeTmuxSessions.delete(sessionName);
       if (result.exitCode === 0) {
         killed.push(sessionName);
+      }
+    })
+  );
+  return killed;
+}
+
+export async function killTmuxSessionsForRun(runId: string): Promise<string[]> {
+  const records = [...activeTmuxSessions.values()].filter((record) => record.tmuxOwnerRunId === runId);
+  const killed: string[] = [];
+  await Promise.all(
+    records.map(async (record) => {
+      const result = await runCommand("tmux", ["kill-session", "-t", record.sessionName]);
+      activeTmuxSessions.delete(record.sessionName);
+      if (result.exitCode === 0) {
+        killed.push(record.sessionName);
       }
     })
   );
@@ -105,6 +126,7 @@ export async function isTmuxAvailable(): Promise<boolean> {
 export async function createTmuxSessionInfo(options: {
   runDir: string;
   runId: string;
+  tmuxOwnerRunId?: string;
   ref?: string;
   kind: "block" | "feedback";
   enabled?: boolean;
@@ -119,6 +141,7 @@ export async function createTmuxSessionInfo(options: {
   const name = `planweave-${label}-${safeRef(options.runId)}-${shortHash(options.runDir)}`.slice(0, 100);
   return {
     sessionName: name,
+    tmuxOwnerRunId: options.tmuxOwnerRunId,
     attachCommand: `tmux attach-session -t ${name}`,
     readOnlyAttachCommand: `tmux attach-session -r -t ${name}`
   };
@@ -225,7 +248,10 @@ ${shellQuote(process.execPath)} ${shellQuote(runnerPath)}
   if (started.exitCode !== 0) {
     throw new Error(started.stderr.trim() || `tmux failed to start session '${options.tmux.sessionName}'.`);
   }
-  activeTmuxSessions.add(options.tmux.sessionName);
+  activeTmuxSessions.set(options.tmux.sessionName, {
+    sessionName: options.tmux.sessionName,
+    tmuxOwnerRunId: options.tmux.tmuxOwnerRunId
+  });
 
   let stdoutOffset = 0;
   let stderrOffset = 0;

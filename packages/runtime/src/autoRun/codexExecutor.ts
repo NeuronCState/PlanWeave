@@ -42,6 +42,7 @@ export async function runCodexBlock(options: {
   executorName: string;
   profile: CodexExecExecutorProfile;
   tmuxEnabled?: boolean;
+  tmuxOwnerRunId?: string;
 }): Promise<ExecutorAdapterResult> {
   const run = await prepareBlockRun({
     projectRoot: options.projectRoot,
@@ -54,7 +55,14 @@ export async function runCodexBlock(options: {
   const args = codexExecArgs(options.profile);
   const stdoutPath = join(run.runDir, "stdout.md");
   const stderrPath = join(run.runDir, "stderr.log");
-  const tmux = await createTmuxSessionInfo({ runDir: run.runDir, runId: run.runId, ref: options.claim.ref, kind: "block", enabled: options.tmuxEnabled });
+  const tmux = await createTmuxSessionInfo({
+    runDir: run.runDir,
+    runId: run.runId,
+    tmuxOwnerRunId: options.tmuxOwnerRunId,
+    ref: options.claim.ref,
+    kind: "block",
+    enabled: options.tmuxEnabled
+  });
   await finishRunMetadata(run.metadataPath, tmuxMetadataPatch(tmux));
   let codexSessionId: string | null = null;
   const onSessionId = async (sessionId: string): Promise<void> => {
@@ -88,6 +96,7 @@ export async function runCodexBlock(options: {
     const resumeTmux = await createTmuxSessionInfo({
       runDir: join(run.runDir, "resume"),
       runId: `${run.runId}-resume`,
+      tmuxOwnerRunId: options.tmuxOwnerRunId,
       ref: options.claim.ref,
       kind: "block",
       enabled: options.tmuxEnabled
@@ -157,6 +166,7 @@ export async function runCodexFeedback(options: {
   executorName: string;
   profile: CodexExecExecutorProfile;
   tmuxEnabled?: boolean;
+  tmuxOwnerRunId?: string;
 }): Promise<ExecutorAdapterResult> {
   const runRoot = join(options.workspaceResultsDir, "feedback-runs");
   const runId = await nextRunId(runRoot);
@@ -166,7 +176,7 @@ export async function runCodexFeedback(options: {
   await mkdir(runDir, { recursive: true });
   await writeFile(join(runDir, "prompt.md"), options.claim.content, "utf8");
   const args = codexExecArgs(options.profile);
-  const tmux = await createTmuxSessionInfo({ runDir, runId, kind: "feedback", enabled: options.tmuxEnabled });
+  const tmux = await createTmuxSessionInfo({ runDir, runId, tmuxOwnerRunId: options.tmuxOwnerRunId, kind: "feedback", enabled: options.tmuxEnabled });
   await writeJsonFile(metadataPath, {
     runId,
     feedbackId: options.claim.feedbackId,

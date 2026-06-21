@@ -45,6 +45,7 @@ export async function runOpencodeBlock(options: {
   executorName: string;
   profile: OpencodeExecExecutorProfile;
   tmuxEnabled?: boolean;
+  tmuxOwnerRunId?: string;
 }): Promise<ExecutorAdapterResult> {
   const run = await prepareBlockRun({
     projectRoot: options.projectRoot,
@@ -63,7 +64,14 @@ export async function runOpencodeBlock(options: {
       })
     : options.prompt;
   const invocation = opencodeInvocation(options.profile, prompt, workspace.rootPath);
-  const tmux = await createTmuxSessionInfo({ runDir: run.runDir, runId: run.runId, ref: options.claim.ref, kind: "block", enabled: options.tmuxEnabled });
+  const tmux = await createTmuxSessionInfo({
+    runDir: run.runDir,
+    runId: run.runId,
+    tmuxOwnerRunId: options.tmuxOwnerRunId,
+    ref: options.claim.ref,
+    kind: "block",
+    enabled: options.tmuxEnabled
+  });
   await finishRunMetadata(run.metadataPath, tmuxMetadataPatch(tmux));
   let agentSessionId: string | null = null;
   const onSessionId = async (sessionId: string): Promise<void> => {
@@ -162,6 +170,7 @@ export async function runOpencodeFeedback(options: {
   executorName: string;
   profile: OpencodeExecExecutorProfile;
   tmuxEnabled?: boolean;
+  tmuxOwnerRunId?: string;
 }): Promise<ExecutorAdapterResult> {
   const runRoot = join(options.workspaceResultsDir, "feedback-runs");
   const runId = await nextRunId(runRoot);
@@ -171,7 +180,7 @@ export async function runOpencodeFeedback(options: {
   await mkdir(runDir, { recursive: true });
   await writeFile(join(runDir, "prompt.md"), options.claim.content, "utf8");
   const invocation = opencodeInvocation(options.profile, options.claim.content, options.projectRoot);
-  const tmux = await createTmuxSessionInfo({ runDir, runId, kind: "feedback", enabled: options.tmuxEnabled });
+  const tmux = await createTmuxSessionInfo({ runDir, runId, tmuxOwnerRunId: options.tmuxOwnerRunId, kind: "feedback", enabled: options.tmuxEnabled });
   await writeJsonFile(metadataPath, {
     runId,
     feedbackId: options.claim.feedbackId,

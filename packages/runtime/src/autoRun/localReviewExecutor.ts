@@ -14,6 +14,7 @@ export async function runLocalReviewBlock(options: {
   executorName: string;
   profile: LocalReviewExecutorProfile;
   tmuxEnabled?: boolean;
+  tmuxOwnerRunId?: string;
 }): Promise<ExecutorAdapterResult> {
   if (options.claim.blockType !== "review") {
     throw new Error(`Executor '${options.executorName}' uses local-review and can only run review blocks.`);
@@ -29,7 +30,14 @@ export async function runLocalReviewBlock(options: {
   const { blockId } = parseBlockRef(options.claim.ref);
   const stdoutPath = join(run.runDir, "stdout.md");
   const stderrPath = join(run.runDir, "stderr.log");
-  const tmux = await createTmuxSessionInfo({ runDir: run.runDir, runId: run.runId, ref: options.claim.ref, kind: "block", enabled: options.tmuxEnabled });
+  const tmux = await createTmuxSessionInfo({
+    runDir: run.runDir,
+    runId: run.runId,
+    tmuxOwnerRunId: options.tmuxOwnerRunId,
+    ref: options.claim.ref,
+    kind: "block",
+    enabled: options.tmuxEnabled
+  });
   await finishRunMetadata(run.metadataPath, tmuxMetadataPatch(tmux));
   const streamed = await execWithStreaming({
     command: options.profile.command,
@@ -86,6 +94,7 @@ export async function runLocalReviewFeedback(options: {
   executorName: string;
   profile: LocalReviewExecutorProfile;
   tmuxEnabled?: boolean;
+  tmuxOwnerRunId?: string;
 }): Promise<ExecutorAdapterResult> {
   const runRoot = join(options.workspaceResultsDir, "feedback-runs");
   const runId = await nextRunId(runRoot);
@@ -96,7 +105,7 @@ export async function runLocalReviewFeedback(options: {
   const startedAt = new Date().toISOString();
   await mkdir(runDir, { recursive: true });
   await writeFile(join(runDir, "prompt.md"), options.claim.content, "utf8");
-  const tmux = await createTmuxSessionInfo({ runDir, runId, kind: "feedback", enabled: options.tmuxEnabled });
+  const tmux = await createTmuxSessionInfo({ runDir, runId, tmuxOwnerRunId: options.tmuxOwnerRunId, kind: "feedback", enabled: options.tmuxEnabled });
   await writeJsonFile(metadataPath, {
     runId,
     feedbackId: options.claim.feedbackId,

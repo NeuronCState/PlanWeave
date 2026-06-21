@@ -3,6 +3,7 @@ import type { BlockClaim, FeedbackClaim } from "./executorShared.js";
 
 export type ExecutorRuntimeOptions = {
   tmuxEnabled?: boolean;
+  tmuxOwnerRunId?: string;
 };
 
 export type ExecutorBlockInput = {

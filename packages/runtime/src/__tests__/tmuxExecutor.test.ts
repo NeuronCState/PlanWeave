@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { createTmuxSessionInfo, isTmuxAvailable, killActiveTmuxSessions, runCommandInTmux } from "../autoRun/tmuxExecutor.js";
+import { createTmuxSessionInfo, isTmuxAvailable, killActiveTmuxSessions, killTmuxSessionsForRun, runCommandInTmux } from "../autoRun/tmuxExecutor.js";
 
 let tempDirs: string[] = [];
 
@@ -92,5 +92,59 @@ describe("tmux executor", () => {
     await new Promise((resolve) => setTimeout(resolve, 250));
     await expect(killActiveTmuxSessions()).resolves.toContain(tmux!.sessionName);
     await expect(running).resolves.toMatchObject({ exitCode: 130, timedOut: false });
+  });
+
+  it("kills only active tmux sessions owned by the requested run", async () => {
+    if (!(await isTmuxAvailable())) {
+      return;
+    }
+    const runADir = await mkdtemp(join(tmpdir(), "planweave-tmux-owner-a-"));
+    const runBDir = await mkdtemp(join(tmpdir(), "planweave-tmux-owner-b-"));
+    tempDirs.push(runADir, runBDir);
+    const runATmux = await createTmuxSessionInfo({
+      runDir: runADir,
+      runId: "RUN-A",
+      tmuxOwnerRunId: "AUTO-RUN-A",
+      ref: "T-001#B-001",
+      kind: "block"
+    });
+    const runBTmux = await createTmuxSessionInfo({
+      runDir: runBDir,
+      runId: "RUN-B",
+      tmuxOwnerRunId: "AUTO-RUN-B",
+      ref: "T-001#B-002",
+      kind: "block"
+    });
+
+    const runA = runCommandInTmux({
+      command: process.execPath,
+      args: ["-e", "setInterval(() => process.stdout.write('a\\n'), 100);"],
+      cwd: runADir,
+      stdin: "",
+      stdoutPath: join(runADir, "stdout.md"),
+      stderrPath: join(runADir, "stderr.log"),
+      timeoutMs: 10000,
+      tmux: runATmux!,
+      onStdout: () => undefined,
+      onStderr: () => undefined
+    });
+    const runB = runCommandInTmux({
+      command: process.execPath,
+      args: ["-e", "setInterval(() => process.stdout.write('b\\n'), 100);"],
+      cwd: runBDir,
+      stdin: "",
+      stdoutPath: join(runBDir, "stdout.md"),
+      stderrPath: join(runBDir, "stderr.log"),
+      timeoutMs: 10000,
+      tmux: runBTmux!,
+      onStdout: () => undefined,
+      onStderr: () => undefined
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await expect(killTmuxSessionsForRun("AUTO-RUN-A")).resolves.toEqual([runATmux!.sessionName]);
+    await expect(runA).resolves.toMatchObject({ exitCode: 130, timedOut: false });
+    await expect(killActiveTmuxSessions()).resolves.toContain(runBTmux!.sessionName);
+    await expect(runB).resolves.toMatchObject({ exitCode: 130, timedOut: false });
   });
 });

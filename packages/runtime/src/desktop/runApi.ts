@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { killActiveTmuxSessions } from "../autoRun/tmuxExecutor.js";
+import { killTmuxSessionsForRun } from "../autoRun/tmuxExecutor.js";
 import { createAutoRunExplanation, runAutoRunStep } from "../taskManager/autoRun.js";
 import { resetMaxCycleReviewsForRetry } from "../taskManager/reviewRetry.js";
 import { loadPackage } from "../package/loadPackage.js";
@@ -109,7 +109,8 @@ async function runLoop(runId: string): Promise<void> {
           projectRoot: workspace,
           parallel: manifest.execution.parallel.enabled,
           scope: claimScope(current.scope),
-          tmuxEnabled: current.options.tmuxEnabled
+          tmuxEnabled: current.options.tmuxEnabled,
+          tmuxOwnerRunId: runId
         });
         invalidateDesktopProjectProjection(current.projectRoot);
         const { record, warnings } = await latestStatus(workspace);
@@ -264,7 +265,7 @@ export async function stopAutoRun(runId: string): Promise<DesktopAutoRunState> {
   if (!current) {
     throw new Error(`Auto Run '${runId}' does not exist.`);
   }
-  const killed = current.phase === "running" || current.phase === "pausing" ? await killActiveTmuxSessions() : [];
+  const killed = current.phase === "running" || current.phase === "pausing" ? await killTmuxSessionsForRun(runId) : [];
   const stopped = await setState(runId, { phase: "stopped" }, "run_stopped", { killedTmuxSessions: killed });
   runWorkspaces.delete(runId);
   return cloneAutoRunState(stopped);

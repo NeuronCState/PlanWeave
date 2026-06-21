@@ -398,6 +398,7 @@ export async function runAutoRunStep(options: {
   executor?: ExecutorAdapter;
   executorName?: string;
   tmuxEnabled?: boolean;
+  tmuxOwnerRunId?: string;
   parallel?: boolean;
   scope?: ClaimScope;
   session?: ExecutionGraphSession;
@@ -418,7 +419,7 @@ export async function runAutoRunStep(options: {
       createExecutorAdapter({
         projectRoot: options.projectRoot,
         executorName: options.executorName,
-        runtime: { tmuxEnabled: options.tmuxEnabled }
+        runtime: { tmuxEnabled: options.tmuxEnabled, tmuxOwnerRunId: options.tmuxOwnerRunId }
       });
     const steps: SubmittedOrManualStep[] = [];
     for (const ref of claim.refs) {
@@ -442,7 +443,7 @@ export async function runAutoRunStep(options: {
     createExecutorAdapter({
       projectRoot: options.projectRoot,
       executorName: options.executorName,
-      runtime: { tmuxEnabled: options.tmuxEnabled }
+      runtime: { tmuxEnabled: options.tmuxEnabled, tmuxOwnerRunId: options.tmuxOwnerRunId }
     });
   if (claim.kind === "feedback") {
     let adapterResult: Awaited<ReturnType<ExecutorAdapter["runFeedback"]>>;

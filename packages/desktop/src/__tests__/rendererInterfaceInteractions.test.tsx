@@ -91,6 +91,8 @@ const project: DesktopProjectSummary = {
 const graph: DesktopGraphViewModel = {
   projectId: project.projectId,
   projectTitle: project.name,
+  graphVersion: "pgv-test",
+  packageFingerprint: "pkg-test",
   executorOptions: ["codex"],
   tasks: [
     {

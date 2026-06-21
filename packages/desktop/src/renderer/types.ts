@@ -57,6 +57,8 @@ export type TaskNodeData = {
   onExecutorChange: (taskId: string, executorName: string | null) => void;
   onPromptChange: (taskId: string, value: string) => void;
   onPromptSave: (taskId: string) => void;
+  onPromptHistoryRedo: () => Promise<void>;
+  onPromptHistoryUndo: () => Promise<void>;
   onBlockSelect: (ref: string) => void;
   onOverflowBlockSelect: (ref: string) => void;
   onTaskDelete: (taskId: string) => void;
@@ -153,4 +155,5 @@ export type NotificationItem = {
   detail: string;
   tone: "destructive" | "secondary" | "outline";
   read: boolean;
+  kind?: "fileSync" | "promptConflict" | "default";
 };

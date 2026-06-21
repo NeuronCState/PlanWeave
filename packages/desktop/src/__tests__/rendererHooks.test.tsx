@@ -2,6 +2,7 @@
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type {
+  DesktopBlockDetail,
   DesktopGraphViewModel,
   DesktopLayout,
   DesktopProjectSnapshot,
@@ -12,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDesktopBridgeMock } from "./desktopBridgeMock";
 import { createTranslator } from "../renderer/i18n";
 import { useVisibleGraphTasks } from "../renderer/hooks/useVisibleGraphTasks";
-import type { DesktopUiSettings } from "../renderer/types";
+import type { AppFlowNode, DesktopUiSettings } from "../renderer/types";
 
 const project: DesktopProjectSummary = {
   projectId: "P-001",
@@ -34,6 +35,8 @@ const project: DesktopProjectSummary = {
 const graph: DesktopGraphViewModel = {
   projectId: project.projectId,
   projectTitle: project.name,
+  graphVersion: "pgv-test",
+  packageFingerprint: "pkg-test",
   executorOptions: ["codex"],
   tasks: [
     {
@@ -174,6 +177,43 @@ describe("desktop renderer hook interfaces", () => {
     expect(bridge.getTodoGroups).not.toHaveBeenCalled();
     expect(bridge.watchPackageFiles).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
     expect(updateSettings).toHaveBeenCalledWith({ runtimePath: project.workspaceRoot });
+  });
+
+  it("refreshes graph and layout together for same-canvas history updates", async () => {
+    const nextLayout: DesktopLayout = {
+      ...layout,
+      nodes: [{ nodeId: "T-ALPHA", x: 320, y: 160 }]
+    };
+    const bridge = createDesktopBridgeMock({
+      listProjects: vi.fn().mockResolvedValue([project]),
+      getDesktopProjectSnapshot: vi.fn().mockResolvedValue(projectSnapshot()),
+      refreshPackageFileChanges: vi.fn().mockResolvedValue({ diagnostics: [], dirtyPromptRefs: [] }),
+      watchPackageFiles: vi.fn().mockResolvedValue(undefined),
+      getGraphViewModel: vi.fn().mockResolvedValue(graph),
+      getDesktopLayout: vi.fn().mockResolvedValue(nextLayout)
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
+
+    const { result } = renderHook(() =>
+      useDesktopProject({
+        setError: vi.fn(),
+        t: createTranslator("en"),
+        updateSettings: vi.fn()
+      })
+    );
+
+    await waitFor(() => expect(result.current.graph?.tasks.map((task) => task.taskId)).toEqual(["T-ALPHA", "T-BETA"]));
+    await waitFor(() => expect(result.current.layout?.nodes).toEqual([]));
+    await waitFor(() => expect(result.current.projectLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.refreshGraphAndLayout();
+    });
+
+    expect(bridge.getGraphViewModel).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
+    expect(bridge.getDesktopLayout).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
   });
 
   it("keeps startup in a loading state until the default project snapshot is ready", async () => {
@@ -612,6 +652,348 @@ describe("desktop renderer hook interfaces", () => {
     expect(reloadCurrentCanvas).not.toHaveBeenCalled();
     expect(setFileSyncDiagnostics).toHaveBeenCalledWith([]);
     expect(setDirtyPromptRefs).toHaveBeenLastCalledWith(["tasks/T-ALPHA/prompt.md"]);
+  });
+
+  it("uses the latest graphVersion when deleting dependency edges after a graph refresh", async () => {
+    const bridge = createDesktopBridgeMock({
+      removeDependencyEdge: vi.fn().mockResolvedValue({ ok: true, diagnostics: [] })
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useGraphPaletteActions } = await import("../renderer/hooks/useGraphPaletteActions");
+    const visibleNodes = [
+      { id: "T-ALPHA", position: { x: 120, y: 80 } },
+      { id: "T-BETA", position: { x: 580, y: 80 } }
+    ] as AppFlowNode[];
+    const baseArgs = {
+      flowInstance: null,
+      layout: null,
+      loadProject: vi.fn().mockResolvedValue(undefined),
+      nodes: visibleNodes,
+      refreshGraph: vi.fn().mockResolvedValue(undefined),
+      selectedCanvasId: "canvas-main",
+      selectedBlock: null,
+      selectedProject: project,
+      selectedTaskPanelId: null,
+      setError: vi.fn(),
+      setLayout: vi.fn(),
+      setNewTaskTargetId: vi.fn(),
+      selectTaskPanel: vi.fn(),
+      settings: {
+        defaultExecutor: "",
+        palette: { defaultBlockSet: ["implementation"], dragHint: true, visible: { task: true, implementation: true, review: true } }
+      } as unknown as DesktopUiSettings,
+      t: createTranslator("en")
+    };
+    const { result, rerender } = renderHook(({ currentGraph }) => useGraphPaletteActions({ ...baseArgs, graph: currentGraph }), {
+      initialProps: { currentGraph: { ...graph, graphVersion: "pgv-before" } }
+    });
+
+    rerender({ currentGraph: { ...graph, graphVersion: "pgv-after" } });
+    await act(async () => {
+      await result.current.handleEdgesDelete([
+        {
+          id: "T-ALPHA->T-BETA",
+          source: "T-BETA",
+          target: "T-ALPHA",
+          data: { manifestEdgeType: "depends_on", manifestFrom: "T-ALPHA", manifestTo: "T-BETA" }
+        } as never
+      ]);
+    });
+
+    expect(bridge.removeDependencyEdge).toHaveBeenCalledWith(
+      { projectRoot: project.rootPath, canvasId: "canvas-main" },
+      "T-ALPHA",
+      "T-BETA",
+      "pgv-after",
+      {
+        version: "desktop-layout/v1",
+        projectId: graph.projectId,
+        nodes: [
+          { nodeId: "T-ALPHA", x: 120, y: 80 },
+          { nodeId: "T-BETA", x: 580, y: 80 }
+        ],
+        updatedAt: new Date(0).toISOString()
+      }
+    );
+  });
+
+  it("adds dropped tasks with their initial layout in a single graph edit", async () => {
+    const addTaskNode = vi.fn().mockResolvedValue({ ok: true, affectedTasks: ["T-NEW"], diagnostics: [] });
+    const bridge = createDesktopBridgeMock({
+      addTaskNode,
+      getDesktopLayout: vi.fn().mockResolvedValue(layout),
+      getGraphViewModel: vi.fn().mockResolvedValue(graph),
+      saveDesktopLayout: vi.fn().mockResolvedValue(layout)
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useGraphPaletteActions } = await import("../renderer/hooks/useGraphPaletteActions");
+    const loadProject = vi.fn().mockResolvedValue(undefined);
+    const selectTaskPanel = vi.fn();
+    const setNewTaskTargetId = vi.fn();
+    const { result } = renderHook(() =>
+      useGraphPaletteActions({
+        flowInstance: null,
+        graph,
+        layout,
+        loadProject,
+        nodes: [],
+        refreshGraph: vi.fn().mockResolvedValue(undefined),
+        selectedCanvasId: "canvas-main",
+        selectedBlock: null,
+        selectedProject: project,
+        selectedTaskPanelId: null,
+        setError: vi.fn(),
+        setLayout: vi.fn(),
+        setNewTaskTargetId,
+        selectTaskPanel,
+        settings: {
+          defaultExecutor: "",
+          palette: { defaultBlockSet: ["implementation"], dragHint: true, visible: { task: true, implementation: true, review: true } }
+        } as unknown as DesktopUiSettings,
+        t: createTranslator("en")
+      })
+    );
+
+    await act(async () => {
+      await result.current.addPaletteComponent("task", { x: 42, y: 64 });
+    });
+
+    expect(addTaskNode).toHaveBeenCalledWith(
+      { projectRoot: project.rootPath, canvasId: "canvas-main" },
+      expect.objectContaining({ layoutPosition: { x: 42, y: 64 } })
+    );
+    expect(bridge.saveDesktopLayout).not.toHaveBeenCalled();
+    expect(loadProject).toHaveBeenCalledWith(project, "canvas-main");
+    expect(selectTaskPanel).toHaveBeenCalledWith("T-NEW");
+    expect(setNewTaskTargetId).toHaveBeenCalledWith("T-NEW");
+  });
+
+  it("stops prompt autosave when a dirty draft conflicts with an external prompt change", async () => {
+    vi.useFakeTimers();
+    const bridge = createDesktopBridgeMock({
+      updateTaskPrompt: vi.fn().mockResolvedValue({ ok: true, diagnostics: [] })
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { usePromptDrafts } = await import("../renderer/hooks/usePromptDrafts");
+    const baseGraph = {
+      ...graph,
+      graphVersion: "pgv-before",
+      tasks: graph.tasks.map((task) => task.taskId === "T-ALPHA" ? { ...task, promptHash: "hash-before" } : task)
+    };
+    const changedGraph = {
+      ...baseGraph,
+      graphVersion: "pgv-after",
+      tasks: baseGraph.tasks.map((task) =>
+        task.taskId === "T-ALPHA" ? { ...task, promptMarkdown: "# Remote alpha", promptHash: "hash-after" } : task
+      )
+    };
+    const { result, rerender } = renderHook(({ currentGraph }) =>
+      usePromptDrafts({
+        graph: currentGraph,
+        refreshGraph: vi.fn().mockResolvedValue(undefined),
+        selectedCanvasId: "canvas-main",
+        selectedProject: project,
+        setError: vi.fn()
+      }), {
+        initialProps: { currentGraph: baseGraph }
+      }
+    );
+
+    act(() => {
+      result.current.handlePromptChange("T-ALPHA", "# Local alpha");
+    });
+    await act(async () => {
+      rerender({ currentGraph: changedGraph });
+      await Promise.resolve();
+    });
+    expect(result.current.promptConflicts.map((conflict) => conflict.taskId)).toEqual(["T-ALPHA"]);
+    act(() => {
+      vi.advanceTimersByTime(900);
+    });
+
+    expect(bridge.updateTaskPrompt).not.toHaveBeenCalled();
+  });
+
+  it("does not report a prompt conflict after a local prompt save succeeds", async () => {
+    const bridge = createDesktopBridgeMock({
+      updateTaskPrompt: vi.fn().mockResolvedValue({ ok: true, graphVersion: "pgv-saved", diagnostics: [] })
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { usePromptDrafts } = await import("../renderer/hooks/usePromptDrafts");
+    const baseGraph = {
+      ...graph,
+      graphVersion: "pgv-before",
+      tasks: graph.tasks.map((task) => task.taskId === "T-ALPHA" ? { ...task, promptHash: "hash-before" } : task)
+    };
+    const savedGraph = {
+      ...baseGraph,
+      graphVersion: "pgv-saved",
+      tasks: baseGraph.tasks.map((task) =>
+        task.taskId === "T-ALPHA" ? { ...task, promptMarkdown: "# Local alpha", promptHash: "hash-saved" } : task
+      )
+    };
+    const { result, rerender } = renderHook(({ currentGraph }) =>
+      usePromptDrafts({
+        graph: currentGraph,
+        refreshGraph: vi.fn().mockResolvedValue(undefined),
+        selectedCanvasId: "canvas-main",
+        selectedProject: project,
+        setError: vi.fn()
+      }), {
+        initialProps: { currentGraph: baseGraph }
+      }
+    );
+
+    act(() => {
+      result.current.handlePromptChange("T-ALPHA", "# Local alpha");
+    });
+    await act(async () => {
+      await result.current.handlePromptSave("T-ALPHA");
+    });
+    await act(async () => {
+      rerender({ currentGraph: savedGraph });
+      await Promise.resolve();
+    });
+
+    expect(result.current.promptConflicts).toEqual([]);
+  });
+
+  it("syncs clean task prompt and title drafts after graph history undo", async () => {
+    const bridge = createDesktopBridgeMock({
+      updateTaskPrompt: vi.fn().mockResolvedValue({ ok: true, graphVersion: "pgv-saved", diagnostics: [] }),
+      updateTaskTitle: vi.fn().mockResolvedValue({ ok: true, graphVersion: "pgv-title-saved", diagnostics: [] })
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { usePromptDrafts } = await import("../renderer/hooks/usePromptDrafts");
+    const baseGraph = {
+      ...graph,
+      graphVersion: "pgv-before",
+      tasks: graph.tasks.map((task) => task.taskId === "T-ALPHA" ? { ...task, promptHash: "hash-before" } : task)
+    };
+    const savedGraph = {
+      ...baseGraph,
+      graphVersion: "pgv-saved",
+      tasks: baseGraph.tasks.map((task) =>
+        task.taskId === "T-ALPHA"
+          ? { ...task, title: "Saved title", promptMarkdown: "# Local alpha", promptHash: "hash-saved" }
+          : task
+      )
+    };
+    const undoneGraph = {
+      ...baseGraph,
+      graphVersion: "pgv-undone",
+      tasks: baseGraph.tasks.map((task) =>
+        task.taskId === "T-ALPHA"
+          ? { ...task, title: "Alpha task", promptMarkdown: "# Alpha", promptHash: "hash-before" }
+          : task
+      )
+    };
+    const { result, rerender } = renderHook(({ currentGraph }) =>
+      usePromptDrafts({
+        graph: currentGraph,
+        refreshGraph: vi.fn().mockResolvedValue(undefined),
+        selectedCanvasId: "canvas-main",
+        selectedProject: project,
+        setError: vi.fn()
+      }), {
+        initialProps: { currentGraph: baseGraph }
+      }
+    );
+
+    act(() => {
+      result.current.handlePromptChange("T-ALPHA", "# Local alpha");
+      result.current.handleTitleChange("T-ALPHA", "Saved title");
+    });
+    await act(async () => {
+      await result.current.handlePromptSave("T-ALPHA");
+      await result.current.handleTitleSave("T-ALPHA");
+    });
+    await act(async () => {
+      rerender({ currentGraph: savedGraph });
+      await Promise.resolve();
+    });
+    expect(result.current.promptDrafts["T-ALPHA"]).toBe("# Local alpha");
+    expect(result.current.titleDrafts["T-ALPHA"]).toBe("Saved title");
+
+    await act(async () => {
+      rerender({ currentGraph: undoneGraph });
+      await Promise.resolve();
+    });
+
+    expect(result.current.promptDrafts["T-ALPHA"]).toBe("# Alpha");
+    expect(result.current.titleDrafts["T-ALPHA"]).toBe("Alpha task");
+    expect(result.current.promptConflicts).toEqual([]);
+  });
+
+  it("refreshes the selected block prompt base after saving a block prompt", async () => {
+    const blockBefore: DesktopBlockDetail = {
+      ref: "T-ALPHA#B-001",
+      graphVersion: "pgv-before",
+      taskId: "T-ALPHA",
+      blockId: "B-001",
+      type: "implementation",
+      title: "Block",
+      status: "ready",
+      executor: null,
+      effectiveExecutor: null,
+      promptMarkdown: "# Local block",
+      promptHash: "hash-before",
+      promptMissing: false,
+      promptSurfaceMarkdown: "# Local block",
+      promptSources: [],
+      dependencies: [],
+      latestRunId: null,
+      latestReviewAttemptId: null,
+      activeFeedbackId: null,
+      exceptionReason: null,
+      reviewGate: null
+    };
+    const blockAfter: DesktopBlockDetail = {
+      ...blockBefore,
+      graphVersion: "pgv-after",
+      promptHash: "hash-after"
+    };
+    const bridge = createDesktopBridgeMock({
+      updateBlockPrompt: vi.fn().mockResolvedValue({ ok: true, graphVersion: "pgv-after", diagnostics: [] }),
+      getBlockDetail: vi.fn().mockResolvedValue(blockAfter)
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useSelectedBlock } = await import("../renderer/hooks/useSelectedBlock");
+    const refreshGraph = vi.fn().mockResolvedValue(undefined);
+
+    const { result } = renderHook(() =>
+      useSelectedBlock({
+        refreshGraph,
+        selectedCanvasId: "canvas-main",
+        selectedProject: project,
+        setActiveView: vi.fn(),
+        setError: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.setSelectedBlock(blockBefore);
+    });
+    await act(async () => {
+      await result.current.saveSelectedBlockPrompt();
+    });
+
+    expect(bridge.updateBlockPrompt).toHaveBeenCalledWith(
+      { projectRoot: project.rootPath, canvasId: "canvas-main" },
+      "T-ALPHA#B-001",
+      "# Local block",
+      { baseGraphVersion: "pgv-before", basePromptHash: "hash-before" }
+    );
+    expect(bridge.getBlockDetail).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" }, "T-ALPHA#B-001");
+    expect(result.current.selectedBlock?.graphVersion).toBe("pgv-after");
+    expect(result.current.selectedBlock?.promptHash).toBe("hash-after");
+    expect(refreshGraph).toHaveBeenCalledTimes(1);
   });
 
   it("reloads the current canvas for package changes that require a full refresh", async () => {

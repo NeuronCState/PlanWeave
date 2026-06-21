@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { type Edge, type ReactFlowInstance, useEdgesState, useNodesState } from "@xyflow/react";
 import type { DesktopPackageFileChangeEvent } from "@planweave-ai/runtime";
-import { bridge } from "./bridge";
+import { bridge, desktopCanvasReference } from "./bridge";
 import { nodeTypes } from "./graph/flowModel";
 import { createTranslator } from "./i18n";
 import { ProjectSidebar } from "./sidebar/ProjectSidebar";
@@ -114,6 +114,7 @@ export function App() {
     projectPromptMarkdown,
     projectPromptPolicy,
     refreshGraph,
+    refreshGraphAndLayout,
     removeProject,
     selectedCanvasId,
     selectedProject,
@@ -280,11 +281,15 @@ export function App() {
   } = useReviewPipeline({ graph, reloadCurrentCanvas, selectedCanvasId, selectedProject, setError, t });
 
   const {
+    applyLocalPromptConflicts,
     handlePromptChange,
     handlePromptSave,
     handleTitleChange,
     handleTitleSave,
+    keepLocalPromptConflicts,
     promptDrafts,
+    promptConflicts,
+    reloadPromptConflicts,
     saveStates,
     titleDrafts
   } = usePromptDrafts({ graph, refreshGraph, selectedCanvasId, selectedProject, setError });
@@ -310,6 +315,47 @@ export function App() {
     setError,
     t
   });
+
+  const handleUndoGraph = useCallback(async () => {
+    if (!bridge || !selectedProject) {
+      return;
+    }
+    try {
+      const result = await bridge.undoPlanGraphCommand(desktopCanvasReference(selectedProject, selectedCanvasId));
+      if (!result.ok) {
+        setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
+        return;
+      }
+      const overview = await bridge.getProjectOverview(selectedProject.rootPath);
+      if ((overview.activeCanvasId ?? null) !== selectedCanvasId) {
+        await openProjectInSession(overview, overview.activeCanvasId, { recordCanvasSelection: false });
+        return;
+      }
+      await refreshGraphAndLayout();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [openProjectInSession, refreshGraphAndLayout, selectedCanvasId, selectedProject, setError]);
+  const handleRedoGraph = useCallback(async () => {
+    if (!bridge || !selectedProject) {
+      return;
+    }
+    try {
+      const result = await bridge.redoPlanGraphCommand(desktopCanvasReference(selectedProject, selectedCanvasId));
+      if (!result.ok) {
+        setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
+        return;
+      }
+      const overview = await bridge.getProjectOverview(selectedProject.rootPath);
+      if ((overview.activeCanvasId ?? null) !== selectedCanvasId) {
+        await openProjectInSession(overview, overview.activeCanvasId, { recordCanvasSelection: false });
+        return;
+      }
+      await refreshGraphAndLayout();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [openProjectInSession, refreshGraphAndLayout, selectedCanvasId, selectedProject, setError]);
 
   useGraphFlowModel({
     blockActions: {
@@ -346,6 +392,8 @@ export function App() {
       handleOpenRunRecord,
       handleOpenTaskInspector,
       handlePromptChange,
+      handlePromptHistoryRedo: handleRedoGraph,
+      handlePromptHistoryUndo: handleUndoGraph,
       handlePromptSave,
       handleTaskExecutorChange,
       handleTitleChange,
@@ -358,6 +406,7 @@ export function App() {
     addPaletteComponent,
     handleConnect,
     handleEdgesDelete,
+    handleReconnectEdge,
     handleGraphDragOver,
     handleGraphDrop,
     handleNodeDragStop,
@@ -399,6 +448,7 @@ export function App() {
     fileSyncDiagnostics,
     graph,
     lastFileChange,
+    promptConflicts,
     settings,
     t
   });
@@ -488,12 +538,15 @@ export function App() {
           handleOpenBlockInspector={handleOpenBlockInspector}
           handleConnect={handleConnect}
           handleEdgesDelete={handleEdgesDelete}
+          handleReconnectEdge={handleReconnectEdge}
           handleGraphDragOver={handleGraphDragOver}
           handleGraphDrop={handleGraphDrop}
           handleOpenProject={handleOpenProject}
           handleOpenRunRecord={handleOpenRunRecord}
+          handleRedoGraph={handleRedoGraph}
           handleRevealPathInFinder={handleRevealPathInFinder}
           handleSearchResultOpen={handleSearchResultOpen}
+          handleUndoGraph={handleUndoGraph}
           language={language}
           loadProject={openProjectInSession}
           miniRunPanelOpen={miniRunPanelOpen}
@@ -505,8 +558,11 @@ export function App() {
           nodeTypes={nodeTypes}
           nodes={nodes}
           notificationItems={notificationItems}
+          onApplyLocalPromptConflicts={applyLocalPromptConflicts}
+          onKeepLocalPromptConflicts={keepLocalPromptConflicts}
           projectLoading={projectLoading}
           onMarkNotificationRead={handleMarkNotificationRead}
+          onReloadPromptConflicts={reloadPromptConflicts}
           onEdgesChange={onEdgesChange}
           onNodeDragStop={handleNodeDragStop}
           onNodesChange={onNodesChange}

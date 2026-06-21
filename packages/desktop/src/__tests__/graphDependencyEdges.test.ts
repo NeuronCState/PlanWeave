@@ -50,6 +50,8 @@ describe("desktop graph dependency edge direction", () => {
     const graph: DesktopGraphViewModel = {
       projectId: "P-001",
       projectTitle: "Execution flow",
+      graphVersion: "pgv-test",
+      packageFingerprint: "pkg-test",
       executorOptions: [],
       tasks: [
         task("T-001", "Dependent task", "planned"),

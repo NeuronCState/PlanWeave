@@ -1,5 +1,6 @@
 import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopPackageFileChangeEvent } from "@planweave-ai/runtime";
 import type { createTranslator } from "./i18n";
+import type { PromptConflictRef } from "./hooks/usePromptDrafts";
 import type { DesktopUiSettings, NotificationItem } from "./types";
 
 export function buildNotificationItems({
@@ -8,6 +9,7 @@ export function buildNotificationItems({
   fileSyncDiagnostics,
   graph,
   lastFileChange,
+  promptConflicts,
   settings,
   t
 }: {
@@ -16,6 +18,7 @@ export function buildNotificationItems({
   fileSyncDiagnostics: string[];
   graph: DesktopGraphViewModel | null;
   lastFileChange: DesktopPackageFileChangeEvent | null;
+  promptConflicts: PromptConflictRef[];
   settings: DesktopUiSettings;
   t: ReturnType<typeof createTranslator>;
 }): NotificationItem[] {
@@ -40,12 +43,21 @@ export function buildNotificationItems({
     }
   }
   if (settings.notifications.fileSyncConflict) {
+    for (const conflict of promptConflicts) {
+      notificationItems.push({
+        id: `prompt-conflict:${conflict.taskId}`,
+        title: `${t("fileSyncConflict")} · ${conflict.title}`,
+        detail: conflict.taskId,
+        tone: "destructive",
+        kind: "promptConflict"
+      });
+    }
     if (lastFileChange) {
       const detail = lastFileChange.paths.join(", ");
-      notificationItems.push({ id: `file-change:${detail}`, title: t("fileChangesDetected"), detail, tone: "outline" });
+      notificationItems.push({ id: `file-change:${detail}`, title: t("fileChangesDetected"), detail, tone: "outline", kind: "fileSync" });
     }
     for (const diagnostic of fileSyncDiagnostics) {
-      notificationItems.push({ id: `sync-${diagnostic}`, title: t("fileSyncConflict"), detail: diagnostic, tone: "destructive" });
+      notificationItems.push({ id: `sync-${diagnostic}`, title: t("fileSyncConflict"), detail: diagnostic, tone: "destructive", kind: "fileSync" });
     }
   }
   return notificationItems.map((item) => ({ ...item, read: readNotificationIds.has(item.id) }));

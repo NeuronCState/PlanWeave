@@ -61,6 +61,8 @@ describe("desktop renderer component interactions", () => {
     const graph: DesktopGraphViewModel = {
       projectId: project.projectId,
       projectTitle: project.name,
+      graphVersion: "pgv-test",
+      packageFingerprint: "pkg-test",
       executorOptions: ["manual"],
       tasks: [
         {
@@ -397,6 +399,8 @@ describe("desktop renderer component interactions", () => {
     const graph: DesktopGraphViewModel = {
       projectId: "P-001",
       projectTitle: "Tiny Notes",
+      graphVersion: "pgv-test",
+      packageFingerprint: "pkg-test",
       executorOptions: ["codex"],
       tasks: [
         {

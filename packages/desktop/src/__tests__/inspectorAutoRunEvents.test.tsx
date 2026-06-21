@@ -5,6 +5,7 @@ import type {
   AutoRunExplanation,
   DesktopAutoRunEvent,
   DesktopAutoRunState,
+  DesktopBlockDetail,
   DesktopGraphViewModel,
   DesktopTaskDetail
 } from "@planweave-ai/runtime";
@@ -17,13 +18,38 @@ vi.mock("../renderer/hooks/useDetectedAgents", () => ({
 
 const initialTask: DesktopTaskDetail = {
   taskId: "T-ALPHA",
+  graphVersion: "pgv-task",
   title: "Initial task",
   status: "ready",
   executor: null,
   promptMarkdown: "# Initial",
+  promptHash: "hash-task",
   promptMissing: false,
   acceptance: [],
   blockOrder: ["T-ALPHA#B-001"]
+};
+
+const initialBlock: DesktopBlockDetail = {
+  ref: "T-ALPHA#B-001",
+  graphVersion: "pgv-block",
+  taskId: "T-ALPHA",
+  blockId: "B-001",
+  type: "implementation",
+  title: "Initial block",
+  status: "ready",
+  executor: null,
+  effectiveExecutor: null,
+  promptMarkdown: "# Initial block",
+  promptHash: "hash-block",
+  promptMissing: false,
+  promptSurfaceMarkdown: "# Initial block",
+  promptSources: [],
+  dependencies: [],
+  latestRunId: null,
+  latestReviewAttemptId: null,
+  activeFeedbackId: null,
+  exceptionReason: null,
+  reviewGate: null
 };
 
 const refreshedTask: DesktopTaskDetail = {
@@ -35,6 +61,8 @@ const refreshedTask: DesktopTaskDetail = {
 const graph: DesktopGraphViewModel = {
   projectId: "P-001",
   projectTitle: "Demo project",
+  graphVersion: "pgv-test",
+  packageFingerprint: "pkg-test",
   executorOptions: ["codex"],
   tasks: [
     {
@@ -113,6 +141,7 @@ function explanationFor(state: Omit<DesktopAutoRunState, "explanation">): AutoRu
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -170,5 +199,59 @@ describe("inspector auto-run event refresh", () => {
 
     await waitFor(() => expect(screen.getByDisplayValue("# Local draft")).toBeTruthy());
     expect(screen.queryByDisplayValue("# Refreshed")).toBeNull();
+  });
+
+  it("saves task inspector prompt drafts with prompt base options", async () => {
+    const bridge = createDesktopBridgeMock({
+      getGraphViewModel: vi.fn().mockResolvedValue(graph),
+      getTaskDetail: vi.fn().mockResolvedValue(initialTask),
+      updateTaskPrompt: vi.fn().mockResolvedValue({ ok: true, graphVersion: "pgv-task-next", diagnostics: [] }),
+      onAutoRunChanged: vi.fn(() => () => undefined)
+    });
+    window.history.pushState({}, "", "/?projectRoot=%2Ftmp%2Fdemo&taskId=T-ALPHA&canvasId=canvas-main&language=en");
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { TaskInspectorWindow } = await import("../renderer/TaskInspectorWindow");
+
+    render(<TaskInspectorWindow />);
+    await waitFor(() => expect(screen.getByDisplayValue("# Initial")).toBeTruthy());
+    fireEvent.change(screen.getByDisplayValue("# Initial"), { target: { value: "# Local task prompt" } });
+
+    await waitFor(() => expect(bridge.updateTaskPrompt).toHaveBeenCalled());
+    expect(bridge.updateTaskPrompt).toHaveBeenCalledWith(
+      { projectRoot: "/tmp/demo", canvasId: "canvas-main" },
+      "T-ALPHA",
+      "# Local task prompt",
+      { baseGraphVersion: "pgv-task", basePromptHash: "hash-task" }
+    );
+  });
+
+  it("saves block inspector prompt drafts with prompt base options", async () => {
+    const bridge = createDesktopBridgeMock({
+      getGraphViewModel: vi.fn().mockResolvedValue(graph),
+      getBlockDetail: vi.fn().mockResolvedValue(initialBlock),
+      listBlockRunRecords: vi.fn().mockResolvedValue([]),
+      getReviewAttempts: vi.fn().mockResolvedValue([]),
+      getFeedbackRecords: vi.fn().mockResolvedValue([]),
+      updateBlockPrompt: vi.fn().mockResolvedValue({ ok: true, graphVersion: "pgv-block-next", diagnostics: [] }),
+      onAutoRunChanged: vi.fn(() => () => undefined)
+    });
+    window.history.pushState({}, "", "/?projectRoot=%2Ftmp%2Fdemo&blockRef=T-ALPHA%23B-001&canvasId=canvas-main&language=en");
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { BlockInspectorWindow } = await import("../renderer/BlockInspectorWindow");
+
+    render(<BlockInspectorWindow />);
+    const blockPrompt = await screen.findByLabelText("Source Prompt");
+    expect((blockPrompt as HTMLTextAreaElement).value).toBe("# Initial block");
+    fireEvent.change(blockPrompt, { target: { value: "# Local block prompt" } });
+
+    await waitFor(() => expect(bridge.updateBlockPrompt).toHaveBeenCalled());
+    expect(bridge.updateBlockPrompt).toHaveBeenCalledWith(
+      { projectRoot: "/tmp/demo", canvasId: "canvas-main" },
+      "T-ALPHA#B-001",
+      "# Local block prompt",
+      { baseGraphVersion: "pgv-block", basePromptHash: "hash-block" }
+    );
   });
 });

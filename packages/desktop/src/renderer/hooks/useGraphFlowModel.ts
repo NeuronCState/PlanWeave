@@ -41,6 +41,8 @@ type GraphFlowTaskActions = {
   handleOpenRunRecord: TaskNodeData["onOpenRunRecord"];
   handleOpenTaskInspector: TaskNodeData["onTaskOpen"];
   handlePromptChange: TaskNodeData["onPromptChange"];
+  handlePromptHistoryRedo: TaskNodeData["onPromptHistoryRedo"];
+  handlePromptHistoryUndo: TaskNodeData["onPromptHistoryUndo"];
   handlePromptSave: TaskNodeData["onPromptSave"];
   handleTaskExecutorChange: TaskNodeData["onExecutorChange"];
   handleTitleChange: TaskNodeData["onTitleChange"];
@@ -87,6 +89,8 @@ export function useGraphFlowModel({
     handleOpenRunRecord,
     handleOpenTaskInspector,
     handlePromptChange,
+    handlePromptHistoryRedo,
+    handlePromptHistoryUndo,
     handlePromptSave,
     handleTaskExecutorChange,
     handleTitleChange,
@@ -120,6 +124,8 @@ export function useGraphFlowModel({
         handleTaskExecutorChange,
         handlePromptChange,
         handlePromptSave,
+        handlePromptHistoryRedo,
+        handlePromptHistoryUndo,
         handleOpenBlockInspector,
         handleOpenBlockInspector,
         handleOpenTaskInspector,
@@ -146,6 +152,8 @@ export function useGraphFlowModel({
     handleOpenRunRecord,
     handleOpenTaskInspector,
     handlePromptChange,
+    handlePromptHistoryRedo,
+    handlePromptHistoryUndo,
     handlePromptSave,
     handleTaskExecutorChange,
     handleTitleChange,

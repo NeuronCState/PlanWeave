@@ -168,7 +168,10 @@ export function BlockInspectorWindow() {
     if (!bridge || !projectRoot || !selectedBlock) {
       return;
     }
-    const result = await bridge.updateBlockPrompt({ projectRoot, canvasId }, selectedBlock.ref, selectedBlock.promptMarkdown);
+    const result = await bridge.updateBlockPrompt({ projectRoot, canvasId }, selectedBlock.ref, selectedBlock.promptMarkdown, {
+      baseGraphVersion: selectedBlock.graphVersion,
+      basePromptHash: selectedBlock.promptHash
+    });
     if (!result.ok) {
       setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
       return;

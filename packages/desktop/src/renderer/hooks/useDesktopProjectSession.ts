@@ -114,8 +114,11 @@ export function useDesktopProjectSession({
   );
 
   const openProject = useCallback(
-    async (project: DesktopProjectSummary, canvasId?: string | null) => {
+    async (project: DesktopProjectSummary, canvasId?: string | null, options: { recordCanvasSelection?: boolean } = {}) => {
       const nextCanvasId = resolveProjectCanvasId(project, canvasId);
+      if (bridge && canvasId !== undefined && nextCanvasId && options.recordCanvasSelection !== false) {
+        await bridge.selectTaskCanvas(project.rootPath, nextCanvasId);
+      }
       clearSelectionForCanvasChange();
       await projectState.loadProject(project, nextCanvasId);
       await refreshLatestAutoRunSummary(project.rootPath, nextCanvasId);

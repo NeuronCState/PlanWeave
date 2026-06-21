@@ -6,11 +6,25 @@ import type { NotificationItem } from "../types";
 
 type NotificationsViewProps = {
   notificationItems: NotificationItem[];
+  onApplyLocalPromptConflicts: () => Promise<void>;
+  onKeepLocalPromptConflicts: () => void;
   onMarkNotificationRead: (notificationId: string) => void;
+  onOpenGraph: () => void;
+  onReloadPromptConflicts: () => Promise<void>;
+  refreshPackageFiles: () => Promise<void>;
   t: ReturnType<typeof createTranslator>;
 };
 
-export function NotificationsView({ notificationItems, onMarkNotificationRead, t }: NotificationsViewProps) {
+export function NotificationsView({
+  notificationItems,
+  onApplyLocalPromptConflicts,
+  onKeepLocalPromptConflicts,
+  onMarkNotificationRead,
+  onOpenGraph,
+  onReloadPromptConflicts,
+  refreshPackageFiles,
+  t
+}: NotificationsViewProps) {
   const unreadCount = notificationItems.filter((item) => !item.read).length;
 
   return (
@@ -29,6 +43,37 @@ export function NotificationsView({ notificationItems, onMarkNotificationRead, t
             <div className="min-w-0">
               <div className="text-sm font-medium text-text-strong">{item.title}</div>
               <div className="break-words text-xs text-text-muted">{item.detail}</div>
+              {item.kind === "fileSync" ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => void refreshPackageFiles()}>{t("fileSyncReload")}</Button>
+                  <Button size="sm" variant="outline" onClick={() => onMarkNotificationRead(item.id)}>{t("fileSyncAcknowledge")}</Button>
+                </div>
+              ) : null}
+              {item.kind === "promptConflict" ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => void onReloadPromptConflicts()}>{t("fileSyncReload")}</Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      onKeepLocalPromptConflicts();
+                      onMarkNotificationRead(item.id);
+                    }}
+                  >
+                    {t("fileSyncKeepLocal")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      void onApplyLocalPromptConflicts();
+                      onOpenGraph();
+                    }}
+                  >
+                    {t("fileSyncApplyMine")}
+                  </Button>
+                </div>
+              ) : null}
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <Badge variant={item.read ? "outline" : "secondary"}>{item.read ? t("read") : t("unread")}</Badge>

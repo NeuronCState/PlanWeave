@@ -1,5 +1,5 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import type { MouseEvent } from "react";
+import type { KeyboardEvent, MouseEvent } from "react";
 import { MessageSquareWarningIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +28,8 @@ export function TaskNodeCard({ data, selected }: NodeProps<TaskFlowNode>) {
     onTitleSave,
     onExecutorChange,
     onPromptChange,
+    onPromptHistoryRedo,
+    onPromptHistoryUndo,
     onPromptSave,
     onBlockSelect,
     onTaskOpen,
@@ -46,6 +48,19 @@ export function TaskNodeCard({ data, selected }: NodeProps<TaskFlowNode>) {
       return;
     }
     onTaskOpen(task.taskId);
+  };
+  const handlePromptKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    const key = event.key.toLowerCase();
+    const isUndo = (event.metaKey || event.ctrlKey) && !event.shiftKey && key === "z";
+    const isRedo = ((event.metaKey || event.ctrlKey) && event.shiftKey && key === "z") || (event.ctrlKey && !event.metaKey && key === "y");
+    if (!isUndo && !isRedo) {
+      return;
+    }
+    if (promptDraft !== task.promptMarkdown) {
+      return;
+    }
+    event.preventDefault();
+    void (isUndo ? onPromptHistoryUndo() : onPromptHistoryRedo());
   };
 
   return (
@@ -128,6 +143,7 @@ export function TaskNodeCard({ data, selected }: NodeProps<TaskFlowNode>) {
                 value={promptDraft}
                 onChange={(event) => onPromptChange(task.taskId, event.target.value)}
                 onBlur={() => onPromptSave(task.taskId)}
+                onKeyDown={handlePromptKeyDown}
               />
               <div className="text-xs text-text-faint">{saveState}</div>
             </div>

@@ -49,12 +49,15 @@ type WorkspaceTabsProps = {
   handleOpenBlockInspector: (ref: string, canvasId?: string | null) => Promise<void>;
   handleConnect: (connection: Connection) => Promise<void>;
   handleEdgesDelete: (deletedEdges: Edge[]) => Promise<void>;
+  handleReconnectEdge: (oldEdge: Edge, connection: Connection) => Promise<void>;
   handleGraphDragOver: (event: DragEvent) => void;
   handleGraphDrop: (event: DragEvent) => void;
   handleOpenProject: () => Promise<void>;
   handleOpenRunRecord: (recordId: string | null | undefined, canvasId?: string | null) => Promise<void>;
+  handleRedoGraph: () => Promise<void>;
   handleRevealPathInFinder: (path: string | null | undefined) => Promise<void>;
   handleSearchResultOpen: (result: DesktopSearchResult) => Promise<void>;
+  handleUndoGraph: () => Promise<void>;
   language: Language;
   loadProject: (project: DesktopProjectSummary, canvasId?: string | null) => Promise<void>;
   miniRunPanelOpen: boolean;
@@ -66,8 +69,11 @@ type WorkspaceTabsProps = {
   nodeTypes: AppNodeTypes;
   nodes: AppFlowNode[];
   notificationItems: NotificationItem[];
+  onApplyLocalPromptConflicts: () => Promise<void>;
+  onKeepLocalPromptConflicts: () => void;
   projectLoading: boolean;
   onMarkNotificationRead: (notificationId: string) => void;
+  onReloadPromptConflicts: () => Promise<void>;
   onEdgesChange: OnEdgesChange<Edge>;
   onNodeDragStop: (event: MouseEvent, node: Node) => Promise<void>;
   onNodesChange: OnNodesChange<AppFlowNode>;
@@ -134,7 +140,7 @@ export function WorkspaceTabs(props: WorkspaceTabsProps) {
       case "search":
         return <SearchView {...props} />;
       case "notifications":
-        return <NotificationsView {...props} />;
+        return <NotificationsView {...props} onOpenGraph={() => props.setActiveView("graph")} />;
       case "canvas-map":
         return <CanvasMapView {...props} />;
       case "graph":

@@ -122,7 +122,10 @@ export function TaskInspectorWindow() {
     if (!bridge || !projectRoot || !selectedTask) {
       return;
     }
-    const result = await bridge.updateTaskPrompt({ projectRoot, canvasId }, selectedTask.taskId, selectedTask.promptMarkdown);
+    const result = await bridge.updateTaskPrompt({ projectRoot, canvasId }, selectedTask.taskId, selectedTask.promptMarkdown, {
+      baseGraphVersion: selectedTask.graphVersion,
+      basePromptHash: selectedTask.promptHash
+    });
     if (!result.ok) {
       setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
       return;

@@ -12,7 +12,7 @@ import {
   type OnNodesChange
 } from "@xyflow/react";
 import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopProjectSummary } from "@planweave-ai/runtime";
-import { ChevronRightIcon, NetworkIcon } from "lucide-react";
+import { ChevronRightIcon, NetworkIcon, Redo2Icon, Undo2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AppNodeTypes } from "../graph/flowModel";
 import { useEdgeReconnect } from "../hooks/useEdgeReconnect";
@@ -32,10 +32,13 @@ type GraphViewProps = {
   handleAutoRunClick: () => Promise<void>;
   handleConnect: (connection: Connection) => Promise<void>;
   handleEdgesDelete: (deletedEdges: Edge[]) => Promise<void>;
+  handleReconnectEdge: (oldEdge: Edge, connection: Connection) => Promise<void>;
   handleGraphDragOver: (event: DragEvent) => void;
   handleGraphDrop: (event: DragEvent) => void;
   handleOpenProject: () => Promise<void>;
+  handleRedoGraph: () => Promise<void>;
   handleRevealPathInFinder: (path: string | null | undefined) => Promise<void>;
+  handleUndoGraph: () => Promise<void>;
   miniRunPanelOpen: boolean;
   moveAutoRunControl: (event: PointerEvent<HTMLButtonElement>) => void;
   nodeTypes: AppNodeTypes;
@@ -72,10 +75,13 @@ export function GraphView({
   handleAutoRunClick,
   handleConnect,
   handleEdgesDelete,
+  handleReconnectEdge,
   handleGraphDragOver,
   handleGraphDrop,
   handleOpenProject,
+  handleRedoGraph,
   handleRevealPathInFinder,
+  handleUndoGraph,
   miniRunPanelOpen,
   moveAutoRunControl,
   nodeTypes,
@@ -122,9 +128,35 @@ export function GraphView({
     [setFlowInstance]
   );
   const { handleReconnect, handleReconnectEnd, handleReconnectStart } = useEdgeReconnect({
-    handleConnect,
-    handleEdgesDelete
+    handleEdgesDelete,
+    handleReconnectEdge
   });
+
+  useEffect(() => {
+    if (!graph) {
+      return undefined;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)
+      ) {
+        return;
+      }
+      const isUndo = (event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "z";
+      const isRedo =
+        ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "z") ||
+        (event.ctrlKey && !event.metaKey && event.key.toLowerCase() === "y");
+      if (!isUndo && !isRedo) {
+        return;
+      }
+      event.preventDefault();
+      void (isUndo ? handleUndoGraph() : handleRedoGraph());
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [graph, handleRedoGraph, handleUndoGraph]);
 
   useEffect(() => {
     if (!graphScopeId || !localFlowInstance || visibleNodes.length === 0) {
@@ -189,6 +221,26 @@ export function GraphView({
           </Button>
           <ChevronRightIcon className="size-4 text-text-faint" aria-hidden="true" />
           <span className="max-w-[220px] truncate border-l border-border/70 px-2 text-xs font-medium text-text-strong">{currentCanvasName}</span>
+          <div className="flex h-full border-l border-border/70">
+            <Button
+              aria-label={t("undoGraphCommand")}
+              className="pointer-events-auto h-full rounded-none border-0 px-2 text-text-muted shadow-none hover:bg-surface-muted hover:text-text-strong"
+              title={t("undoGraphCommand")}
+              variant="ghost"
+              onClick={() => void handleUndoGraph()}
+            >
+              <Undo2Icon />
+            </Button>
+            <Button
+              aria-label={t("redoGraphCommand")}
+              className="pointer-events-auto h-full rounded-none border-0 px-2 text-text-muted shadow-none hover:bg-surface-muted hover:text-text-strong"
+              title={t("redoGraphCommand")}
+              variant="ghost"
+              onClick={() => void handleRedoGraph()}
+            >
+              <Redo2Icon />
+            </Button>
+          </div>
         </div>
       ) : null}
       <FloatingAutoRunControl

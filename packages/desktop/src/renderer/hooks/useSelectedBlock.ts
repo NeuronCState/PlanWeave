@@ -164,7 +164,15 @@ export function useSelectedBlock({
       return;
     }
     try {
-      await bridge.updateBlockPrompt(desktopCanvasReference(selectedProject, selectedCanvasId), selectedBlock.ref, selectedBlock.promptMarkdown);
+      const result = await bridge.updateBlockPrompt(desktopCanvasReference(selectedProject, selectedCanvasId), selectedBlock.ref, selectedBlock.promptMarkdown, {
+        baseGraphVersion: selectedBlock.graphVersion,
+        basePromptHash: selectedBlock.promptHash
+      });
+      if (!result.ok) {
+        setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
+        return;
+      }
+      setSelectedBlock(await bridge.getBlockDetail(desktopCanvasReference(selectedProject, selectedCanvasId), selectedBlock.ref));
       await refreshGraph();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));

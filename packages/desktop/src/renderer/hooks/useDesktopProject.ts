@@ -172,6 +172,17 @@ export function useDesktopProject({
     setGraph(nextGraph);
   }, [selectedCanvasId, selectedProject]);
 
+  const refreshGraphAndLayout = useCallback(async () => {
+    if (!bridge || !selectedProject) {
+      return;
+    }
+    const canvasRef = desktopCanvasReference(selectedProject, selectedCanvasId);
+    const nextGraph = await bridge.getGraphViewModel(canvasRef);
+    const nextLayout = await bridge.getDesktopLayout(canvasRef);
+    setGraph(nextGraph);
+    setLayout(nextLayout);
+  }, [selectedCanvasId, selectedProject]);
+
   const updateProjectPromptPolicy = useCallback(
     async (patch: Partial<ProjectPromptPolicy>) => {
       if (!bridge || !selectedProject) {
@@ -272,6 +283,7 @@ export function useDesktopProject({
     projectPromptPolicy,
     refreshProjectSummary,
     refreshGraph,
+    refreshGraphAndLayout,
     removeProject,
     selectedCanvasId,
     selectedProject,

@@ -40,6 +40,7 @@ const child = spawn(smokeCommand, smokeArgs, {
     ...process.env,
     PLANWEAVE_HOME: smokeHome,
     PLANWEAVE_DESKTOP_SMOKE_PROJECT_ROOT: smokeProjectRoot,
+    PLANWEAVE_DESKTOP_SMOKE_EXTERNAL_PROMPT_PATH: join(init.workspace.packageDir, "nodes", "T-001", "prompt.md"),
     PLANWEAVE_DESKTOP_SMOKE_USER_DATA_DIR: smokeUserData,
     PLANWEAVE_DESKTOP_SMOKE: "1"
   },

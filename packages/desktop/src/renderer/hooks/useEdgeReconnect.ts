@@ -2,22 +2,19 @@ import { useCallback, useRef } from "react";
 import type { Connection, Edge, FinalConnectionState } from "@xyflow/react";
 
 type UseEdgeReconnectArgs = {
-  handleConnect: (connection: Connection) => Promise<void>;
   handleEdgesDelete: (deletedEdges: Edge[]) => Promise<void>;
+  handleReconnectEdge: (oldEdge: Edge, connection: Connection) => Promise<void>;
 };
 
-export function useEdgeReconnect({ handleConnect, handleEdgesDelete }: UseEdgeReconnectArgs) {
+export function useEdgeReconnect({ handleEdgesDelete, handleReconnectEdge }: UseEdgeReconnectArgs) {
   const reconnectSucceededRef = useRef(false);
 
   const handleReconnect = useCallback(
     (oldEdge: Edge, connection: Connection) => {
       reconnectSucceededRef.current = true;
-      void (async () => {
-        await handleEdgesDelete([oldEdge]);
-        await handleConnect(connection);
-      })();
+      void handleReconnectEdge(oldEdge, connection);
     },
-    [handleConnect, handleEdgesDelete]
+    [handleReconnectEdge]
   );
 
   const handleReconnectStart = useCallback(() => {

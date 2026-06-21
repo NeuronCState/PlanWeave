@@ -64,6 +64,8 @@ describe("desktop graph flow model", () => {
       vi.fn(),
       vi.fn(),
       vi.fn(),
+      vi.fn(),
+      vi.fn(),
       vi.fn()
     );
 
@@ -104,6 +106,8 @@ function graphView(taskIds: string[], edges: DesktopGraphViewModel["edges"]): De
   return {
     projectId: "P-001",
     projectTitle: "Project",
+    graphVersion: "pgv-test",
+    packageFingerprint: "pkg-test",
     executorOptions: [],
     tasks: taskIds.map((taskId) => task(taskId)),
     edges,

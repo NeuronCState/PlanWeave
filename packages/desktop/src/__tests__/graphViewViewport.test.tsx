@@ -61,6 +61,8 @@ function graph(promptMarkdown = "# Prompt"): DesktopGraphViewModel {
   return {
     projectId: project.projectId,
     projectTitle: project.name,
+    graphVersion: "pgv-test",
+    packageFingerprint: "pkg-test",
     executorOptions: ["manual"],
     tasks: [
       {
@@ -105,6 +107,8 @@ function flowNode(promptDraft = "# Prompt"): AppFlowNode {
       onExecutorChange: vi.fn(),
       onPromptChange: vi.fn(),
       onPromptSave: vi.fn(),
+      onPromptHistoryRedo: vi.fn().mockResolvedValue(undefined),
+      onPromptHistoryUndo: vi.fn().mockResolvedValue(undefined),
       onBlockSelect: vi.fn(),
       onOverflowBlockSelect: vi.fn(),
       onTaskOpen: vi.fn(),
@@ -131,10 +135,13 @@ function defaultProps(patch: Partial<ComponentProps<typeof GraphView>> = {}): Co
     handleAutoRunClick: vi.fn().mockResolvedValue(undefined),
     handleConnect: vi.fn().mockResolvedValue(undefined),
     handleEdgesDelete: vi.fn().mockResolvedValue(undefined),
+    handleReconnectEdge: vi.fn().mockResolvedValue(undefined),
     handleGraphDragOver: vi.fn(),
     handleGraphDrop: vi.fn(),
     handleOpenProject: vi.fn().mockResolvedValue(undefined),
+    handleRedoGraph: vi.fn().mockResolvedValue(undefined),
     handleRevealPathInFinder: vi.fn().mockResolvedValue(undefined),
+    handleUndoGraph: vi.fn().mockResolvedValue(undefined),
     miniRunPanelOpen: false,
     moveAutoRunControl: vi.fn(),
     nodeTypes: {} as ComponentProps<typeof GraphView>["nodeTypes"],
@@ -231,6 +238,33 @@ describe("GraphView viewport fitting", () => {
     });
 
     await waitFor(() => expect(handleEdgesDelete).toHaveBeenCalledWith([edge]));
+  });
+
+  it("uses a single reconnect callback when an edge is reconnected", async () => {
+    const edge = {
+      id: "T-002-depends_on-T-001",
+      source: "T-001",
+      target: "T-002",
+      data: { manifestEdgeType: "depends_on", manifestFrom: "T-002", manifestTo: "T-001" }
+    };
+    const connection = { source: "T-003", target: "T-002" };
+    const handleReconnectEdge = vi.fn().mockResolvedValue(undefined);
+    const handleEdgesDelete = vi.fn().mockResolvedValue(undefined);
+    const handleConnect = vi.fn().mockResolvedValue(undefined);
+    render(<GraphView {...defaultProps({ edges: [edge], handleConnect, handleEdgesDelete, handleReconnectEdge })} />);
+
+    await waitFor(() => expect(reactFlowMock.props.length).toBeGreaterThan(0));
+    const latestProps = reactFlowMock.props.at(-1) as {
+      onReconnect: (selectedEdge: typeof edge, nextConnection: typeof connection) => void;
+    };
+
+    act(() => {
+      latestProps.onReconnect(edge, connection);
+    });
+
+    await waitFor(() => expect(handleReconnectEdge).toHaveBeenCalledWith(edge, connection));
+    expect(handleEdgesDelete).not.toHaveBeenCalled();
+    expect(handleConnect).not.toHaveBeenCalled();
   });
 
   it("fits once for a newly selected canvas", async () => {

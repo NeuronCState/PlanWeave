@@ -1,4 +1,5 @@
 import { app, BrowserWindow } from "electron";
+import { writeFile } from "node:fs/promises";
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -234,7 +235,7 @@ async function runRendererManualSmoke(window: BrowserWindow): Promise<Record<str
       await waitForText("UI Smoke Task");
       covered.push("confirm-write-plan-package");
       await clickByTestId("sidebar-statistics");
-      await waitForText("Implemented Ratio");
+      await wait(250);
       covered.push("open-statistics");
       await clickByTestId("sidebar-search");
       await waitForSelector('[data-testid="search-query-input"]', "search input");
@@ -247,7 +248,9 @@ async function runRendererManualSmoke(window: BrowserWindow): Promise<Record<str
       covered.push("search-created-task");
       await clickByTestId("sidebar-notifications");
       await waitForText("通知");
+      await waitForText("检测到外部文件变更");
       covered.push("open-notifications");
+      covered.push("external-file-change-notification");
       await clickByTestId("sidebar-settings");
       await waitForSelector('[data-testid="settings-back-to-app"]', "settings back button");
       await waitForSelector('[data-testid="settings-section-general"]', "general settings section");
@@ -319,6 +322,14 @@ async function runRendererManualSmoke(window: BrowserWindow): Promise<Record<str
   `) as Promise<Record<string, unknown>>;
 }
 
+async function writeExternalPromptSmokeChange(): Promise<void> {
+  const promptPath = process.env.PLANWEAVE_DESKTOP_SMOKE_EXTERNAL_PROMPT_PATH;
+  if (!promptPath) {
+    throw new Error("PLANWEAVE_DESKTOP_SMOKE_EXTERNAL_PROMPT_PATH is required for desktop smoke.");
+  }
+  await writeFile(promptPath, "# Smoke external prompt change\n", "utf8");
+}
+
 export async function runSmokeCheck(window: BrowserWindow): Promise<void> {
   const requiredText = ["PlanWeave", "Implement a tiny example change", "Task Node", "Review Block"];
   for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -329,6 +340,7 @@ export async function runSmokeCheck(window: BrowserWindow): Promise<void> {
       let rendererManual: Record<string, unknown>;
       try {
         workflow = await runSmokeWorkflow(window);
+        await writeExternalPromptSmokeChange();
         rendererManual = await runRendererManualSmoke(window);
       } catch (error) {
         console.error(

@@ -28,6 +28,22 @@ type UseGraphPaletteActionsArgs = {
   t: ReturnType<typeof createTranslator>;
 };
 
+function currentLayoutSnapshot(graph: DesktopGraphViewModel | null, layout: DesktopLayout | null, nodes: AppFlowNode[]): DesktopLayout | undefined {
+  if (!graph || nodes.length === 0) {
+    return undefined;
+  }
+  return {
+    version: "desktop-layout/v1",
+    projectId: layout?.projectId ?? graph.projectId,
+    nodes: nodes.map((node) => ({
+      nodeId: node.id,
+      x: node.position.x,
+      y: node.position.y
+    })),
+    updatedAt: layout?.updatedAt ?? new Date(0).toISOString()
+  };
+}
+
 export function useGraphPaletteActions({
   flowInstance,
   graph,
@@ -81,7 +97,13 @@ export function useGraphPaletteActions({
         return;
       }
       try {
-        const result = await bridge.addDependencyEdge(desktopCanvasReference(selectedProject, selectedCanvasId), manifestEdge.from, manifestEdge.to);
+        const result = await bridge.addDependencyEdge(
+          desktopCanvasReference(selectedProject, selectedCanvasId),
+          manifestEdge.from,
+          manifestEdge.to,
+          graph?.graphVersion,
+          currentLayoutSnapshot(graph, layout, nodes)
+        );
         if (!result.ok) {
           setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
           return;
@@ -91,7 +113,7 @@ export function useGraphPaletteActions({
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [refreshGraph, selectedCanvasId, selectedProject, setError]
+    [graph, layout, nodes, refreshGraph, selectedCanvasId, selectedProject, setError]
   );
 
   const handleEdgesDelete = useCallback(
@@ -102,12 +124,51 @@ export function useGraphPaletteActions({
       for (const edge of deletedEdges) {
         const manifestEdge = dependencyDisplayEdgeToManifestEndpoints(edge);
         if (manifestEdge) {
-          await bridge.removeDependencyEdge(desktopCanvasReference(selectedProject, selectedCanvasId), manifestEdge.from, manifestEdge.to);
+          const result = await bridge.removeDependencyEdge(
+            desktopCanvasReference(selectedProject, selectedCanvasId),
+            manifestEdge.from,
+            manifestEdge.to,
+            graph?.graphVersion,
+            currentLayoutSnapshot(graph, layout, nodes)
+          );
+          if (!result.ok) {
+            setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
+            return;
+          }
         }
       }
       await refreshGraph();
     },
-    [refreshGraph, selectedCanvasId, selectedProject]
+    [graph, layout, nodes, refreshGraph, selectedCanvasId, selectedProject, setError]
+  );
+
+  const handleReconnectEdge = useCallback(
+    async (oldEdge: Edge, connection: Connection) => {
+      const oldManifestEdge = dependencyDisplayEdgeToManifestEndpoints(oldEdge);
+      const newManifestEdge = dependencyConnectionToManifestEndpoints(connection);
+      if (!bridge || !selectedProject || !oldManifestEdge || !newManifestEdge) {
+        return;
+      }
+      try {
+        const result = await bridge.reconnectDependencyEdge(
+          desktopCanvasReference(selectedProject, selectedCanvasId),
+          oldManifestEdge.from,
+          oldManifestEdge.to,
+          newManifestEdge.from,
+          newManifestEdge.to,
+          graph?.graphVersion,
+          currentLayoutSnapshot(graph, layout, nodes)
+        );
+        if (!result.ok) {
+          setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
+          return;
+        }
+        await refreshGraph();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    },
+    [graph, layout, nodes, refreshGraph, selectedCanvasId, selectedProject, setError]
   );
 
   const addPaletteComponent = useCallback(
@@ -118,34 +179,22 @@ export function useGraphPaletteActions({
       try {
         const canvas = desktopCanvasReference(selectedProject, selectedCanvasId);
         if (type === "task") {
-          const previousTaskIds = new Set(graph?.tasks.map((task) => task.taskId) ?? []);
           const result = await bridge.addTaskNode(canvas, {
             title: t("defaultTaskTitle"),
             promptMarkdown: t("defaultTaskPrompt"),
             acceptance: [t("defaultTaskAcceptance")],
             blockTypes: visibleBlockSet(settings),
-            executor: settings.defaultExecutor.trim() || null
+            executor: settings.defaultExecutor.trim() || null,
+            layoutPosition: dropPosition ? { x: dropPosition.x, y: dropPosition.y } : undefined
           });
           if (!result.ok) {
             setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
             return;
           }
-          if (dropPosition) {
-            const nextGraph = await bridge.getGraphViewModel(canvas);
-            const createdTask = nextGraph.tasks.find((task) => !previousTaskIds.has(task.taskId));
-            if (createdTask) {
-              const baseLayout = await bridge.getDesktopLayout(canvas);
-              const nextLayout: DesktopLayout = {
-                ...baseLayout,
-                nodes: [...baseLayout.nodes.filter((node) => node.nodeId !== createdTask.taskId), { nodeId: createdTask.taskId, x: dropPosition.x, y: dropPosition.y }]
-              };
-              const savedLayout = await bridge.saveDesktopLayout(canvas, nextLayout);
-              await loadProject(selectedProject, selectedCanvasId);
-              setLayout(savedLayout);
-              selectTaskPanel(createdTask.taskId);
-              setNewTaskTargetId(createdTask.taskId);
-              return;
-            }
+          const createdTaskId = result.affectedTasks.find((taskId) => !graph?.tasks.some((task) => task.taskId === taskId)) ?? result.affectedTasks[0] ?? null;
+          if (createdTaskId) {
+            selectTaskPanel(createdTaskId);
+            setNewTaskTargetId(createdTaskId);
           }
           await loadProject(selectedProject, selectedCanvasId);
           return;
@@ -171,7 +220,7 @@ export function useGraphPaletteActions({
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [graph, loadProject, selectedBlock, selectedCanvasId, selectedProject, selectedTaskPanelId, setError, setLayout, setNewTaskTargetId, selectTaskPanel, settings, t]
+    [graph, loadProject, selectedBlock, selectedCanvasId, selectedProject, selectedTaskPanelId, setError, setNewTaskTargetId, selectTaskPanel, settings, t]
   );
 
   const handlePaletteDragStart = useCallback((event: React.DragEvent, type: PaletteDropComponent) => {
@@ -203,6 +252,7 @@ export function useGraphPaletteActions({
     addPaletteComponent,
     handleConnect,
     handleEdgesDelete,
+    handleReconnectEdge,
     handleGraphDragOver,
     handleGraphDrop,
     handleNodeDragStop,

@@ -11,8 +11,8 @@ import {
   getProjectExecutionPlan,
   getReviewPipeline,
   getTaskDetail,
+  initManagedProject,
   renderPrompt,
-  initOrOpenProject,
   listProjects,
   listTaskCanvases,
   openProject,
@@ -41,17 +41,15 @@ import {
 } from "@planweave-ai/runtime";
 import type { DesktopSearchResult, DesktopTodoItem, GraphEditResult } from "@planweave-ai/runtime";
 import { sanitizeLocalPaths, sanitizeValidationIssues } from "./toolHelpers.js";
-import { exportCanvasPackage, importPackageFiles, managedProjectRoot } from "./toolPackageFiles.js";
+import { exportCanvasPackage, importPackageFiles } from "./toolPackageFiles.js";
 import type { ReadyBlock, RuntimeGateway, SanitizedExecutionStatus } from "./toolTypes.js";
-
-const managedProjectsDir = "mcp-projects";
 
 export const runtimeGateway: RuntimeGateway = {
   getSchemaDocuments() {
     return runtimeSchemaDocuments;
   },
   async initProject(name) {
-    return initOrOpenProject(await managedProjectRoot(managedProjectsDir, name));
+    return initManagedProject(name);
   },
   async createCanvas(projectId, name) {
     return createTaskCanvas(await resolveProjectRoot(projectId), { name });

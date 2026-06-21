@@ -1,13 +1,19 @@
+export type ProjectKind = "external" | "managed";
+
 export type ProjectMetadata = {
   id: string;
   name: string;
   rootPath: string;
+  kind?: ProjectKind;
+  sourceRoot?: string | null;
   createdAt: string;
 };
 
 export type ProjectWorkspace = {
   id: string;
+  kind: ProjectKind;
   rootPath: string;
+  sourceRoot: string | null;
   planweaveHome: string;
   workspaceRoot: string;
   projectFile: string;

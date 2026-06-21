@@ -19,7 +19,9 @@ import type { RuntimeGateway } from "../tools.js";
 export const project: DesktopProjectSummary = {
   projectId: "project-1",
   name: "Project One",
+  kind: "external",
   rootPath: "/sensitive/source",
+  sourceRoot: "/sensitive/source",
   workspaceRoot: "/sensitive/home/projects/project-1",
   activeCanvasId: "default",
   taskCanvases: [

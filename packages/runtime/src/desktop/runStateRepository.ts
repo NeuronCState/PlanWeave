@@ -1,6 +1,7 @@
 import { mkdir, readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { readJsonFile } from "../json.js";
+import { projectWorkspacePaths } from "../project.js";
 import type { ProjectWorkspace } from "../types.js";
 import type { DesktopAutoRunState } from "./types.js";
 import { loadProjectGraphForWorkspace, projectCanvasWorkspace } from "../projectGraph/index.js";
@@ -59,18 +60,14 @@ async function listProjectWorkspaceRoots(workspace: ProjectWorkspace): Promise<s
 }
 
 function workspaceFromRoot(workspace: ProjectWorkspace, workspaceRoot: string): ProjectWorkspace {
-  return {
+  return projectWorkspacePaths({
     id: basename(workspaceRoot),
+    kind: "managed",
     rootPath: workspaceRoot,
+    sourceRoot: null,
     planweaveHome: workspace.planweaveHome,
-    workspaceRoot,
-    projectFile: join(workspaceRoot, "project.json"),
-    packageDir: join(workspaceRoot, "package"),
-    manifestFile: join(workspaceRoot, "package", "manifest.json"),
-    stateFile: join(workspaceRoot, "state.json"),
-    resultsDir: join(workspaceRoot, "results"),
-    projectPromptFile: join(workspaceRoot, "policy", "project-prompt.md")
-  };
+    workspaceRoot
+  });
 }
 
 async function listCanvasAutoRunRoots(workspace: ProjectWorkspace): Promise<string[]> {

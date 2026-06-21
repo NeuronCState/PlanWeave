@@ -1,7 +1,9 @@
-import { access, mkdir } from "node:fs/promises";
+import { access, mkdir, mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { listProjects, openProject, removeProject } from "../desktop/index.js";
+import { initManagedProject, listProjects, openProject, removeProject } from "../desktop/index.js";
+import { initWorkspace } from "../initWorkspace.js";
 import { writeJsonFile } from "../json.js";
 import { resolvePlanweaveHome } from "../paths.js";
 import { createTestWorkspace } from "./promptTestHelpers.js";
@@ -17,9 +19,65 @@ describe("desktop project API", () => {
     await expect(listProjects()).resolves.toEqual([
       expect.objectContaining({
         projectId: init.workspace.id,
+        kind: "external",
         rootPath: init.workspace.rootPath
       })
     ]);
+  });
+
+  it("lists managed projects without requiring an external source root", async () => {
+    const { home: testHome } = await createTestWorkspace();
+    process.env.PLANWEAVE_HOME = testHome;
+    const project = await initManagedProject("Managed Demo");
+
+    await expect(listProjects()).resolves.toContainEqual(
+      expect.objectContaining({
+        projectId: project.projectId,
+        name: "Managed Demo",
+        kind: "managed",
+        rootPath: project.workspaceRoot,
+        sourceRoot: null,
+        workspaceRoot: project.workspaceRoot
+      })
+    );
+    await expect(openProject({ projectId: project.projectId })).resolves.toMatchObject({
+      projectId: project.projectId,
+      kind: "managed",
+      rootPath: project.workspaceRoot,
+      sourceRoot: null
+    });
+  });
+
+  it("normalizes legacy MCP-managed projects to their registered workspace root", async () => {
+    const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    process.env.PLANWEAVE_HOME = home;
+    const legacyRoot = join(home, "mcp-projects", "legacy-demo");
+    await mkdir(legacyRoot, { recursive: true });
+    const init = await initWorkspace({ projectRoot: legacyRoot });
+    await writeJsonFile(init.workspace.projectFile, {
+      id: init.workspace.id,
+      name: "legacy-demo",
+      rootPath: legacyRoot,
+      createdAt: "2026-06-20T00:00:00.000Z"
+    });
+
+    await expect(listProjects()).resolves.toEqual([
+      expect.objectContaining({
+        projectId: init.workspace.id,
+        name: "legacy-demo",
+        kind: "managed",
+        rootPath: init.workspace.workspaceRoot,
+        sourceRoot: null,
+        workspaceRoot: init.workspace.workspaceRoot
+      })
+    ]);
+    await expect(openProject({ projectId: init.workspace.id })).resolves.toMatchObject({
+      projectId: init.workspace.id,
+      kind: "managed",
+      rootPath: init.workspace.workspaceRoot,
+      sourceRoot: null,
+      workspaceRoot: init.workspace.workspaceRoot
+    });
   });
 
   it("keeps valid projects visible when another PlanWeave registry entry is stale", async () => {
@@ -36,6 +94,7 @@ describe("desktop project API", () => {
     await expect(listProjects()).resolves.toEqual([
       expect.objectContaining({
         projectId: init.workspace.id,
+        kind: "external",
         rootPath: init.workspace.rootPath
       })
     ]);

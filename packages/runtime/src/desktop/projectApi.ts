@@ -1,10 +1,10 @@
 import { access, readdir, rm } from "node:fs/promises";
 import { constants } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { initWorkspace } from "../initWorkspace.js";
+import { initManagedWorkspace, initWorkspace } from "../initWorkspace.js";
 import { readJsonFile } from "../json.js";
 import { resolvePlanweaveHome } from "../paths.js";
-import { readProject, resolveProjectWorkspace } from "../project.js";
+import { normalizeProjectMetadata, readProject, resolveProjectWorkspace } from "../project.js";
 import type { ProjectMetadata } from "../types.js";
 import type { DesktopProjectSummary } from "./types.js";
 import { getActiveTaskCanvasId, listTaskCanvases } from "./canvasApi.js";
@@ -20,10 +20,13 @@ async function exists(path: string): Promise<boolean> {
 
 async function projectSummary(project: ProjectMetadata, workspaceRoot: string): Promise<DesktopProjectSummary> {
   const [activeCanvasId, taskCanvases] = await Promise.all([getActiveTaskCanvasId(project.rootPath), listTaskCanvases(project.rootPath)]);
+  const kind = project.kind === "managed" ? "managed" : "external";
   return {
     projectId: project.id,
     name: project.name,
+    kind,
     rootPath: project.rootPath,
+    sourceRoot: kind === "managed" ? project.sourceRoot ?? null : project.sourceRoot ?? project.rootPath,
     workspaceRoot,
     activeCanvasId,
     taskCanvases
@@ -37,7 +40,10 @@ async function readProjectById(projectId: string): Promise<DesktopProjectSummary
     return null;
   }
   try {
-    const project = await readJsonFile<ProjectMetadata>(projectFile);
+    const project = normalizeProjectMetadata(await readJsonFile<ProjectMetadata>(projectFile), {
+      planweaveHome: resolvePlanweaveHome(),
+      workspaceRoot
+    });
     if (!(await exists(project.rootPath))) {
       return null;
     }
@@ -86,6 +92,11 @@ export async function initOrOpenProject(rootPath: string): Promise<DesktopProjec
     return projectSummary(existing, workspace.workspaceRoot);
   }
   const init = await initWorkspace({ projectRoot: rootPath });
+  return projectSummary(init.project, init.workspace.workspaceRoot);
+}
+
+export async function initManagedProject(name: string): Promise<DesktopProjectSummary> {
+  const init = await initManagedWorkspace({ name });
   return projectSummary(init.project, init.workspace.workspaceRoot);
 }
 

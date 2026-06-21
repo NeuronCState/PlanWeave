@@ -3,9 +3,10 @@ import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:f
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import {
+  createManagedProjectId,
+  initManagedWorkspace,
   initOrOpenProject,
   openProject,
-  readProject,
   resolvePlanweaveHome,
   resolveProjectWorkspace,
   resolveTaskCanvasWorkspace,
@@ -14,16 +15,16 @@ import {
 } from "@planweave-ai/runtime";
 import type { ExportedPlanPackage, ExportedPlanPackageFile } from "./toolTypes.js";
 
-export async function managedProjectRoot(bucket: string, name: string): Promise<string> {
-  const root = resolve(resolvePlanweaveHome(), bucket);
-  const projectRoot = resolve(root, slug(name));
-  const relativePath = relative(root, projectRoot);
-  if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath)) {
-    throw new Error("Project name resolves outside the PlanWeave managed projects directory.");
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path, constants.R_OK);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return false;
+    }
+    throw error;
   }
-  await mkdir(projectRoot, { recursive: true });
-  await access(projectRoot, constants.R_OK | constants.W_OK);
-  return projectRoot;
 }
 
 export async function exportCanvasPackage(projectId: string, canvasId?: string): Promise<ExportedPlanPackage> {
@@ -58,18 +59,19 @@ export async function importPackageFiles(
       throw new Error(validationMessage("Imported PlanWeave package is invalid", tempValidation));
     }
 
-    const finalProjectRoot = await managedProjectRoot("mcp-imports", name);
-    const existing = await readProject(finalProjectRoot);
-    if (existing && !overwrite) {
+    const projectId = createManagedProjectId(name);
+    const projectFile = join(resolvePlanweaveHome(), "projects", projectId, "project.json");
+    if ((await exists(projectFile)) && !overwrite) {
       throw new Error("Imported project already exists. Pass overwrite: true to replace its package files.");
     }
-    const project = await initOrOpenProject(finalProjectRoot);
-    const workspace = await resolveProjectWorkspace(project.rootPath);
+    const init = await initManagedWorkspace({ name });
+    const workspace = await resolveProjectWorkspace(init.workspace.rootPath);
     await replacePackageFiles(workspace.packageDir, normalizedFiles);
-    const validation = await validatePackage({ projectRoot: project.rootPath });
+    const validation = await validatePackage({ projectRoot: workspace.rootPath });
     if (!validation.ok) {
       throw new Error(validationMessage("Imported PlanWeave package became invalid after install", validation));
     }
+    const project = await openProject({ projectId: init.project.id });
     return { project, validation, importedFiles: normalizedFiles.length };
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
@@ -120,19 +122,6 @@ function toArchivePath(value: string): string {
   const normalized = posix.normalize(value.replaceAll("\\", "/"));
   if (!normalized || normalized === "." || normalized.startsWith("../") || normalized === ".." || posix.isAbsolute(normalized)) {
     throw new Error(`Invalid package file path '${value}'.`);
-  }
-  return normalized;
-}
-
-function slug(value: string): string {
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
-  if (!normalized) {
-    throw new Error("name must contain at least one letter or number.");
   }
   return normalized;
 }

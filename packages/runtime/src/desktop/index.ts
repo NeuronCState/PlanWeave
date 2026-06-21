@@ -1,5 +1,6 @@
 export {
   getProjectOverview,
+  initManagedProject,
   initOrOpenProject,
   listProjects,
   openProject,

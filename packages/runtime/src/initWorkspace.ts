@@ -2,11 +2,12 @@ import { access, cp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { constants } from "node:fs";
 import { resolvePlanweaveHome } from "./paths.js";
-import { resolveProjectWorkspace } from "./project.js";
+import { projectWorkspacePaths, resolveProjectWorkspace } from "./project.js";
+import { createManagedProjectId } from "./projectId.js";
 import { createEmptyState } from "./state.js";
 import { writeJsonFile } from "./json.js";
 import { materializeProjectGraph } from "./projectGraph/index.js";
-import type { InitWorkspaceResult, PlanPackageManifest, ProjectMetadata } from "./types.js";
+import type { InitWorkspaceResult, PlanPackageManifest, ProjectMetadata, ProjectWorkspace } from "./types.js";
 
 export function initialManifest(projectName: string): PlanPackageManifest {
   return {
@@ -40,23 +41,17 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-export async function initWorkspace(options: {
-  projectRoot: string;
-  force?: boolean;
-  resetPackage?: boolean;
-  resetResults?: boolean;
-  projectGraph?: boolean;
-}): Promise<InitWorkspaceResult> {
-  const rootPath = await realpath(options.projectRoot);
-  const workspace = await resolveProjectWorkspace(rootPath);
-  const projectName = basename(rootPath);
-  const project: ProjectMetadata = {
-    id: workspace.id,
-    name: projectName,
-    rootPath,
-    createdAt: new Date().toISOString()
-  };
-
+async function initializeWorkspace(
+  workspace: ProjectWorkspace,
+  project: ProjectMetadata,
+  projectName: string,
+  options: {
+    force?: boolean;
+    resetPackage?: boolean;
+    resetResults?: boolean;
+    projectGraph?: boolean;
+  }
+): Promise<InitWorkspaceResult> {
   const alreadyExists = await exists(workspace.projectFile);
   if (alreadyExists && options.force) {
     throw new Error(`init --force would overwrite existing workspace '${workspace.workspaceRoot}'.`);
@@ -64,7 +59,7 @@ export async function initWorkspace(options: {
 
   const resetting = options.resetPackage || options.resetResults;
   if (resetting && !alreadyExists) {
-    throw new Error(`PlanWeave workspace for project '${rootPath}' has not been initialized.`);
+    throw new Error(`PlanWeave workspace for project '${workspace.rootPath}' has not been initialized.`);
   }
 
   let backup: InitWorkspaceResult["backup"];
@@ -115,7 +110,7 @@ export async function initWorkspace(options: {
     await writeJsonFile(workspace.stateFile, createEmptyState());
   }
 
-  const projectGraph = options.projectGraph ? await materializeProjectGraph(rootPath) : undefined;
+  const projectGraph = options.projectGraph ? await materializeProjectGraph(workspace.rootPath) : undefined;
 
   return {
     workspace,
@@ -124,4 +119,60 @@ export async function initWorkspace(options: {
     ...(projectGraph ? { projectGraph } : {}),
     ...(backup ? { backup } : {})
   };
+}
+
+export async function initWorkspace(options: {
+  projectRoot: string;
+  force?: boolean;
+  resetPackage?: boolean;
+  resetResults?: boolean;
+  projectGraph?: boolean;
+}): Promise<InitWorkspaceResult> {
+  const rootPath = await realpath(options.projectRoot);
+  const workspace = await resolveProjectWorkspace(rootPath);
+  const projectName = basename(rootPath);
+  const project: ProjectMetadata = {
+    id: workspace.id,
+    name: projectName,
+    rootPath,
+    kind: "external",
+    sourceRoot: rootPath,
+    createdAt: new Date().toISOString()
+  };
+
+  return initializeWorkspace(workspace, project, projectName, options);
+}
+
+export async function initManagedWorkspace(options: {
+  name: string;
+  force?: boolean;
+  resetPackage?: boolean;
+  resetResults?: boolean;
+  projectGraph?: boolean;
+}): Promise<InitWorkspaceResult> {
+  const projectName = options.name.trim();
+  if (!projectName) {
+    throw new Error("Managed project name must not be empty.");
+  }
+  const planweaveHome = resolvePlanweaveHome();
+  const id = createManagedProjectId(projectName);
+  const workspaceRoot = join(planweaveHome, "projects", id);
+  const workspace = projectWorkspacePaths({
+    id,
+    kind: "managed",
+    rootPath: workspaceRoot,
+    sourceRoot: null,
+    planweaveHome,
+    workspaceRoot
+  });
+  const project: ProjectMetadata = {
+    id,
+    name: projectName,
+    rootPath: workspaceRoot,
+    kind: "managed",
+    sourceRoot: null,
+    createdAt: new Date().toISOString()
+  };
+
+  return initializeWorkspace(workspace, project, projectName, options);
 }

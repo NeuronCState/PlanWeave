@@ -13,7 +13,9 @@ export type DesktopTaskCanvasSummary = {
 export type DesktopProjectSummary = {
   projectId: string;
   name: string;
+  kind: "external" | "managed";
   rootPath: string;
+  sourceRoot: string | null;
   workspaceRoot: string;
   activeCanvasId: string | null;
   taskCanvases: DesktopTaskCanvasSummary[];

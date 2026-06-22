@@ -1,5 +1,5 @@
-import type { CSSProperties, Dispatch, PointerEvent, SetStateAction } from "react";
-import type { DesktopAutoRunState, DesktopProjectSummary } from "@planweave-ai/runtime";
+import { useEffect, useState, type CSSProperties, type Dispatch, type PointerEvent, type SetStateAction } from "react";
+import type { DesktopAutoRunState, DesktopProjectSummary, ValidationIssue } from "@planweave-ai/runtime";
 import { FolderOpenIcon, MoveIcon, PauseIcon, PlayIcon, RefreshCwIcon, SquareIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,13 +20,17 @@ import type { AutoRunScopeMode } from "../types";
 import { formatElapsed } from "../viewHelpers";
 
 type FloatingAutoRunControlProps = {
+  affectedTasks: string[];
   autoRunScopeMode: AutoRunScopeMode;
   autoRunState: DesktopAutoRunState | null;
+  diagnostics: ValidationIssue[];
   dirtyPromptCount: number;
+  dirtyPromptRefs: string[];
   handleAutoRunClick: () => Promise<void>;
   handleRevealPathInFinder: (path: string | null | undefined) => Promise<void>;
   miniRunPanelOpen: boolean;
   moveAutoRunControl: (event: PointerEvent<HTMLButtonElement>) => void;
+  onOpenFileSyncRef: (ref: string) => void;
   refreshPackageFiles: () => Promise<void>;
   selectedBlockPresent: boolean;
   selectedProject: DesktopProjectSummary | null;
@@ -76,14 +80,91 @@ function AutoRunFailureDetails({ state, t }: { state: DesktopAutoRunState; t: Re
   );
 }
 
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter((value) => value.trim().length > 0))];
+}
+
+function fileSyncChangeKey(options: { affectedTasks: string[]; diagnostics: ValidationIssue[]; dirtyPromptRefs: string[] }): string {
+  return JSON.stringify({
+    affectedTasks: uniqueStrings(options.affectedTasks).sort(),
+    dirtyPromptRefs: uniqueStrings(options.dirtyPromptRefs).sort(),
+    diagnostics: options.diagnostics.map((diagnostic) => ({
+      code: diagnostic.code,
+      message: diagnostic.message,
+      path: diagnostic.path ?? null
+    }))
+  });
+}
+
+function FileSyncRefList({
+  emptyLabel,
+  items,
+  label,
+  onOpenFileSyncRef
+}: {
+  emptyLabel: string;
+  items: string[];
+  label: string;
+  onOpenFileSyncRef: (ref: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="text-xs font-semibold text-text-strong">{label}</div>
+      {items.length > 0 ? (
+        <div className="flex max-h-28 flex-col gap-1 overflow-y-auto">
+          {items.map((item) => (
+            <Button
+              className="h-auto justify-start px-2 py-1.5 text-left text-xs"
+              data-testid="file-sync-ref"
+              key={item}
+              size="sm"
+              variant="ghost"
+              onClick={() => onOpenFileSyncRef(item)}
+            >
+              <span className="min-w-0 break-all">{item}</span>
+            </Button>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-md border border-border/70 bg-muted/30 px-2 py-1.5 text-xs text-muted-foreground">{emptyLabel}</div>
+      )}
+    </div>
+  );
+}
+
+function FileSyncDiagnosticsList({ diagnostics, emptyLabel, label }: { diagnostics: ValidationIssue[]; emptyLabel: string; label: string }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="text-xs font-semibold text-text-strong">{label}</div>
+      {diagnostics.length > 0 ? (
+        <div className="flex max-h-28 flex-col gap-1 overflow-y-auto">
+          {diagnostics.map((diagnostic, index) => (
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 px-2 py-1.5 text-xs" data-testid="file-sync-diagnostic" key={`${diagnostic.code}:${diagnostic.path ?? ""}:${index}`}>
+              <div className="font-medium text-destructive">{diagnostic.code}</div>
+              <div className="break-words text-muted-foreground">{diagnostic.message}</div>
+              {diagnostic.path ? <div className="mt-1 break-all text-text-faint">{diagnostic.path}</div> : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-md border border-border/70 bg-muted/30 px-2 py-1.5 text-xs text-muted-foreground">{emptyLabel}</div>
+      )}
+    </div>
+  );
+}
+
 export function FloatingAutoRunControl({
+  affectedTasks,
   autoRunScopeMode,
   autoRunState,
+  diagnostics,
   dirtyPromptCount,
+  dirtyPromptRefs,
   handleAutoRunClick,
   handleRevealPathInFinder,
   miniRunPanelOpen,
   moveAutoRunControl,
+  onOpenFileSyncRef,
   refreshPackageFiles,
   selectedBlockPresent,
   selectedProject,
@@ -100,6 +181,20 @@ export function FloatingAutoRunControl({
   const hasProject = Boolean(selectedProject);
   const explanation = autoRunState?.explanation ?? null;
   const showFailureDetails = isFailureState(autoRunState);
+  const fileSyncDirtyRefs = uniqueStrings(dirtyPromptRefs);
+  const fileSyncAffectedTasks = uniqueStrings(affectedTasks);
+  const fileSyncDirtyCount = Math.max(dirtyPromptCount, fileSyncDirtyRefs.length);
+  const fileSyncIssueCount = fileSyncDirtyCount + fileSyncAffectedTasks.length + diagnostics.length;
+  const currentFileSyncChangeKey = fileSyncIssueCount > 0 ? fileSyncChangeKey({ affectedTasks: fileSyncAffectedTasks, diagnostics, dirtyPromptRefs: fileSyncDirtyRefs }) : null;
+  const [fileSyncPopoverOpen, setFileSyncPopoverOpen] = useState(false);
+  const [viewedFileSyncChangeKey, setViewedFileSyncChangeKey] = useState<string | null>(null);
+  const showFileSyncUnreadCount = fileSyncIssueCount > 0 && currentFileSyncChangeKey !== viewedFileSyncChangeKey;
+
+  useEffect(() => {
+    if (fileSyncPopoverOpen) {
+      setViewedFileSyncChangeKey(currentFileSyncChangeKey);
+    }
+  }, [currentFileSyncChangeKey, fileSyncPopoverOpen]);
 
   return (
     <div className="absolute flex items-center gap-2 rounded-xl border bg-background p-2 shadow-lg" data-auto-run-control style={style}>
@@ -115,16 +210,56 @@ export function FloatingAutoRunControl({
       >
         <MoveIcon data-icon="inline-start" />
       </Button>
-      <Button
-        size="icon-sm"
-        variant={dirtyPromptCount ? "outline" : "ghost"}
-        aria-label={t("syncFiles")}
-        title={t("syncFiles")}
-        disabled={!hasProject}
-        onClick={() => void refreshPackageFiles()}
-      >
-        <RefreshCwIcon data-icon="inline-start" />
-      </Button>
+      <Popover open={fileSyncPopoverOpen} onOpenChange={setFileSyncPopoverOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            className="relative"
+            data-testid="file-sync-trigger"
+            size="icon-sm"
+            variant={fileSyncIssueCount ? "outline" : "ghost"}
+            aria-label={t("viewFileSyncChanges")}
+            title={t("viewFileSyncChanges")}
+            disabled={!hasProject}
+          >
+            <RefreshCwIcon data-icon="inline-start" />
+            {showFileSyncUnreadCount ? (
+              <span
+                className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full border border-background bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground"
+                data-testid="file-sync-unread-count"
+              >
+                {fileSyncIssueCount}
+              </span>
+            ) : null}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-80" data-testid="file-sync-popover">
+          <PopoverHeader>
+            <PopoverTitle>{t("fileSyncChanges")}</PopoverTitle>
+            <PopoverDescription>{fileSyncIssueCount > 0 ? t("fileSyncChangesHint") : t("fileSyncNoChanges")}</PopoverDescription>
+          </PopoverHeader>
+          <div className="flex flex-col gap-3">
+            <div className="flex justify-end">
+              <Button size="sm" variant="outline" onClick={() => void refreshPackageFiles()}>
+                <RefreshCwIcon data-icon="inline-start" />
+                {t("recheckFiles")}
+              </Button>
+            </div>
+            <FileSyncRefList
+              emptyLabel={t("fileSyncNoChanges")}
+              items={fileSyncDirtyRefs}
+              label={t("dirtyPrompts")}
+              onOpenFileSyncRef={onOpenFileSyncRef}
+            />
+            <FileSyncRefList
+              emptyLabel={t("fileSyncNoChanges")}
+              items={fileSyncAffectedTasks}
+              label={t("affectedTasks")}
+              onOpenFileSyncRef={onOpenFileSyncRef}
+            />
+            <FileSyncDiagnosticsList diagnostics={diagnostics} emptyLabel={t("fileSyncNoChanges")} label={t("diagnostics")} />
+          </div>
+        </PopoverContent>
+      </Popover>
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <span>

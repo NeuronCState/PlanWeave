@@ -11,7 +11,7 @@ import {
   type OnEdgesChange,
   type OnNodesChange
 } from "@xyflow/react";
-import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopProjectSummary } from "@planweave-ai/runtime";
+import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopPackageFileSyncResult, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { ChevronRightIcon, NetworkIcon, Redo2Icon, Undo2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { styleGraphEdgesForInteraction, type AppNodeTypes } from "../graph/flowModel";
@@ -28,8 +28,10 @@ type GraphViewProps = {
   autoRunState: DesktopAutoRunState | null;
   dirtyPromptRefs: string[];
   edges: Edge[];
+  fileSyncResult: DesktopPackageFileSyncResult | null;
   graph: DesktopGraphViewModel | null;
   handleAutoRunClick: () => Promise<void>;
+  handleOpenBlockInspector: (ref: string, canvasId?: string | null) => Promise<void>;
   handleConnect: (connection: Connection) => Promise<void>;
   handleEdgesDelete: (deletedEdges: Edge[]) => Promise<void>;
   handleReconnectEdge: (oldEdge: Edge, connection: Connection) => Promise<void>;
@@ -71,8 +73,10 @@ export function GraphView({
   autoRunState,
   dirtyPromptRefs,
   edges,
+  fileSyncResult,
   graph,
   handleAutoRunClick,
+  handleOpenBlockInspector,
   handleConnect,
   handleEdgesDelete,
   handleReconnectEdge,
@@ -111,7 +115,11 @@ export function GraphView({
   const [localFlowInstance, setLocalFlowInstance] = useState<ReactFlowInstance<AppFlowNode, Edge> | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const dirtyPromptCount = Math.max(dirtyPromptRefs.length, graph?.dirtyPromptRefs.length ?? 0);
+  const combinedDirtyPromptRefs = useMemo(
+    () => [...new Set([...dirtyPromptRefs, ...(graph?.dirtyPromptRefs ?? [])])],
+    [dirtyPromptRefs, graph?.dirtyPromptRefs]
+  );
+  const dirtyPromptCount = combinedDirtyPromptRefs.length;
   const visibleNodes = visibleTasks ? nodes.filter((node) => node.type !== "task" || visibleTaskIds.has(node.id)) : nodes;
   const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
   const visibleEdges = visibleTasks ? edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)) : edges;
@@ -137,6 +145,17 @@ export function GraphView({
     handleEdgesDelete,
     handleReconnectEdge
   });
+  const handleOpenFileSyncRef = useCallback(
+    (ref: string) => {
+      setActiveView("graph");
+      if (ref.includes("#")) {
+        void handleOpenBlockInspector(ref, selectedCanvasId);
+        return;
+      }
+      onTaskPanelSelect(ref);
+    },
+    [handleOpenBlockInspector, onTaskPanelSelect, selectedCanvasId, setActiveView]
+  );
 
   useEffect(() => {
     if (!graph) {
@@ -260,11 +279,15 @@ export function GraphView({
       <FloatingAutoRunControl
         autoRunScopeMode={autoRunScopeMode}
         autoRunState={autoRunState}
+        affectedTasks={fileSyncResult?.affectedTasks ?? []}
+        diagnostics={fileSyncResult?.diagnostics ?? []}
+        dirtyPromptRefs={combinedDirtyPromptRefs}
         dirtyPromptCount={dirtyPromptCount}
         handleAutoRunClick={handleAutoRunClick}
         handleRevealPathInFinder={handleRevealPathInFinder}
         miniRunPanelOpen={miniRunPanelOpen}
         moveAutoRunControl={moveAutoRunControl}
+        onOpenFileSyncRef={handleOpenFileSyncRef}
         refreshPackageFiles={refreshPackageFiles}
         selectedBlockPresent={selectedBlockPresent}
         selectedProject={selectedProject}

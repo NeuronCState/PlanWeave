@@ -10,6 +10,7 @@ import type {
 import type {
   DesktopAutoRunState,
   DesktopGraphViewModel,
+  DesktopPackageFileSyncResult,
   DesktopProjectExecutionPlan,
   DesktopProjectSummary,
   DesktopReviewPipeline,
@@ -42,6 +43,7 @@ type WorkspaceTabsProps = {
   confirmTaskDraft: () => Promise<void>;
   dirtyPromptRefs: string[];
   edges: Edge[];
+  fileSyncResult: DesktopPackageFileSyncResult | null;
   generateTaskDraft: () => Promise<void>;
   graph: DesktopGraphViewModel | null;
   executionPlan: DesktopProjectExecutionPlan | null;

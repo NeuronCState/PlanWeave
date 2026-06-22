@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { type Edge, type ReactFlowInstance, useEdgesState, useNodesState } from "@xyflow/react";
-import type { DesktopPackageFileChangeEvent } from "@planweave-ai/runtime";
+import type { DesktopPackageFileChangeEvent, DesktopPackageFileSyncResult } from "@planweave-ai/runtime";
 import { bridge, desktopCanvasReference } from "./bridge";
 import { nodeTypes } from "./graph/flowModel";
 import { createTranslator } from "./i18n";
@@ -54,6 +54,7 @@ export function App() {
   const { refreshRuntimeTools, runtimeTools } = useRuntimeTools();
   const [lastFileChange, setLastFileChange] = useState<DesktopPackageFileChangeEvent | null>(null);
   const [fileSyncDiagnostics, setFileSyncDiagnostics] = useState<string[]>([]);
+  const [fileSyncResult, setFileSyncResult] = useState<DesktopPackageFileSyncResult | null>(null);
   const [dirtyPromptRefs, setDirtyPromptRefs] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(bridge ? null : t("bridgeUnavailable"));
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<AppFlowNode, Edge> | null>(null);
@@ -445,6 +446,7 @@ export function App() {
     setDirtyPromptRefs,
     setError,
     setFileSyncDiagnostics,
+    setFileSyncResult,
     setLastFileChange
   });
 
@@ -544,6 +546,7 @@ export function App() {
           dirtyPromptRefs={dirtyPromptRefs}
           edges={edges}
           executionPlan={executionPlan}
+          fileSyncResult={fileSyncResult}
           generateTaskDraft={generateTaskDraft}
           graph={graph}
           handleAutoRunClick={handleAutoRunClick}

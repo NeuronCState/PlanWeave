@@ -706,19 +706,24 @@ describe("desktop renderer interface interactions", () => {
     });
     const handleAutoRunClick = vi.fn().mockResolvedValue(undefined);
     const handleRevealPathInFinder = vi.fn().mockResolvedValue(undefined);
+    const onOpenFileSyncRef = vi.fn();
     const refreshPackageFiles = vi.fn().mockResolvedValue(undefined);
     const setAutoRunScopeMode = vi.fn();
     const stopAutoRunClick = vi.fn().mockResolvedValue(undefined);
 
     const { rerender } = render(
       <FloatingAutoRunControl
+        affectedTasks={["T-002"]}
         autoRunScopeMode="project"
         autoRunState={autoRunState}
+        diagnostics={[{ code: "prompt_changed", message: "Prompt changed on disk.", path: "nodes/T-001/prompt.md" }]}
+        dirtyPromptRefs={["T-001#B-001"]}
         dirtyPromptCount={2}
         handleAutoRunClick={handleAutoRunClick}
         handleRevealPathInFinder={handleRevealPathInFinder}
         miniRunPanelOpen={true}
         moveAutoRunControl={vi.fn()}
+        onOpenFileSyncRef={onOpenFileSyncRef}
         refreshPackageFiles={refreshPackageFiles}
         selectedBlockPresent={true}
         selectedProject={project}
@@ -739,7 +744,19 @@ describe("desktop renderer interface interactions", () => {
     expect(screen.getByText("Current block: T-001#B-001")).toBeInTheDocument();
     expect(screen.getByText("Agent: codex")).toBeInTheDocument();
     expect(screen.getByText("Next action: Wait for the current Auto Run step to finish.")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Sync file changes" }));
+    expect(screen.getByTestId("file-sync-unread-count")).toHaveTextContent("4");
+    await userEvent.click(screen.getByRole("button", { name: "View file sync changes" }));
+    expect(screen.getByTestId("file-sync-popover")).toBeVisible();
+    expect(screen.queryByTestId("file-sync-unread-count")).not.toBeInTheDocument();
+    expect(screen.getByText("Dirty Prompts")).toBeInTheDocument();
+    expect(screen.getByText("T-001#B-001")).toBeInTheDocument();
+    expect(screen.getByText("Affected tasks")).toBeInTheDocument();
+    expect(screen.getByText("T-002")).toBeInTheDocument();
+    expect(screen.getByTestId("file-sync-diagnostic")).toHaveTextContent("Prompt changed on disk.");
+    await userEvent.click(screen.getByRole("button", { name: "T-001#B-001" }));
+    expect(onOpenFileSyncRef).toHaveBeenCalledWith("T-001#B-001");
+    expect(refreshPackageFiles).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Recheck files" }));
     await userEvent.click(screen.getByRole("button", { name: "Auto Run" }));
     await userEvent.click(screen.getAllByRole("button", { name: "Stop" })[0]);
     expect(screen.getByTestId("auto-run-open-record")).toHaveAttribute("data-record-path", "/tmp/result.json");
@@ -757,6 +774,7 @@ describe("desktop renderer interface interactions", () => {
 
     rerender(
       <FloatingAutoRunControl
+        affectedTasks={[]}
         autoRunScopeMode="project"
         autoRunState={createAutoRunState({
           runId: "RUN-FAILED",
@@ -784,11 +802,14 @@ describe("desktop renderer interface interactions", () => {
           },
           error: "Executor exited with code 1."
         })}
+        diagnostics={[]}
+        dirtyPromptRefs={[]}
         dirtyPromptCount={0}
         handleAutoRunClick={handleAutoRunClick}
         handleRevealPathInFinder={handleRevealPathInFinder}
         miniRunPanelOpen={true}
         moveAutoRunControl={vi.fn()}
+        onOpenFileSyncRef={onOpenFileSyncRef}
         refreshPackageFiles={refreshPackageFiles}
         selectedBlockPresent={true}
         selectedProject={project}
@@ -820,13 +841,17 @@ describe("desktop renderer interface interactions", () => {
   it("keeps Auto Run visible but disabled when no project is open", () => {
     render(
       <FloatingAutoRunControl
+        affectedTasks={[]}
         autoRunScopeMode="project"
         autoRunState={null}
+        diagnostics={[]}
+        dirtyPromptRefs={[]}
         dirtyPromptCount={0}
         handleAutoRunClick={vi.fn().mockResolvedValue(undefined)}
         handleRevealPathInFinder={vi.fn().mockResolvedValue(undefined)}
         miniRunPanelOpen={false}
         moveAutoRunControl={vi.fn()}
+        onOpenFileSyncRef={vi.fn()}
         refreshPackageFiles={vi.fn().mockResolvedValue(undefined)}
         selectedBlockPresent={false}
         selectedProject={null}
@@ -843,6 +868,6 @@ describe("desktop renderer interface interactions", () => {
 
     expect(screen.getByText("Open a project before running Auto Run.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Auto Run" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Sync file changes" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "View file sync changes" })).toBeDisabled();
   });
 });

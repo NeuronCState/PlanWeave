@@ -31,7 +31,7 @@ export const projectSchemaDocument: SchemaDocument<"project"> = {
   },
   notes: [
     "PlanWeave stores project metadata, package, state, results, and desktop files under workspaceRoot; managed projects use that workspace as their project root.",
-    "External projects keep source code outside workspaceRoot and store the optional sourceRoot in project metadata.",
+    "External projects use the source directory as rootPath; managed projects can bind an optional sourceRoot while keeping plan files under workspaceRoot.",
     "Canvas ids must be CLI-safe because generated agent commands pass them to --canvas without shell quoting.",
     "Use canvas edges only when the whole downstream canvas waits for the whole upstream canvas.",
     "Use crossTaskEdges when only specific tasks have cross-canvas ordering.",

@@ -107,6 +107,7 @@ export function FloatingAutoRunControl({
         size="icon-sm"
         variant="ghost"
         aria-label={t("dragAutoRunControl")}
+        title={t("dragAutoRunControl")}
         onPointerDown={startAutoRunControlDrag}
         onPointerMove={moveAutoRunControl}
         onPointerUp={stopAutoRunControlDrag}
@@ -118,6 +119,7 @@ export function FloatingAutoRunControl({
         size="icon-sm"
         variant={dirtyPromptCount ? "outline" : "ghost"}
         aria-label={t("syncFiles")}
+        title={t("syncFiles")}
         disabled={!hasProject}
         onClick={() => void refreshPackageFiles()}
       >
@@ -133,6 +135,7 @@ export function FloatingAutoRunControl({
                   size="icon-lg"
                   variant={autoRunState?.phase === "blocked" || autoRunState?.phase === "failed" ? "destructive" : "default"}
                   aria-label={t("autoRun")}
+                  title={t("autoRun")}
                   disabled={!hasProject}
                   onClick={() => void handleAutoRunClick()}
                 >
@@ -234,13 +237,13 @@ export function FloatingAutoRunControl({
         </ContextMenuContent>
       </ContextMenu>
       {canStop ? (
-        <Button size="icon-sm" variant="outline" aria-label={t("stop")} onClick={() => void stopAutoRunClick()}>
+        <Button size="icon-sm" variant="outline" aria-label={t("stop")} title={t("stop")} onClick={() => void stopAutoRunClick()}>
           <SquareIcon data-icon="inline-start" />
         </Button>
       ) : null}
       {!hasProject ? <span className="max-w-[180px] text-xs text-muted-foreground">{t("autoRunNoProjectHint")}</span> : null}
       <Select value={autoRunScopeMode} onValueChange={(value) => setAutoRunScopeMode(value as AutoRunScopeMode)}>
-        <SelectTrigger className="h-9 w-36" disabled={!hasProject}>
+        <SelectTrigger className="h-9 w-36" disabled={!hasProject} title={t("autoRunScope")}>
           <SelectValue aria-label={t("autoRunScope")} />
         </SelectTrigger>
         <SelectContent>
@@ -255,7 +258,7 @@ export function FloatingAutoRunControl({
           </SelectGroup>
         </SelectContent>
       </Select>
-      <Badge variant={autoRunState?.phase === "blocked" || autoRunState?.phase === "failed" ? "destructive" : "outline"}>
+      <Badge title={t("runStatus")} variant={autoRunState?.phase === "blocked" || autoRunState?.phase === "failed" ? "destructive" : "outline"}>
         {autoRunState?.phase ?? t("autoRunStopped")}
       </Badge>
     </div>

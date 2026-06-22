@@ -37,9 +37,11 @@ Run the desktop app from source:
 git clone https://github.com/GaosCode/PlanWeave.git
 cd PlanWeave
 pnpm install
-pnpm -r build
+pnpm --dir packages/desktop build
 pnpm --dir packages/desktop start
 ```
+
+`pnpm -r build` builds every workspace package. Use it for full-repository verification. `pnpm --dir packages/desktop build` is the narrower command for preparing the Electron desktop app; it also builds the runtime and MCP packages that desktop needs.
 
 ## MCP Server From Source
 
@@ -75,6 +77,12 @@ Build the workspace:
 
 ```bash
 pnpm -r build
+```
+
+Build only the desktop app and its required runtime/MCP dependencies:
+
+```bash
+pnpm --dir packages/desktop build
 ```
 
 Run the desktop smoke test after building:

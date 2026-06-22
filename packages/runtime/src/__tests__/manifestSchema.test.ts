@@ -94,6 +94,19 @@ describe("plan-package/v1 manifest schema", () => {
     expect(result.data?.executors?.["local-review"]?.adapter).toBe("local-review");
   });
 
+  it("accepts agent builtin executors without package profiles", () => {
+    const manifest = manifestTestBuilder()
+      .withDefaultExecutor("opencode")
+      .withTask("T-001", (task) => ({ ...task, executor: "codex" }))
+      .withBlock("T-001", "B-001", (block) => ({ ...block, executor: "claude-code" }))
+      .withBlock("T-001", "R-001", (block) => ({ ...block, executor: "pi" }))
+      .build();
+
+    const result = manifestSchema.safeParse(manifest);
+
+    expect(result.success).toBe(true);
+  });
+
   it("rejects non-positive codex executor timeouts", () => {
     const manifest = manifestTestBuilder()
       .withExecutor("codex-auto", {

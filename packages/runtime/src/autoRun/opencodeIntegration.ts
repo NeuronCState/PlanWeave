@@ -4,7 +4,9 @@ import { runOpencodeBlock, runOpencodeFeedback } from "./opencodeExecutor.js";
 
 export const opencodeIntegration: ExecutorIntegration = {
   adapter: "opencode-exec",
-  builtinProfiles: {},
+  builtinProfiles: {
+    opencode: { adapter: "opencode-exec", command: "opencode", args: ["run", "-"] }
+  },
   runBlock(input: ExecutorBlockInput) {
     if (input.profile.adapter !== "opencode-exec") {
       throw adapterProfileMismatch("opencode-exec", input.profile);

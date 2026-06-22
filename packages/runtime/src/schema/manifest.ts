@@ -176,7 +176,19 @@ export const manifestSchema = z
         path: [key]
       });
     }
-    const knownExecutors = new Set(["default", "manual", "codex-auto", "codex-reviewer", "claude-code-auto", "pi-auto", ...Object.keys(manifest.executors ?? {})]);
+    const knownExecutors = new Set([
+      "default",
+      "manual",
+      "codex",
+      "codex-auto",
+      "codex-reviewer",
+      "opencode",
+      "claude-code",
+      "claude-code-auto",
+      "pi",
+      "pi-auto",
+      ...Object.keys(manifest.executors ?? {})
+    ]);
     if (manifest.execution.defaultExecutor && !knownExecutors.has(manifest.execution.defaultExecutor)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

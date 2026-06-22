@@ -769,8 +769,12 @@ describe("Auto Run contract", () => {
     await expect(listExecutorProfiles({ projectRoot: root })).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "manual", adapter: "manual", source: "builtin" }),
+        expect.objectContaining({ name: "codex", adapter: "codex-exec", source: "builtin" }),
         expect.objectContaining({ name: "codex-auto", adapter: "codex-exec", source: "builtin" }),
+        expect.objectContaining({ name: "opencode", adapter: "opencode-exec", source: "builtin" }),
+        expect.objectContaining({ name: "claude-code", adapter: "claude-code-exec", source: "builtin" }),
         expect.objectContaining({ name: "claude-code-auto", adapter: "claude-code-exec", source: "builtin" }),
+        expect.objectContaining({ name: "pi", adapter: "pi-exec", source: "builtin" }),
         expect.objectContaining({ name: "pi-auto", adapter: "pi-exec", source: "builtin" }),
         expect.objectContaining({ name: "project-codex", adapter: "codex-exec", source: "package" })
       ])

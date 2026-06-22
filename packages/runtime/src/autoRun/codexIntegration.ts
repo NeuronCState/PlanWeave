@@ -5,6 +5,7 @@ import { adapterProfileMismatch, type ExecutorBlockInput, type ExecutorFeedbackI
 export const codexIntegration: ExecutorIntegration = {
   adapter: "codex-exec",
   builtinProfiles: {
+    codex: { adapter: "codex-exec", command: "codex", args: ["exec", "-"] },
     "codex-auto": { adapter: "codex-exec", command: "codex", args: ["exec", "-"] },
     "codex-reviewer": { adapter: "codex-exec", command: "codex", args: ["exec", "-"], role: "reviewer" }
   },

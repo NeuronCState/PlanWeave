@@ -5,6 +5,7 @@ import { runTerminalAgentBlock, runTerminalAgentFeedback } from "./terminalAgent
 export const piIntegration: ExecutorIntegration = {
   adapter: "pi-exec",
   builtinProfiles: {
+    pi: { adapter: "pi-exec", command: "pi", args: ["-p"] },
     "pi-auto": { adapter: "pi-exec", command: "pi", args: ["-p"] }
   },
   runBlock(input: ExecutorBlockInput) {

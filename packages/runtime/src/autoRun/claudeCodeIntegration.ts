@@ -5,6 +5,7 @@ import { runTerminalAgentBlock, runTerminalAgentFeedback } from "./terminalAgent
 export const claudeCodeIntegration: ExecutorIntegration = {
   adapter: "claude-code-exec",
   builtinProfiles: {
+    "claude-code": { adapter: "claude-code-exec", command: "claude", args: ["-p"] },
     "claude-code-auto": { adapter: "claude-code-exec", command: "claude", args: ["-p"] }
   },
   runBlock(input: ExecutorBlockInput) {

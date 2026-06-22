@@ -137,6 +137,53 @@ afterEach(() => {
 });
 
 describe("desktop renderer hook interfaces", () => {
+  it("maps detected agent tools to executor profile names", async () => {
+    const bridge = createDesktopBridgeMock({
+      detectAgentTools: vi.fn().mockResolvedValue([
+        {
+          kind: "claude-code",
+          name: "Claude Code",
+          command: "claude",
+          versionArgs: ["--version"],
+          execArgs: ["-p"],
+          fullAccessArgs: ["--dangerously-skip-permissions", "-p"],
+          installed: true,
+          version: "claude 1.0.0",
+          unavailableReason: null
+        },
+        {
+          kind: "opencode",
+          name: "OpenCode",
+          command: "opencode",
+          versionArgs: ["--version"],
+          execArgs: ["run", "-"],
+          fullAccessArgs: ["run", "--permission", "full-access", "-"],
+          installed: true,
+          version: "opencode 1.0.0",
+          unavailableReason: null
+        },
+        {
+          kind: "pi",
+          name: "Pi",
+          command: "pi",
+          versionArgs: ["--version"],
+          execArgs: ["-p"],
+          fullAccessArgs: ["-p"],
+          installed: false,
+          version: null,
+          unavailableReason: "not found"
+        }
+      ])
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDetectedAgents } = await import("../renderer/hooks/useDetectedAgents");
+
+    const { result } = renderHook(() => useDetectedAgents());
+
+    await waitFor(() => expect(result.current.executorOptions).toEqual(["claude-code", "opencode"]));
+  });
+
   it("filters visible graph tasks only by search query", () => {
     const { result, rerender } = renderHook(({ query }) => useVisibleGraphTasks(graph, query), {
       initialProps: { query: "" }

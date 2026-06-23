@@ -74,6 +74,8 @@ export const zhCnCatalog = {
     unlinkSourceRootConfirm: "确定要解除这个代码仓库和 PlanWeave 项目的绑定吗？",
     dropSourceRootUnavailable: "拖入项目没有暴露本地文件夹路径。",
     renameProject: "重命名项目",
+    renameTaskCanvas: "重命名任务画布",
+    renameTaskCanvasPrompt: "任务画布名称",
     removeProject: "移除",
     collapseSidebar: "收起边栏",
     expandSidebar: "展开边栏",

@@ -169,6 +169,7 @@ export function App() {
     openBlockInspector: handleOpenBlockInspector,
     openProject: openProjectInSession,
     openTaskInspector: handleOpenTaskInspector,
+    renameTaskCanvas: renameTaskCanvasInSession,
     reloadCurrentCanvas,
     selectedTaskPanelId,
     selectTaskPanel: handleTaskPanelSelect,
@@ -313,10 +314,12 @@ export function App() {
     handleRevealPlanWorkspace,
     handleRevealProject,
     handleRevealSourceRoot,
+    handleRenameTaskCanvas,
     handleUnlinkSourceRoot
   } = useDesktopProjectActions({
     createTaskCanvas: createTaskCanvasInSession,
     deleteTaskCanvas: deleteTaskCanvasInSession,
+    renameTaskCanvas: renameTaskCanvasInSession,
     refreshProjectSummary,
     removeProject,
     setActiveView,
@@ -519,6 +522,7 @@ export function App() {
           handleRevealPlanWorkspace={handleRevealPlanWorkspace}
           handleRevealProject={handleRevealProject}
           handleRevealSourceRoot={handleRevealSourceRoot}
+          handleRenameTaskCanvas={handleRenameTaskCanvas}
           handleUnlinkSourceRoot={handleUnlinkSourceRoot}
           handleTaskPanelSelect={handleTaskPanelSelect}
           loadProject={openProjectInSession}

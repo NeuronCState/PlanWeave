@@ -27,6 +27,7 @@ type ProjectSidebarProps = {
   handleRevealPlanWorkspace: (project: DesktopProjectSummary) => Promise<void>;
   handleRevealProject: (project: DesktopProjectSummary) => Promise<void>;
   handleRevealSourceRoot: (project: DesktopProjectSummary) => Promise<void>;
+  handleRenameTaskCanvas: (project: DesktopProjectSummary, canvasId: string, currentName: string) => Promise<void>;
   handleUnlinkSourceRoot: (project: DesktopProjectSummary) => Promise<void>;
   handleTaskPanelSelect: (taskId: string | null) => void;
   loadProject: (project: DesktopProjectSummary, canvasId?: string | null) => Promise<void>;
@@ -60,6 +61,7 @@ export function ProjectSidebar({
   handleRevealPlanWorkspace,
   handleRevealProject,
   handleRevealSourceRoot,
+  handleRenameTaskCanvas,
   handleUnlinkSourceRoot,
   handleTaskPanelSelect,
   loadProject,
@@ -182,6 +184,7 @@ export function ProjectSidebar({
         handleRevealPlanWorkspace={handleRevealPlanWorkspace}
         handleRevealProject={handleRevealProject}
         handleRevealSourceRoot={handleRevealSourceRoot}
+        handleRenameTaskCanvas={handleRenameTaskCanvas}
         handleUnlinkSourceRoot={handleUnlinkSourceRoot}
         handleTaskPanelSelect={handleTaskPanelSelect}
         onCanvasSelect={handleCanvasSelect}

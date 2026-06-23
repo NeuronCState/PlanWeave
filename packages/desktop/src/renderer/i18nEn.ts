@@ -72,6 +72,8 @@ export const enCatalog = {
     unlinkSourceRootConfirm: "Unlink this code repository from the PlanWeave project?",
     dropSourceRootUnavailable: "The dropped item did not expose a local folder path.",
     renameProject: "Rename project",
+    renameTaskCanvas: "Rename task canvas",
+    renameTaskCanvasPrompt: "Task canvas name",
     removeProject: "Remove",
     collapseSidebar: "Collapse sidebar",
     expandSidebar: "Expand sidebar",

@@ -110,6 +110,7 @@ describe("desktop renderer component interactions", () => {
         handleDeleteTaskNode={vi.fn().mockResolvedValue(undefined)}
         handleOpenProject={vi.fn().mockResolvedValue(undefined)}
         handleProjectNewGraph={vi.fn().mockResolvedValue(undefined)}
+        handleRenameTaskCanvas={vi.fn().mockResolvedValue(undefined)}
         handleRevealProject={vi.fn().mockResolvedValue(undefined)}
         handleTaskPanelSelect={vi.fn()}
         loadProject={vi.fn().mockResolvedValue(undefined)}

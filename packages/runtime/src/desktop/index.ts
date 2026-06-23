@@ -11,6 +11,7 @@ export {
 export {
   createTaskCanvas,
   listTaskCanvases,
+  renameTaskCanvas,
   removeTaskCanvas,
   resolveTaskCanvasWorkspace
 } from "./canvasApi.js";

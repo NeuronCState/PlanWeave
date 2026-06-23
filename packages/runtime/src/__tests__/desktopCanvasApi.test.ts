@@ -10,6 +10,7 @@ import {
   getStatistics,
   getTodoGroups,
   listTaskCanvases,
+  renameTaskCanvas,
   removeTaskCanvas,
   resolveTaskCanvasWorkspace,
   saveDesktopLayout,
@@ -338,6 +339,47 @@ describe("desktop task canvas API", () => {
     await expect(access(join(init.workspace.workspaceRoot, "canvases", created.canvasId))).rejects.toThrow();
     expect(quarantineEntries).toHaveLength(1);
     await expect(access(join(init.workspace.workspaceRoot, "desktop", "canvas-quarantine", quarantineEntries[0], "package", "manifest.json"))).resolves.toBeUndefined();
+  });
+
+  it("renames formal project graph canvases and their package manifest titles", async () => {
+    const { root, init } = await createTestWorkspace();
+    await writeProjectGraph(init.workspace, {
+      version: "plan-project/v1",
+      canvases: [canonicalProjectCanvasNode({ id: "default", title: "Root plan" })],
+      edges: [],
+      crossTaskEdges: []
+    });
+    const created = await createTaskCanvas(root, { name: "Original formal canvas" });
+
+    const renamed = await renameTaskCanvas(root, created.canvasId, " Renamed formal canvas ");
+    const loaded = await loadProjectGraph(root);
+    const workspace = await resolveTaskCanvasWorkspace(root, created.canvasId);
+    const manifest = await readJsonFile<{ project: { title: string } }>(workspace.manifestFile);
+
+    expect(renamed).toMatchObject({ canvasId: created.canvasId, name: "Renamed formal canvas" });
+    expect(loaded.manifest.canvases.find((canvas) => canvas.id === created.canvasId)?.title).toBe("Renamed formal canvas");
+    expect(manifest.project.title).toBe("Renamed formal canvas");
+  });
+
+  it("renames legacy registry canvases and their package manifest titles", async () => {
+    const { root, init } = await createTestWorkspace();
+    await rm(projectGraphPath(init.workspace));
+    const created = await createTaskCanvas(root, { name: "Original legacy canvas" });
+
+    const renamed = await renameTaskCanvas(root, created.canvasId, "Renamed legacy canvas");
+    const registry = await readJsonFile<{ canvases: Array<{ canvasId: string; name: string }> }>(join(init.workspace.workspaceRoot, "desktop", "canvases.json"));
+    const workspace = await resolveTaskCanvasWorkspace(root, created.canvasId);
+    const manifest = await readJsonFile<{ project: { title: string } }>(workspace.manifestFile);
+
+    expect(renamed).toMatchObject({ canvasId: created.canvasId, name: "Renamed legacy canvas" });
+    expect(registry.canvases.find((canvas) => canvas.canvasId === created.canvasId)?.name).toBe("Renamed legacy canvas");
+    expect(manifest.project.title).toBe("Renamed legacy canvas");
+  });
+
+  it("rejects empty task canvas names", async () => {
+    const { root } = await createTestWorkspace();
+
+    await expect(renameTaskCanvas(root, "default", "   ")).rejects.toThrow("Task canvas name is required.");
   });
 
   it("restores formal canvas workspace on write failure", async () => {

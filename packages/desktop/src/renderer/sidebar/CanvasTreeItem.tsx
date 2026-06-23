@@ -2,10 +2,12 @@ import {
   AlertTriangleIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  PencilIcon,
   SquarePenIcon,
   Trash2Icon,
   WorkflowIcon
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { DesktopGraphViewModel, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +30,7 @@ type CanvasTreeItemProps = {
   handleDeleteTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
   handleDeleteTaskNode: (taskId: string) => Promise<void>;
   handleProjectNewGraph: (project: DesktopProjectSummary) => Promise<void>;
+  handleRenameTaskCanvas: (project: DesktopProjectSummary, canvasId: string, name: string) => Promise<void>;
   handleTaskPanelSelect: (taskId: string | null) => void;
   isExpandedCanvas: boolean;
   isGraphCanvas: boolean;
@@ -44,6 +47,7 @@ export function CanvasTreeItem({
   handleDeleteTaskCanvas,
   handleDeleteTaskNode,
   handleProjectNewGraph,
+  handleRenameTaskCanvas,
   handleTaskPanelSelect,
   isExpandedCanvas,
   isGraphCanvas,
@@ -55,49 +59,118 @@ export function CanvasTreeItem({
 }: CanvasTreeItemProps) {
   const firstDiagnostic = canvas.diagnostics?.[0] ?? null;
   const canvasLabel = canvas.name || t("taskCanvas");
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState(canvasLabel);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const commitStartedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isRenaming) {
+      setRenameDraft(canvasLabel);
+      return;
+    }
+    renameInputRef.current?.focus();
+    renameInputRef.current?.select();
+  }, [canvasLabel, isRenaming]);
+
+  const startRename = () => {
+    commitStartedRef.current = false;
+    setRenameDraft(canvasLabel);
+    setIsRenaming(true);
+  };
+
+  const cancelRename = () => {
+    commitStartedRef.current = true;
+    setRenameDraft(canvasLabel);
+    setIsRenaming(false);
+  };
+
+  const commitRename = async () => {
+    if (commitStartedRef.current) {
+      return;
+    }
+    commitStartedRef.current = true;
+    const nextName = renameDraft.trim();
+    setIsRenaming(false);
+    if (!nextName || nextName === canvasLabel.trim()) {
+      setRenameDraft(canvasLabel);
+      return;
+    }
+    await handleRenameTaskCanvas(project, canvas.canvasId, nextName);
+  };
 
   return (
     <div className="flex w-full min-w-0 max-w-full flex-col gap-1 overflow-hidden">
       <div className="group/canvas grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_1.75rem] items-center gap-1">
-        <ContextMenu>
-          <ContextMenuTrigger asChild>
-            <Button
-              aria-label={firstDiagnostic ? `${canvasLabel} ${t("error")}: ${firstDiagnostic.message}` : undefined}
-              aria-current={isGraphCanvas ? "page" : undefined}
-              className="h-8 w-full min-w-0 max-w-full flex-1 justify-between gap-2 overflow-hidden rounded-md px-2 text-xs text-text-muted hover:bg-surface-muted hover:text-text-strong data-[variant=secondary]:border-state-selected/25 data-[variant=secondary]:bg-state-selected-surface data-[variant=secondary]:text-text-strong data-[variant=secondary]:shadow-sm [&_svg]:size-4"
-              title={firstDiagnostic ? firstDiagnostic.message : undefined}
-              variant={isGraphCanvas ? "secondary" : "ghost"}
-              onClick={() => onCanvasSelect(project, canvas.canvasId)}
-            >
-              <span className="flex min-w-0 flex-1 items-center gap-2 truncate">
-                <WorkflowIcon className="shrink-0" data-icon="inline-start" />
-                <span className="truncate">{canvasLabel}</span>
-              </span>
-              {firstDiagnostic ? (
-                <Badge className="shrink-0 gap-1" variant="destructive">
-                  <AlertTriangleIcon className="size-3" aria-hidden="true" />
-                  {t("error")}
-                </Badge>
-              ) : (
-                <Badge className="shrink-0" variant="outline">
-                  {canvas.taskCount}
-                </Badge>
-              )}
-            </Button>
-          </ContextMenuTrigger>
-          <ContextMenuContent className="w-52">
-            <ContextMenuLabel>{canvas.name || t("taskCanvas")}</ContextMenuLabel>
-            <ContextMenuItem onSelect={() => void handleProjectNewGraph(project)}>
-              <SquarePenIcon data-icon="inline-start" />
-              {t("newGraph")}
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem variant="destructive" onSelect={() => void handleDeleteTaskCanvas(project, canvas.canvasId)}>
-              <Trash2Icon data-icon="inline-start" />
-              {t("deleteTaskCanvas")}
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
+        {isRenaming ? (
+          <form
+            className="flex h-8 w-full min-w-0 max-w-full items-center gap-2 overflow-hidden rounded-md border border-state-selected/30 bg-state-selected-surface px-2 text-xs text-text-strong shadow-sm [&_svg]:size-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void commitRename();
+            }}
+          >
+            <WorkflowIcon className="shrink-0" data-icon="inline-start" />
+            <input
+              ref={renameInputRef}
+              aria-label={t("renameTaskCanvasPrompt")}
+              className="min-w-0 flex-1 bg-transparent text-sm font-medium outline-none"
+              value={renameDraft}
+              onBlur={() => void commitRename()}
+              onChange={(event) => setRenameDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  cancelRename();
+                }
+              }}
+            />
+          </form>
+        ) : (
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <Button
+                aria-label={firstDiagnostic ? `${canvasLabel} ${t("error")}: ${firstDiagnostic.message}` : undefined}
+                aria-current={isGraphCanvas ? "page" : undefined}
+                className="h-8 w-full min-w-0 max-w-full flex-1 justify-between gap-2 overflow-hidden rounded-md px-2 text-xs text-text-muted hover:bg-surface-muted hover:text-text-strong data-[variant=secondary]:border-state-selected/25 data-[variant=secondary]:bg-state-selected-surface data-[variant=secondary]:text-text-strong data-[variant=secondary]:shadow-sm [&_svg]:size-4"
+                title={firstDiagnostic ? firstDiagnostic.message : undefined}
+                variant={isGraphCanvas ? "secondary" : "ghost"}
+                onClick={() => onCanvasSelect(project, canvas.canvasId)}
+              >
+                <span className="flex min-w-0 flex-1 items-center gap-2 truncate">
+                  <WorkflowIcon className="shrink-0" data-icon="inline-start" />
+                  <span className="truncate">{canvasLabel}</span>
+                </span>
+                {firstDiagnostic ? (
+                  <Badge className="shrink-0 gap-1" variant="destructive">
+                    <AlertTriangleIcon className="size-3" aria-hidden="true" />
+                    {t("error")}
+                  </Badge>
+                ) : (
+                  <Badge className="shrink-0" variant="outline">
+                    {canvas.taskCount}
+                  </Badge>
+                )}
+              </Button>
+            </ContextMenuTrigger>
+            <ContextMenuContent className="w-52">
+              <ContextMenuLabel>{canvas.name || t("taskCanvas")}</ContextMenuLabel>
+              <ContextMenuItem onSelect={() => void handleProjectNewGraph(project)}>
+                <SquarePenIcon data-icon="inline-start" />
+                {t("newGraph")}
+              </ContextMenuItem>
+              <ContextMenuItem onSelect={startRename}>
+                <PencilIcon data-icon="inline-start" />
+                {t("renameTaskCanvas")}
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem variant="destructive" onSelect={() => void handleDeleteTaskCanvas(project, canvas.canvasId)}>
+                <Trash2Icon data-icon="inline-start" />
+                {t("deleteTaskCanvas")}
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
+        )}
         <Button
           aria-expanded={isExpandedCanvas}
           aria-label={isExpandedCanvas ? t("collapseTaskCanvas") : t("expandTaskCanvas")}

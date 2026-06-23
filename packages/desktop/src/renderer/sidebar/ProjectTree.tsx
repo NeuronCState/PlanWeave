@@ -20,6 +20,7 @@ type ProjectTreeProps = {
   handleRevealPlanWorkspace: (project: DesktopProjectSummary) => Promise<void>;
   handleRevealProject: (project: DesktopProjectSummary) => Promise<void>;
   handleRevealSourceRoot: (project: DesktopProjectSummary) => Promise<void>;
+  handleRenameTaskCanvas: (project: DesktopProjectSummary, canvasId: string, currentName: string) => Promise<void>;
   handleUnlinkSourceRoot: (project: DesktopProjectSummary) => Promise<void>;
   handleTaskPanelSelect: (taskId: string | null) => void;
   onCanvasSelect: (project: DesktopProjectSummary, canvasId: string) => void;
@@ -50,6 +51,7 @@ export function ProjectTree({
   handleRevealPlanWorkspace,
   handleRevealProject,
   handleRevealSourceRoot,
+  handleRenameTaskCanvas,
   handleUnlinkSourceRoot,
   handleTaskPanelSelect,
   onCanvasSelect,
@@ -91,6 +93,7 @@ export function ProjectTree({
                 handleRevealPlanWorkspace={handleRevealPlanWorkspace}
                 handleRevealProject={handleRevealProject}
                 handleRevealSourceRoot={handleRevealSourceRoot}
+                handleRenameTaskCanvas={handleRenameTaskCanvas}
                 handleUnlinkSourceRoot={handleUnlinkSourceRoot}
                 handleTaskPanelSelect={handleTaskPanelSelect}
                 isExpandedProject={isExpandedProject}

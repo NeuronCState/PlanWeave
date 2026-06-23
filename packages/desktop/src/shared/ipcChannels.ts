@@ -46,6 +46,7 @@ export const desktopBridgeInvokeChannels = {
   refreshPackageFileChanges: "planweave:refreshPackageFileChanges",
   readProjectPrompt: "planweave:readProjectPrompt",
   readProjectPromptPolicy: "planweave:readProjectPromptPolicy",
+  renameTaskCanvas: "planweave:renameTaskCanvas",
   removeBlock: "planweave:removeBlock",
   removeDependencyEdge: "planweave:removeDependencyEdge",
   removeProject: "planweave:removeProject",

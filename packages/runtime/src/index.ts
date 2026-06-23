@@ -164,6 +164,7 @@ export {
   resolveTaskCanvasWorkspace,
   addCanvasDependency,
   addCrossTaskDependency,
+  renameTaskCanvas,
   removeBlock,
   removeTaskCanvas,
   removeDependencyEdge,

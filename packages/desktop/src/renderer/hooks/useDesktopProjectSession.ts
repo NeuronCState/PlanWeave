@@ -161,6 +161,21 @@ export function useDesktopProjectSession({
     [openProject, projectState.refreshProjectSummary, projectState.selectedProject?.projectId]
   );
 
+  const renameTaskCanvas = useCallback(
+    async (project: DesktopProjectSummary, canvasId: string, name: string) => {
+      if (!bridge) {
+        return null;
+      }
+      const canvas = await bridge.renameTaskCanvas(project.rootPath, canvasId, name);
+      const refreshed = await projectState.refreshProjectSummary(project.rootPath, projectState.selectedCanvasId);
+      if (projectState.selectedProject?.projectId === project.projectId && refreshed) {
+        await openProject(refreshed, projectState.selectedCanvasId);
+      }
+      return canvas;
+    },
+    [openProject, projectState.refreshProjectSummary, projectState.selectedCanvasId, projectState.selectedProject?.projectId]
+  );
+
   useEffect(() => {
     if (!initialSelectionEffectSkipped.current) {
       initialSelectionEffectSkipped.current = true;
@@ -184,6 +199,7 @@ export function useDesktopProjectSession({
     openProject,
     openTaskInspector,
     refreshLatestAutoRunSummary,
+    renameTaskCanvas,
     reloadCurrentCanvas,
     selectedTaskPanelId,
     setAutoRunState,

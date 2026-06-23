@@ -7,6 +7,7 @@ import type { AppView } from "../types";
 type UseDesktopProjectActionsArgs = {
   createTaskCanvas: (project: DesktopProjectSummary) => Promise<unknown>;
   deleteTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
+  renameTaskCanvas: (project: DesktopProjectSummary, canvasId: string, name: string) => Promise<unknown>;
   refreshProjectSummary: (projectRoot: string, canvasId?: string | null) => Promise<DesktopProjectSummary | null>;
   removeProject: (project: DesktopProjectSummary) => Promise<void>;
   setActiveView: (view: AppView) => void;
@@ -17,6 +18,7 @@ type UseDesktopProjectActionsArgs = {
 export function useDesktopProjectActions({
   createTaskCanvas,
   deleteTaskCanvas,
+  renameTaskCanvas,
   refreshProjectSummary,
   removeProject,
   setActiveView,
@@ -197,6 +199,25 @@ export function useDesktopProjectActions({
     [deleteTaskCanvas, setError, t]
   );
 
+  const handleRenameTaskCanvas = useCallback(
+    async (project: DesktopProjectSummary, canvasId: string, name: string) => {
+      if (!bridge) {
+        setError(t("bridgeUnavailable"));
+        return;
+      }
+      const nextName = name.trim();
+      if (!nextName) {
+        return;
+      }
+      try {
+        await renameTaskCanvas(project, canvasId, nextName);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    },
+    [renameTaskCanvas, setError, t]
+  );
+
   return {
     handleBindSourceRoot,
     handleDeleteProject,
@@ -207,6 +228,7 @@ export function useDesktopProjectActions({
     handleRevealPlanWorkspace,
     handleRevealProject,
     handleRevealSourceRoot,
+    handleRenameTaskCanvas,
     handleUnlinkSourceRoot
   };
 }

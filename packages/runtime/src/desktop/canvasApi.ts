@@ -118,6 +118,26 @@ async function readManifestTitle(workspace: ProjectWorkspace): Promise<{ title: 
   }
 }
 
+async function writeManifestTitle(workspace: ProjectWorkspace, title: string): Promise<string> {
+  const raw = asRecord(await readJsonFile<unknown>(workspace.manifestFile));
+  if (!raw) {
+    throw new Error(`Task canvas manifest '${workspace.manifestFile}' is not an object.`);
+  }
+  const project = asRecord(raw.project);
+  if (!project || typeof project.title !== "string") {
+    throw new Error(`Task canvas manifest '${workspace.manifestFile}' is missing project.title.`);
+  }
+  const previousTitle = project.title;
+  await writeJsonFile(workspace.manifestFile, {
+    ...raw,
+    project: {
+      ...project,
+      title
+    }
+  });
+  return previousTitle;
+}
+
 async function readRegistry(
   projectRoot: string,
   options: { createDefault?: boolean } = {}
@@ -389,6 +409,57 @@ export async function createTaskCanvas(projectRoot: string, input: { name?: stri
   await writeRegistry(projectWorkspace, nextRegistry);
   invalidateDesktopProjectProjection(projectRoot);
   return summarizeCanvas(projectWorkspace, record);
+}
+
+export async function renameTaskCanvas(projectRoot: string, canvasId: string, name: string): Promise<DesktopTaskCanvasSummary> {
+  const nextName = name.trim();
+  if (!nextName) {
+    throw new Error("Task canvas name is required.");
+  }
+
+  const loaded = await loadProjectGraph(projectRoot);
+  if (loaded.source === "project_graph") {
+    const canvas = loaded.manifest.canvases.find((candidate) => candidate.id === canvasId);
+    if (!canvas) {
+      throw new Error(`Project canvas '${canvasId}' does not exist.`);
+    }
+    const workspace = workspaceForProjectCanvas(loaded.workspace, canvas);
+    const previousTitle = await writeManifestTitle(workspace, nextName);
+    const nextCanvas = { ...canvas, title: nextName };
+    try {
+      await writeProjectGraph(loaded.workspace, {
+        ...loaded.manifest,
+        canvases: loaded.manifest.canvases.map((candidate) => (candidate.id === canvasId ? nextCanvas : candidate))
+      });
+    } catch (error) {
+      await writeManifestTitle(workspace, previousTitle);
+      throw error;
+    }
+    invalidateDesktopProjectProjection(projectRoot);
+    return summarizeProjectCanvas(loaded.workspace, nextCanvas);
+  }
+
+  const { projectWorkspace, registry } = await readRegistry(projectRoot);
+  const record = requireCanvasRecord(registry, canvasId);
+  const workspace = canvasWorkspace(projectWorkspace, record);
+  const previousTitle = await writeManifestTitle(workspace, nextName);
+  const nextRecord = {
+    ...record,
+    name: nextName,
+    updatedAt: new Date().toISOString()
+  };
+  const nextRegistry = {
+    ...registry,
+    canvases: registry.canvases.map((canvas) => (canvas.canvasId === canvasId ? nextRecord : canvas))
+  };
+  try {
+    await writeRegistry(projectWorkspace, nextRegistry);
+  } catch (error) {
+    await writeManifestTitle(workspace, previousTitle);
+    throw error;
+  }
+  invalidateDesktopProjectProjection(projectRoot);
+  return summarizeCanvas(projectWorkspace, nextRecord);
 }
 
 export async function removeTaskCanvas(projectRoot: string, canvasId: string): Promise<DesktopTaskCanvasSummary[]> {

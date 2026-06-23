@@ -94,6 +94,7 @@ export type DesktopBridgeApi = {
   linkProjectSourceRoot(projectId: string, sourceRoot: string): Promise<DesktopProjectSummary>;
   unlinkProjectSourceRoot(projectId: string): Promise<DesktopProjectSummary>;
   createTaskCanvas(projectRoot: string, input?: { name?: string | null }): Promise<DesktopTaskCanvasSummary>;
+  renameTaskCanvas(projectRoot: string, canvasId: string, name: string): Promise<DesktopTaskCanvasSummary>;
   removeTaskCanvas(projectRoot: string, canvasId: string): Promise<DesktopTaskCanvasSummary[]>;
   selectTaskCanvas(projectRoot: string, canvasId: string): Promise<string>;
   getProjectOverview(projectRoot: string): Promise<DesktopProjectSummary>;

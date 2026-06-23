@@ -2,10 +2,11 @@ import { access, mkdir, mkdtemp, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { initManagedProject, linkProjectSourceRoot, listProjects, openProject, removeProject, unlinkProjectSourceRoot } from "../desktop/index.js";
+import { createTaskCanvas, initManagedProject, initOrOpenProject, linkProjectSourceRoot, listProjects, openProject, removeProject, unlinkProjectSourceRoot } from "../desktop/index.js";
 import { initWorkspace } from "../initWorkspace.js";
 import { writeJsonFile } from "../json.js";
 import { resolvePlanweaveHome } from "../paths.js";
+import { loadProjectGraph, projectGraphPath } from "../projectGraph/index.js";
 import { createTestWorkspace } from "./promptTestHelpers.js";
 
 afterEach(() => {
@@ -45,6 +46,55 @@ describe("desktop project API", () => {
       kind: "managed",
       rootPath: project.workspaceRoot,
       sourceRoot: null
+    });
+  });
+
+  it("creates formal project graph files for desktop-created projects", async () => {
+    const { home: testHome } = await createTestWorkspace();
+    process.env.PLANWEAVE_HOME = testHome;
+    const externalRoot = await mkdtemp(join(tmpdir(), "planweave-external-"));
+
+    const externalProject = await initOrOpenProject(externalRoot);
+    const managedProject = await initManagedProject("Managed Graph");
+    const externalGraph = await loadProjectGraph(externalProject.rootPath);
+
+    await expect(access(projectGraphPath(externalGraph.workspace))).resolves.toBeUndefined();
+    expect(externalGraph).toMatchObject({
+      source: "project_graph",
+      diagnostics: []
+    });
+    await expect(loadProjectGraph(managedProject.rootPath)).resolves.toMatchObject({
+      source: "project_graph",
+      diagnostics: []
+    });
+  });
+
+  it("materializes missing formal project graphs when opening existing legacy projects", async () => {
+    const { init, root } = await createTestWorkspace();
+    const second = await createTaskCanvas(root, { name: "Legacy second canvas" });
+
+    await expect(loadProjectGraph(root)).resolves.toMatchObject({
+      source: "legacy_registry",
+      manifest: {
+        canvases: [
+          expect.objectContaining({ id: "default" }),
+          expect.objectContaining({ id: second.canvasId })
+        ]
+      }
+    });
+
+    await expect(openProject({ projectId: init.workspace.id })).resolves.toMatchObject({
+      projectId: init.workspace.id
+    });
+    await expect(loadProjectGraph(root)).resolves.toMatchObject({
+      source: "project_graph",
+      diagnostics: [],
+      manifest: {
+        canvases: [
+          expect.objectContaining({ id: "default" }),
+          expect.objectContaining({ id: second.canvasId })
+        ]
+      }
     });
   });
 

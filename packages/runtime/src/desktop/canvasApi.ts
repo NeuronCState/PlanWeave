@@ -324,7 +324,8 @@ export async function resolveTaskCanvasWorkspace(projectRoot: string, canvasId?:
     return resolveProjectCanvasWorkspace(projectRoot, canvasId);
   }
   if (loaded.source === "project_graph") {
-    const canvas = loaded.manifest.canvases[0];
+    const activeCanvasId = (await readActiveTaskCanvasSelection(projectRoot)).activeCanvasId;
+    const canvas = loaded.manifest.canvases.find((candidate) => candidate.id === activeCanvasId);
     if (!canvas) {
       throw new Error("Project has no task canvas.");
     }

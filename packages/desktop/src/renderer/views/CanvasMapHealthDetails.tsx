@@ -5,13 +5,16 @@ import type {
 } from "@planweave-ai/runtime";
 import { AlertTriangleIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { createTranslator } from "../i18n";
 
 export function CanvasMapHealthDiagnostics({
   diagnostics,
+  severity,
   t
 }: {
   diagnostics: DesktopCanvasGraphViewModel["health"]["diagnostics"];
+  severity: DesktopCanvasGraphViewModel["health"]["severity"];
   t: ReturnType<typeof createTranslator>;
 }) {
   if (diagnostics.length === 0) {
@@ -21,7 +24,13 @@ export function CanvasMapHealthDiagnostics({
     <div className="flex flex-col gap-1">
       <div className="text-xs text-muted-foreground">{t("projectGraphDiagnostics")}</div>
       {diagnostics.map((diagnostic) => (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs" key={`${diagnostic.code}-${diagnostic.path ?? ""}-${diagnostic.message}`}>
+        <div
+          className={cn(
+            "rounded-md border p-2 text-xs",
+            severity === "error" ? "border-destructive/30 bg-destructive/10" : "border-state-warning/60 bg-state-warning-surface"
+          )}
+          key={`${diagnostic.code}-${diagnostic.path ?? ""}-${diagnostic.message}`}
+        >
           <div className="font-medium">{diagnostic.code}</div>
           <div>{diagnostic.message}</div>
         </div>

@@ -5,9 +5,11 @@ import { initManagedWorkspace, initWorkspace } from "../initWorkspace.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { resolvePlanweaveHome } from "../paths.js";
 import { normalizeProjectMetadata, readProject, resolveProjectWorkspace } from "../project.js";
-import type { ProjectMetadata } from "../types.js";
+import { materializeProjectGraph, projectGraphPath } from "../projectGraph/index.js";
+import type { ProjectMetadata, ProjectWorkspace } from "../types.js";
 import type { DesktopProjectSummary } from "./types.js";
 import { getActiveTaskCanvasId, listTaskCanvases } from "./canvasApi.js";
+import { readActiveTaskCanvasSelection, writeActiveTaskCanvasSelection } from "./canvasSelectionStore.js";
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -31,6 +33,26 @@ async function projectSummary(project: ProjectMetadata, workspaceRoot: string): 
     activeCanvasId,
     taskCanvases
   };
+}
+
+async function ensureFormalProjectGraph(projectRoot: string): Promise<void> {
+  const workspace = await resolveProjectWorkspace(projectRoot);
+  if (await exists(projectGraphPath(workspace))) {
+    return;
+  }
+  const legacyActiveCanvasId = await readLegacyActiveCanvasId(projectRoot, workspace);
+  await materializeProjectGraph(projectRoot);
+  if (legacyActiveCanvasId) {
+    await writeActiveTaskCanvasSelection(projectRoot, legacyActiveCanvasId);
+  }
+}
+
+async function readLegacyActiveCanvasId(projectRoot: string, workspace: ProjectWorkspace): Promise<string | null> {
+  const registryFile = join(workspace.workspaceRoot, "desktop", "canvases.json");
+  if (!(await exists(registryFile))) {
+    return null;
+  }
+  return (await readActiveTaskCanvasSelection(projectRoot)).activeCanvasId;
 }
 
 function isDescendant(root: string, target: string): boolean {
@@ -103,14 +125,15 @@ export async function initOrOpenProject(rootPath: string): Promise<DesktopProjec
   const existing = await readProject(rootPath);
   if (existing) {
     const workspace = await resolveProjectWorkspace(rootPath);
+    await ensureFormalProjectGraph(rootPath);
     return projectSummary(existing, workspace.workspaceRoot);
   }
-  const init = await initWorkspace({ projectRoot: rootPath });
+  const init = await initWorkspace({ projectRoot: rootPath, projectGraph: true });
   return projectSummary(init.project, init.workspace.workspaceRoot);
 }
 
 export async function initManagedProject(name: string): Promise<DesktopProjectSummary> {
-  const init = await initManagedWorkspace({ name });
+  const init = await initManagedWorkspace({ name, projectGraph: true });
   return projectSummary(init.project, init.workspace.workspaceRoot);
 }
 
@@ -165,11 +188,15 @@ export async function unlinkProjectSourceRoot(projectId: string): Promise<Deskto
 
 export async function openProject(input: { projectId?: string; rootPath?: string }): Promise<DesktopProjectSummary> {
   if (input.projectId) {
-    const project = await readProjectById(input.projectId);
-    if (!project) {
+    const entry = await readRegisteredProject(input.projectId);
+    if (!entry) {
       throw new Error(`Project '${input.projectId}' does not exist.`);
     }
-    return project;
+    if (!(await exists(entry.project.rootPath))) {
+      throw new Error(`Project '${input.projectId}' does not exist.`);
+    }
+    await ensureFormalProjectGraph(entry.project.rootPath);
+    return projectSummary(entry.project, entry.workspaceRoot);
   }
   if (input.rootPath) {
     return initOrOpenProject(input.rootPath);
@@ -183,5 +210,6 @@ export async function getProjectOverview(projectRoot: string): Promise<DesktopPr
     throw new Error(`PlanWeave project '${projectRoot}' has not been initialized.`);
   }
   const workspace = await resolveProjectWorkspace(projectRoot);
+  await ensureFormalProjectGraph(projectRoot);
   return projectSummary(project, workspace.workspaceRoot);
 }

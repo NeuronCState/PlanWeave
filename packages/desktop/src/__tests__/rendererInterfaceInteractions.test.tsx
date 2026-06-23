@@ -587,6 +587,57 @@ describe("desktop renderer interface interactions", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("renders project graph fallback diagnostics as warnings in the canvas map inspector", () => {
+    const canvasGraph: DesktopCanvasGraphViewModel = {
+      projectId: "P-001",
+      projectTitle: "Demo",
+      canvases: [
+        {
+          canvasId: "canvas-main",
+          title: "Main canvas",
+          packageDir: "canvases/main/package",
+          diagnostics: []
+        }
+      ],
+      edges: [],
+      crossTaskEdges: [],
+      diagnostics: [],
+      health: {
+        severity: "warning",
+        canvases: [{ canvasId: "canvas-main", severity: "warning", blockerCount: 0, diagnosticCount: 1 }],
+        edges: [],
+        blockedBlocks: [],
+        diagnostics: [
+          {
+            code: "project_graph_missing_legacy_registry_used",
+            message: "Project graph manifest is missing; derived canvas graph from legacy desktop canvas registry.",
+            path: "project-graph.json"
+          }
+        ]
+      }
+    };
+
+    render(
+      <CanvasMapInspector
+        graph={canvasGraph}
+        onClose={vi.fn()}
+        onBlockOpen={vi.fn()}
+        onCanvasOpen={vi.fn()}
+        onTaskOpen={vi.fn()}
+        selectedCanvas={canvasGraph.canvases[0] ?? null}
+        selectedCanvasId="canvas-main"
+        selectedEdge={null}
+        t={t}
+      />
+    );
+
+    const diagnostic = screen.getByText("project_graph_missing_legacy_registry_used").parentElement;
+
+    expect(diagnostic).toHaveClass("border-state-warning/60");
+    expect(diagnostic).toHaveClass("bg-state-warning-surface");
+    expect(diagnostic).not.toHaveClass("border-destructive/30");
+  });
+
   it("lists canvas map dependency blockers and dispatches jump actions", async () => {
     const onBlockOpen = vi.fn();
     const onCanvasOpen = vi.fn();

@@ -124,7 +124,7 @@ export function CanvasMapInspector({
     return (
       <div className="flex flex-col gap-3">
         <div className="text-sm text-muted-foreground">{t("noCanvasSelected")}</div>
-        <CanvasMapHealthDiagnostics diagnostics={graph.health.diagnostics} t={t} />
+        <CanvasMapHealthDiagnostics diagnostics={graph.health.diagnostics} severity={graph.health.severity} t={t} />
       </div>
     );
   }
@@ -176,7 +176,7 @@ export function CanvasMapInspector({
             ))}
           </div>
         ) : null}
-        <CanvasMapHealthDiagnostics diagnostics={graph.health.diagnostics} t={t} />
+        <CanvasMapHealthDiagnostics diagnostics={graph.health.diagnostics} severity={graph.health.severity} t={t} />
         <Button className="w-full justify-start" onClick={() => onCanvasOpen(selectedCanvas.canvasId)}>
           <GitBranchIcon data-icon="inline-start" />
           {t("enterCanvas")}

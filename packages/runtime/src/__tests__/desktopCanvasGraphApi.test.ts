@@ -8,7 +8,7 @@ import {
   saveCanvasMapLayout
 } from "../desktop/index.js";
 import { writeJsonFile } from "../json.js";
-import { writeProjectGraph } from "../projectGraph/index.js";
+import { canonicalProjectCanvasNode, writeProjectGraph } from "../projectGraph/index.js";
 import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
 
 afterEach(() => {
@@ -26,7 +26,7 @@ describe("desktop canvas graph API", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        { id: "default", type: "canvas", title: "Runtime plan", packageDir: "package", stateFile: "state.json", resultsDir: "results" },
+        canonicalProjectCanvasNode({ id: "default", title: "Runtime plan" }),
         {
           id: secondCanvas.canvasId,
           type: "canvas",
@@ -89,7 +89,7 @@ describe("desktop canvas graph API", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        { id: "default", type: "canvas", title: "Runtime plan", packageDir: "package", stateFile: "state.json", resultsDir: "results" }
+        canonicalProjectCanvasNode({ id: "default", title: "Runtime plan" })
       ],
       edges: [],
       crossTaskEdges: []
@@ -116,7 +116,7 @@ describe("desktop canvas graph API", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        { id: "default", type: "canvas", title: "Runtime plan", packageDir: "package", stateFile: "state.json", resultsDir: "results" }
+        canonicalProjectCanvasNode({ id: "default", title: "Runtime plan" })
       ],
       edges: [],
       crossTaskEdges: []
@@ -129,7 +129,7 @@ describe("desktop canvas graph API", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        { id: "default", type: "canvas", title: "Runtime plan", packageDir: "package", stateFile: "state.json", resultsDir: "results" },
+        canonicalProjectCanvasNode({ id: "default", title: "Runtime plan" }),
         {
           id: secondCanvas.canvasId,
           type: "canvas",
@@ -154,7 +154,7 @@ describe("desktop canvas graph API", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        { id: "default", type: "canvas", title: "Runtime plan", packageDir: "package", stateFile: "state.json", resultsDir: "results" }
+        canonicalProjectCanvasNode({ id: "default", title: "Runtime plan" })
       ],
       edges: [{ from: "default", to: "missing-canvas", type: "depends_on" }],
       crossTaskEdges: [

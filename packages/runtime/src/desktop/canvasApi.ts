@@ -6,7 +6,13 @@ import { ZodError } from "zod";
 import { initialManifest } from "../initWorkspace.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { resolveProjectWorkspace } from "../project.js";
-import { loadProjectGraph, projectCanvasWorkspace as workspaceForProjectCanvas, resolveProjectCanvasWorkspace, writeProjectGraph } from "../projectGraph/index.js";
+import {
+  canonicalProjectCanvasNode,
+  loadProjectGraph,
+  projectCanvasWorkspace as workspaceForProjectCanvas,
+  resolveProjectCanvasWorkspace,
+  writeProjectGraph
+} from "../projectGraph/index.js";
 import type { ProjectCanvasNode } from "../projectGraph/index.js";
 import { createEmptyState } from "../state.js";
 import type { ProjectWorkspace, ValidationIssue } from "../types.js";
@@ -343,14 +349,10 @@ export async function createTaskCanvas(projectRoot: string, input: { name?: stri
   const loaded = await loadProjectGraph(projectRoot);
   if (loaded.source === "project_graph") {
     const canvasId = newCanvasId();
-    const canvas: ProjectCanvasNode = {
+    const canvas: ProjectCanvasNode = canonicalProjectCanvasNode({
       id: canvasId,
-      type: "canvas",
-      title: input.name?.trim() || `新任务画布 ${loaded.manifest.canvases.length + 1}`,
-      packageDir: `canvases/${canvasId}/package`,
-      stateFile: `canvases/${canvasId}/state.json`,
-      resultsDir: `canvases/${canvasId}/results`
-    };
+      title: input.name?.trim() || `新任务画布 ${loaded.manifest.canvases.length + 1}`
+    });
     const workspace = workspaceForProjectCanvas(loaded.workspace, canvas);
     const staged = await stageCanvasWorkspaceWrite(loaded.workspace, { canvasId, finalRoot: workspace.workspaceRoot });
     await mkdir(join(staged.workspace.packageDir, "nodes"), { recursive: true });

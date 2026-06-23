@@ -15,7 +15,7 @@ import {
 } from "../desktop/index.js";
 import { mapProjectTaskCanvases } from "../desktop/graph/projectCanvasAggregation.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
-import { writeProjectGraph } from "../projectGraph/index.js";
+import { canonicalProjectCanvasNode, writeProjectGraph } from "../projectGraph/index.js";
 import { runAutoRunStep } from "../taskManager/autoRun.js";
 import { claimNext, getExecutionStatus, submitBlockResult, submitReviewResult } from "../taskManager/index.js";
 import type { PlanPackageManifest } from "../types.js";
@@ -304,14 +304,7 @@ describe("desktop search and statistics API", () => {
           stateFile: `canvases/${secondCanvas.canvasId}/state.json`,
           resultsDir: `canvases/${secondCanvas.canvasId}/results`
         },
-        {
-          id: "default",
-          type: "canvas",
-          title: "Test Plan",
-          packageDir: "package",
-          stateFile: "state.json",
-          resultsDir: "results"
-        }
+        canonicalProjectCanvasNode({ id: "default", title: "Test Plan" })
       ],
       edges: [{ from: secondCanvas.canvasId, to: "default", type: "depends_on" }],
       crossTaskEdges: []
@@ -363,14 +356,7 @@ describe("desktop search and statistics API", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        {
-          id: "default",
-          type: "canvas",
-          title: "Test Plan",
-          packageDir: "package",
-          stateFile: "state.json",
-          resultsDir: "results"
-        },
+        canonicalProjectCanvasNode({ id: "default", title: "Test Plan" }),
         {
           id: secondCanvas.canvasId,
           type: "canvas",
@@ -415,14 +401,7 @@ describe("desktop search and statistics API", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        {
-          id: "default",
-          type: "canvas",
-          title: "Test Plan",
-          packageDir: "package",
-          stateFile: "state.json",
-          resultsDir: "results"
-        },
+        canonicalProjectCanvasNode({ id: "default", title: "Test Plan" }),
         {
           id: secondCanvas.canvasId,
           type: "canvas",
@@ -483,7 +462,13 @@ describe("desktop search and statistics API", () => {
       ])
     });
     await expect(getTodoGroups(root)).resolves.toMatchObject({
-      ready: [expect.objectContaining({ canvasId: "default", ref: "T-001#B-001" })]
+      planned: expect.arrayContaining([
+        expect.objectContaining({
+          canvasId: "default",
+          ref: "T-001#B-001",
+          dependencyBlockers: [expect.stringContaining("Project graph is invalid")]
+        })
+      ])
     });
     await expect(searchProject(root, "T-001 task prompt", { kinds: ["prompt"] })).resolves.toEqual([
       expect.objectContaining({ canvasId: "default", ref: "T-001" })

@@ -2,7 +2,7 @@ import { access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join } from "node:path";
 import { readJsonFile, writeJsonFile } from "../json.js";
-import { resolveProjectWorkspace } from "../project.js";
+import { projectWorkspacePaths, resolveProjectWorkspace } from "../project.js";
 import type { ProjectWorkspace, ValidationIssue } from "../types.js";
 import { normalizeRegistry } from "../desktop/canvasRegistry.js";
 import { defaultCanvasProjectGraph, projectGraphFromLegacyRegistry } from "./migration.js";
@@ -31,21 +31,19 @@ export function projectGraphPath(workspace: ProjectWorkspace): string {
 
 function projectGraphWorkspace(workspace: ProjectWorkspace): ProjectWorkspace {
   const workspaceRoot = join(workspace.planweaveHome, "projects", workspace.id);
-  return {
-    ...workspace,
+  return projectWorkspacePaths({
+    id: workspace.id,
+    kind: workspace.kind,
+    rootPath: workspace.rootPath,
+    sourceRoot: workspace.sourceRoot,
+    planweaveHome: workspace.planweaveHome,
     workspaceRoot,
-    projectFile: join(workspaceRoot, "project.json"),
-    packageDir: join(workspaceRoot, "package"),
-    manifestFile: join(workspaceRoot, "package", "manifest.json"),
-    stateFile: join(workspaceRoot, "state.json"),
-    resultsDir: join(workspaceRoot, "results"),
-    projectPromptFile: join(workspaceRoot, "policy", "project-prompt.md")
-  };
+  });
 }
 
-async function manifestTitle(workspace: ProjectWorkspace): Promise<string> {
+async function manifestTitle(manifestFile: string): Promise<string> {
   try {
-    const raw = await readJsonFile<unknown>(workspace.manifestFile);
+    const raw = await readJsonFile<unknown>(manifestFile);
     if (raw && typeof raw === "object" && !Array.isArray(raw) && "project" in raw) {
       const project = (raw as { project?: unknown }).project;
       if (project && typeof project === "object" && !Array.isArray(project) && typeof (project as { title?: unknown }).title === "string") {
@@ -60,7 +58,7 @@ async function manifestTitle(workspace: ProjectWorkspace): Promise<string> {
 }
 
 async function defaultProjectGraph(workspace: ProjectWorkspace): Promise<ProjectGraphManifest> {
-  return defaultCanvasProjectGraph(workspace, await manifestTitle(workspace));
+  return defaultCanvasProjectGraph(await manifestTitle(workspace.manifestFile));
 }
 
 async function legacyProjectGraph(workspace: ProjectWorkspace): Promise<ProjectGraphManifest> {

@@ -5,7 +5,7 @@ import type { ExecutorPreflightCheck, ExecutorPreflightResult } from "../autoRun
 import { testExecutorProfile } from "../autoRun/executors.js";
 import { resolveTaskCanvasWorkspace } from "../desktop/index.js";
 import { writeJsonFile } from "../json.js";
-import { writeProjectGraph } from "../projectGraph/index.js";
+import { canonicalProjectCanvasNode, writeProjectGraph } from "../projectGraph/index.js";
 import { claimNext, explainBlock, getCurrentWork, getExecutionStatus, submitBlockResult, submitFeedback, submitReviewResult } from "../taskManager/index.js";
 import { basicManifest, createTestWorkspace, writePromptFiles, writeReport, writeReviewResult } from "./promptTestHelpers.js";
 
@@ -26,14 +26,7 @@ async function createFormalManualCanvasWorkspace() {
   await writeProjectGraph(init.workspace, {
     version: "plan-project/v1",
     canvases: [
-      {
-        id: "runtime",
-        type: "canvas",
-        title: "Runtime",
-        packageDir: "package",
-        stateFile: "state.json",
-        resultsDir: "results"
-      },
+      canonicalProjectCanvasNode({ id: "default", title: "Runtime" }),
       {
         id: "manual-canvas",
         type: "canvas",
@@ -218,7 +211,7 @@ describe("executor API helpers", () => {
       ready: false,
       blockedByTasks: ["T-002"],
       recommendedCommand: null,
-      submitCommand: "planweave submit-result T-001#B-001 --report <report.md>"
+      submitCommand: "planweave submit-result --canvas default T-001#B-001 --report <report.md>"
     });
     expect(explanation.promptPath).toContain("nodes/T-001/blocks/B-001.prompt.md");
   });
@@ -232,7 +225,7 @@ describe("executor API helpers", () => {
       currentRefs: ["T-001#B-001"],
       currentFeedbackId: null,
       owner: {
-        canvasId: null,
+        canvasId: "default",
         taskIds: ["T-001"]
       },
       items: [
@@ -241,7 +234,7 @@ describe("executor API helpers", () => {
           ref: "T-001#B-001",
           promptPath: expect.stringContaining("nodes/T-001/blocks/B-001.prompt.md"),
           reportPath: "<report.md>",
-          submitCommand: "planweave submit-result T-001#B-001 --report <report.md>"
+          submitCommand: "planweave submit-result --canvas default T-001#B-001 --report <report.md>"
         }
       ]
     });
@@ -260,7 +253,7 @@ describe("executor API helpers", () => {
           kind: "block",
           ref: "T-001#R-001",
           reportPath: "<review-result.json>",
-          submitCommand: "planweave submit-review T-001#R-001 --result <review-result.json>"
+          submitCommand: "planweave submit-review --canvas default T-001#R-001 --result <review-result.json>"
         }
       ]
     });
@@ -282,7 +275,7 @@ describe("executor API helpers", () => {
       currentRefs: [],
       currentFeedbackId: "FE-001",
       owner: {
-        canvasId: null,
+        canvasId: "default",
         taskIds: ["T-001"]
       },
       items: [
@@ -293,7 +286,7 @@ describe("executor API helpers", () => {
           taskId: "T-001",
           promptPath: expect.stringContaining("results/T-001/feedback/FE-001/feedback.json"),
           reportPath: "<feedback-report.md>",
-          submitCommand: "planweave submit-feedback --report <feedback-report.md>"
+          submitCommand: "planweave submit-feedback --canvas default --report <feedback-report.md>"
         }
       ]
     });
@@ -361,7 +354,7 @@ describe("executor API helpers", () => {
       currentRefs: ["T-001#R-001"],
       currentFeedbackId: null,
       owner: {
-        canvasId: null,
+        canvasId: "default",
         taskIds: ["T-001"]
       },
       items: [
@@ -369,7 +362,7 @@ describe("executor API helpers", () => {
           kind: "block",
           ref: "T-001#R-001",
           reportPath: "<review-result.json>",
-          submitCommand: "planweave submit-review T-001#R-001 --result <review-result.json>"
+          submitCommand: "planweave submit-review --canvas default T-001#R-001 --result <review-result.json>"
         }
       ]
     });

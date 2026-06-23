@@ -297,10 +297,10 @@ function parseSearchLimit(value: unknown): number | undefined {
 
 function suggestionForValidationIssue(code: string, message: string): string {
   if (code.includes("prompt")) {
-    return "Use read_prompt and the relevant write_*_prompt tool to repair the missing or invalid prompt content.";
+    return "Use read_prompt and the relevant update_task or update_block promptMarkdown field to repair the missing or invalid prompt content.";
   }
   if (code.includes("dependency") || message.toLowerCase().includes("cycle")) {
-    return "Inspect preview_execution_graph, then use add_dependency or remove_dependency to make the DAG valid.";
+    return "Inspect get_project_graph, then use add_dependency or remove_dependency to make the DAG valid.";
   }
   if (code.includes("manifest")) {
     return "Use get_schema and graph edit tools instead of editing manifest structure directly.";

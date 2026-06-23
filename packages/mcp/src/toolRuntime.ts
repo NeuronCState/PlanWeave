@@ -97,9 +97,6 @@ export const runtimeGateway: RuntimeGateway = {
     }
     return { readyBlocks: plan.readyQueue.map(sanitizeReadyBlock) };
   },
-  async getProjectOverview(projectId) {
-    return openProject({ projectId });
-  },
   async getProjectGraph(projectId, canvasId) {
     return getGraphViewModel(await resolveCanvasWorkspace(projectId, canvasId));
   },

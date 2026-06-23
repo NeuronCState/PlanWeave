@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createTaskCanvas, resolveTaskCanvasWorkspace } from "../desktop/index.js";
 import { writeJsonFile } from "../json.js";
-import { compileProjectGraph, projectTaskRefKey } from "../projectGraph/index.js";
+import { canonicalProjectCanvasNode, compileProjectGraph, projectTaskRefKey } from "../projectGraph/index.js";
 import { loadProjectGraph, writeProjectGraph } from "../projectGraph/loadProjectGraph.js";
 import type { PlanPackageManifest } from "../types.js";
 import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
@@ -53,7 +53,7 @@ describe("compileProjectGraph", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        { id: "default", type: "canvas", title: "Default", packageDir: "package", stateFile: "state.json", resultsDir: "results" },
+        canonicalProjectCanvasNode({ id: "default", title: "Default" }),
         {
           id: second.canvas.canvasId,
           type: "canvas",
@@ -90,7 +90,7 @@ describe("compileProjectGraph", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        { id: "default", type: "canvas", title: "Default", packageDir: "package", stateFile: "state.json", resultsDir: "results" },
+        canonicalProjectCanvasNode({ id: "default", title: "Default" }),
         {
           id: second.canvas.canvasId,
           type: "canvas",
@@ -121,7 +121,7 @@ describe("compileProjectGraph", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        { id: "default", type: "canvas", title: "Default", packageDir: "package", stateFile: "state.json", resultsDir: "results" },
+        canonicalProjectCanvasNode({ id: "default", title: "Default" }),
         {
           id: second.canvas.canvasId,
           type: "canvas",
@@ -148,8 +148,8 @@ describe("compileProjectGraph", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        { id: "default", type: "canvas", title: "Default", packageDir: "package", stateFile: "state.json", resultsDir: "results" },
-        { id: "default", type: "canvas", title: "Duplicate", packageDir: "package", stateFile: "state.json", resultsDir: "results" }
+        canonicalProjectCanvasNode({ id: "default", title: "Default" }),
+        canonicalProjectCanvasNode({ id: "default", title: "Duplicate" })
       ],
       edges: [{ from: "missing", to: "default", type: "depends_on" }],
       crossTaskEdges: []
@@ -171,7 +171,7 @@ describe("compileProjectGraph", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        { id: "default", type: "canvas", title: "Default", packageDir: "package", stateFile: "state.json", resultsDir: "results" },
+        canonicalProjectCanvasNode({ id: "default", title: "Default" }),
         {
           id: second.canvas.canvasId,
           type: "canvas",
@@ -224,7 +224,7 @@ describe("compileProjectGraph", () => {
           stateFile: "canvases/broken/state.json",
           resultsDir: "canvases/broken/results"
         },
-        { id: "default", type: "canvas", title: "Default", packageDir: "package", stateFile: "state.json", resultsDir: "results" }
+        canonicalProjectCanvasNode({ id: "default", title: "Default" })
       ],
       edges: [],
       crossTaskEdges: [

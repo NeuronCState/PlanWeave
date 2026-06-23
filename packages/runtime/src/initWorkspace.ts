@@ -110,7 +110,9 @@ async function initializeWorkspace(
     await writeJsonFile(workspace.stateFile, createEmptyState());
   }
 
-  const projectGraph = options.projectGraph ? await materializeProjectGraph(workspace.rootPath) : undefined;
+  const shouldMaterializeProjectGraph = options.projectGraph || !alreadyExists || options.resetPackage;
+  const materializedProjectGraph = shouldMaterializeProjectGraph ? await materializeProjectGraph(workspace.rootPath) : undefined;
+  const projectGraph = options.projectGraph ? materializedProjectGraph : undefined;
 
   return {
     workspace,

@@ -77,6 +77,24 @@ const graphSchema = z.object({
   dirtyPromptRefs: z.array(z.string())
 }).passthrough();
 
+const graphContextSummarySchema = z.object({
+  canvasId: z.string(),
+  name: z.string(),
+  taskCount: z.number(),
+  edgeCount: z.number(),
+  diagnostics: z.array(validationIssueSchema),
+  dirtyPromptRefs: z.array(z.string()),
+  tasks: z.array(z.object({
+    taskId: z.string(),
+    title: z.string(),
+    status: z.enum(taskStatuses),
+    executor: z.string().nullable(),
+    promptMissing: z.boolean(),
+    blockCount: z.number(),
+    blocks: z.array(blockPreviewSchema)
+  }).passthrough())
+}).passthrough();
+
 const taskDetailSchema = z.object({
   taskId: z.string(),
   title: z.string(),
@@ -140,6 +158,21 @@ const schemaDocumentSchema = z.object({
   validation: z.array(z.string()),
   schema: z.unknown(),
   notes: z.array(z.string())
+}).passthrough();
+
+const planweaveGuideSchema = z.object({
+  summary: z.string(),
+  concepts: z.array(z.object({
+    name: z.string(),
+    description: z.string()
+  }).passthrough()),
+  workspaceLayout: z.array(z.string()),
+  mcpWorkflow: z.array(z.string()),
+  toolSelection: z.array(z.object({
+    need: z.string(),
+    tool: z.string()
+  }).passthrough()),
+  nonGoals: z.array(z.string())
 }).passthrough();
 
 const graphEditSchema = z.object({
@@ -251,6 +284,18 @@ const readyBlockSchema = z.object({
   reviewGate: z.unknown().nullable()
 }).passthrough();
 
+const planweaveContextProjectSchema = z.object({
+  project: sanitizedProjectSchema,
+  validation: validationReportSchema.nullable(),
+  status: z.object(executionStatusSchema).nullable(),
+  readyBlocks: z.array(readyBlockSchema),
+  canvases: z.array(graphContextSummarySchema),
+  errors: z.array(z.object({
+    scope: z.string(),
+    message: z.string()
+  }).passthrough())
+}).passthrough();
+
 const projectTaskRefSchema = z.object({
   canvasId: z.string(),
   taskId: z.string()
@@ -292,12 +337,25 @@ export const planweaveToolOutputSchemas = {
     topic: z.enum(["manifest", "project"]).nullable(),
     documents: z.record(z.string(), schemaDocumentSchema)
   },
+  get_planweave_guide: {
+    guide: planweaveGuideSchema
+  },
   get_authoring_rules: {
     rules: z.array(z.string())
   },
   get_plan_package_example: {
     files: z.array(packageFileSchema),
     notes: z.array(z.string())
+  },
+  get_project_tree: {
+    generatedAt: z.string(),
+    desktopSelection: z.null(),
+    guidance: z.array(z.string()),
+    projects: z.array(planweaveContextProjectSchema),
+    errors: z.array(z.object({
+      scope: z.string(),
+      message: z.string()
+    }).passthrough())
   },
   list_projects: {
     projects: z.array(sanitizedProjectSchema)

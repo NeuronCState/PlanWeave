@@ -18,7 +18,7 @@ import {
   submitReviewResult
 } from "../index.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
-import { writeProjectGraph } from "../projectGraph/index.js";
+import { canonicalProjectCanvasNode, writeProjectGraph } from "../projectGraph/index.js";
 import { consumeAutoRunClaim } from "../autoRun/contract.js";
 import type { AutoRunExecutorAdapter } from "../autoRun/contract.js";
 import { basicManifest, createTestWorkspace, writePromptFiles, writeReport, writeReviewResult } from "./promptTestHelpers.js";
@@ -48,14 +48,7 @@ async function createFormalManualCanvasWorkspace() {
   await writeProjectGraph(init.workspace, {
     version: "plan-project/v1",
     canvases: [
-      {
-        id: "runtime",
-        type: "canvas",
-        title: "Runtime",
-        packageDir: "package",
-        stateFile: "state.json",
-        resultsDir: "results"
-      },
+      canonicalProjectCanvasNode({ id: "default", title: "Runtime" }),
       {
         id: "manual-canvas",
         type: "canvas",

@@ -54,7 +54,6 @@ export type TestGateway = RuntimeGateway & {
   getPrompt: ReturnType<RuntimeGateway["getPrompt"] & typeof vi.fn>;
   searchProject: ReturnType<RuntimeGateway["searchProject"] & typeof vi.fn>;
   listReadyBlocks: ReturnType<RuntimeGateway["listReadyBlocks"] & typeof vi.fn>;
-  getProjectOverview: ReturnType<typeof vi.fn<(projectId: string) => Promise<DesktopProjectSummary>>>;
   createCanvas: ReturnType<RuntimeGateway["createCanvas"] & typeof vi.fn>;
   getProjectGraph: ReturnType<typeof vi.fn<(projectId: string, canvasId?: string) => Promise<DesktopGraphViewModel>>>;
   getTaskDetail: ReturnType<typeof vi.fn<(projectId: string, taskId: string, canvasId?: string) => Promise<DesktopTaskDetail>>>;
@@ -171,8 +170,8 @@ export function createGateway(): TestGateway {
     warnings: [
       {
         code: "status_manifest_warning",
-        message: "Manifest warning at /sensitive/home/projects/project-1/package/manifest.json",
-        path: "/sensitive/home/projects/project-1/package/manifest.json"
+        message: "Manifest warning at /sensitive/home/projects/project-1/canvases/default/package/manifest.json",
+        path: "/sensitive/home/projects/project-1/canvases/default/package/manifest.json"
       }
     ],
     counts: {
@@ -293,7 +292,6 @@ export function createGateway(): TestGateway {
     getPrompt: vi.fn(async (_projectId, canvasId) => ({ canvasId: canvasId ?? "default", markdown: "# Rendered prompt" })),
     searchProject: vi.fn(async () => ({ results: [searchResult], diagnostics: [] })),
     listReadyBlocks: vi.fn(async () => ({ readyBlocks: [readyBlock] })),
-    getProjectOverview: vi.fn(async () => project),
     getProjectGraph: vi.fn(async () => graph),
     getTaskDetail: vi.fn(async () => taskDetail),
     getBlockDetail: vi.fn(async () => blockDetail),

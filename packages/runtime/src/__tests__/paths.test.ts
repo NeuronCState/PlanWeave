@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { initWorkspace } from "../initWorkspace.js";
 import { writeJsonFile } from "../json.js";
 import { readProjectPaths } from "../paths.js";
-import { projectGraphPath } from "../projectGraph/index.js";
+import { canonicalProjectCanvasNode, projectGraphPath } from "../projectGraph/index.js";
 import { basicManifest, writePromptFiles } from "./promptTestHelpers.js";
 
 describe("readProjectPaths", () => {
@@ -14,6 +14,7 @@ describe("readProjectPaths", () => {
     const root = await mkdtemp(join(tmpdir(), "planweave-project-"));
     process.env.PLANWEAVE_HOME = home;
     const init = await initWorkspace({ projectRoot: root });
+    const defaultCanvasRoot = join(init.workspace.workspaceRoot, "canvases", "default");
 
     const paths = await readProjectPaths(root);
 
@@ -22,17 +23,17 @@ describe("readProjectPaths", () => {
       projectId: init.workspace.id,
       projectDir: init.workspace.workspaceRoot,
       projectGraphPath: join(init.workspace.workspaceRoot, "project-graph.json"),
-      packageDir: init.workspace.packageDir,
-      statePath: init.workspace.stateFile,
-      resultsDir: init.workspace.resultsDir,
+      packageDir: join(defaultCanvasRoot, "package"),
+      statePath: join(defaultCanvasRoot, "state.json"),
+      resultsDir: join(defaultCanvasRoot, "results"),
       activeCanvasId: "default",
       canvases: [
         {
           canvasId: "default",
           name: init.project.name,
-          packageDir: init.workspace.packageDir,
-          statePath: init.workspace.stateFile,
-          resultsDir: init.workspace.resultsDir
+          packageDir: join(defaultCanvasRoot, "package"),
+          statePath: join(defaultCanvasRoot, "state.json"),
+          resultsDir: join(defaultCanvasRoot, "results")
         }
       ]
     });
@@ -51,22 +52,8 @@ describe("readProjectPaths", () => {
     await writeJsonFile(projectGraphPath(init.workspace), {
       version: "plan-project/v1",
       canvases: [
-        {
-          id: "runtime",
-          type: "canvas",
-          title: "Runtime",
-          packageDir: "package",
-          stateFile: "state.json",
-          resultsDir: "results"
-        },
-        {
-          id: "desktop",
-          type: "canvas",
-          title: "Desktop",
-          packageDir: "canvases/desktop/package",
-          stateFile: "canvases/desktop/state.json",
-          resultsDir: "canvases/desktop/results"
-        }
+        canonicalProjectCanvasNode({ id: "default", title: "Runtime" }),
+        canonicalProjectCanvasNode({ id: "desktop", title: "Desktop" })
       ],
       edges: [],
       crossTaskEdges: []
@@ -75,10 +62,10 @@ describe("readProjectPaths", () => {
     const paths = await readProjectPaths(root);
 
     expect(paths.projectGraphPath).toBe(join(init.workspace.workspaceRoot, "project-graph.json"));
-    expect(paths.activeCanvasId).toBe("runtime");
+    expect(paths.activeCanvasId).toBe("default");
     expect(paths.canvases).toEqual([
       {
-        canvasId: "runtime",
+        canvasId: "default",
         name: "Runtime",
         packageDir: init.workspace.packageDir,
         statePath: init.workspace.stateFile,

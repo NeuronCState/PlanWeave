@@ -78,6 +78,12 @@ export const planweaveToolDefinitions: Record<PlanweaveToolName, ToolDefinition>
     inputSchema: { topic: z.enum(["manifest", "project"]).optional() },
     annotations: readOnlyAnnotations
   },
+  get_planweave_guide: {
+    title: "Get PlanWeave Guide",
+    description:
+      "Explain PlanWeave concepts, workspace layout, default canvas storage, and MCP tool selection. Use this when you need to understand how to author plans correctly.",
+    annotations: readOnlyAnnotations
+  },
   get_authoring_rules: {
     title: "Get PlanWeave Authoring Rules",
     description: "Return concise rules for authoring PlanWeave packages through MCP tools.",
@@ -88,14 +94,25 @@ export const planweaveToolDefinitions: Record<PlanweaveToolName, ToolDefinition>
     description: "Return a small importable PlanWeave package file set.",
     annotations: readOnlyAnnotations
   },
+  get_project_tree: {
+    title: "Get PlanWeave Project Tree",
+    description:
+      "Return a tree of registered PlanWeave projects, canvases, tasks, and blocks, including projectIds/canvasIds needed for later read and write tools.",
+    inputSchema: {
+      projectId: z.string().min(1).optional(),
+      includeTasks: z.boolean().optional(),
+      includeStatus: z.boolean().optional()
+    },
+    annotations: readOnlyAnnotations
+  },
   list_projects: {
     title: "List PlanWeave Projects",
-    description: "List registered PlanWeave projects.",
+    description: "List registered PlanWeave projects with projectId, name, active canvas, and canvas summaries. Use this for lightweight project discovery.",
     annotations: readOnlyAnnotations
   },
   open_project: {
     title: "Open PlanWeave Project",
-    description: "Open a registered PlanWeave project by projectId.",
+    description: "Return one registered PlanWeave project's metadata and canvases by projectId.",
     inputSchema: projectInput,
     annotations: readOnlyAnnotations
   },
@@ -113,7 +130,7 @@ export const planweaveToolDefinitions: Record<PlanweaveToolName, ToolDefinition>
   },
   get_project_overview: {
     title: "Get PlanWeave Project Overview",
-    description: "Return a registered PlanWeave project's canvases and high-level summary.",
+    description: "Compatibility alias for open_project. Return a registered PlanWeave project's canvases and high-level summary.",
     inputSchema: projectInput,
     annotations: readOnlyAnnotations
   },
@@ -160,13 +177,13 @@ export const planweaveToolDefinitions: Record<PlanweaveToolName, ToolDefinition>
   },
   preview_execution_graph: {
     title: "Preview PlanWeave Execution Graph",
-    description: "Preview the selected canvas DAG before or after graph edits.",
+    description: "Compatibility alias for get_project_graph. Preview the selected canvas DAG before or after graph edits.",
     inputSchema: projectCanvasInput,
     annotations: readOnlyAnnotations
   },
   get_project_graph: {
     title: "Get PlanWeave Project Graph",
-    description: "Return the selected canvas DAG with task nodes, dependency edges, block previews, and diagnostics.",
+    description: "Return one canvas DAG with task nodes, dependency edges, block previews, and diagnostics. Use this after choosing projectId and canvasId.",
     inputSchema: projectCanvasInput,
     annotations: readOnlyAnnotations
   },
@@ -202,7 +219,7 @@ export const planweaveToolDefinitions: Record<PlanweaveToolName, ToolDefinition>
   },
   update_task: {
     title: "Update PlanWeave Task",
-    description: "Update a task title, prompt markdown, or executor.",
+    description: "Update a task title, prompt markdown, or executor. Use promptMarkdown here instead of a separate prompt-writing tool.",
     inputSchema: updateTaskInputShape,
     annotations: writeAnnotations
   },
@@ -234,7 +251,7 @@ export const planweaveToolDefinitions: Record<PlanweaveToolName, ToolDefinition>
   },
   update_block: {
     title: "Update PlanWeave Block",
-    description: "Update a block title, prompt markdown, or executor.",
+    description: "Update a block title, prompt markdown, or executor. Use promptMarkdown here instead of a separate prompt-writing tool.",
     inputSchema: updateBlockInputShape,
     annotations: writeAnnotations
   },
@@ -327,13 +344,13 @@ export const planweaveToolDefinitions: Record<PlanweaveToolName, ToolDefinition>
   },
   write_task_prompt: {
     title: "Write PlanWeave Task Prompt",
-    description: "Replace a task prompt markdown file.",
+    description: "Compatibility alias for update_task with promptMarkdown.",
     inputSchema: taskPromptInput,
     annotations: writeAnnotations
   },
   write_block_prompt: {
     title: "Write PlanWeave Block Prompt",
-    description: "Replace a block prompt markdown file.",
+    description: "Compatibility alias for update_block with promptMarkdown.",
     inputSchema: blockPromptInput,
     annotations: writeAnnotations
   },

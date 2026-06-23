@@ -28,6 +28,8 @@ export { parseBlockRef } from "./graph/compileTaskGraph.js";
 export { compilePackageGraph } from "./graph/compileTaskGraph.js";
 export {
   compileProjectGraph,
+  applyDefaultCanvasWorkspaceMigration,
+  detectDefaultCanvasWorkspaceMigration,
   defaultCanvasProjectGraph,
   loadProjectGraph,
   loadProjectGraphForWorkspace,

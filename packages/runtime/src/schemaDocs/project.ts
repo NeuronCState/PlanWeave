@@ -15,9 +15,9 @@ export const projectSchemaDocument: SchemaDocument<"project"> = {
         type: "canvas",
         title: "string, non-empty",
         description: "string, optional",
-        packageDir: "workspaceRoot-relative package directory",
-        stateFile: "workspaceRoot-relative runtime state file",
-        resultsDir: "workspaceRoot-relative results directory"
+        packageDir: "workspaceRoot-relative package directory; default canvas uses canvases/default/package",
+        stateFile: "workspaceRoot-relative runtime state file; default canvas uses canvases/default/state.json",
+        resultsDir: "workspaceRoot-relative results directory; default canvas uses canvases/default/results"
       }
     ],
     edges: [{ from: "CLI-safe canvas id", to: "CLI-safe canvas id", type: projectGraphEdgeTypes[0] }],
@@ -30,7 +30,8 @@ export const projectSchemaDocument: SchemaDocument<"project"> = {
     ]
   },
   notes: [
-    "PlanWeave stores project metadata, package, state, results, and desktop files under workspaceRoot; managed projects use that workspace as their project root.",
+    "PlanWeave stores project metadata, project graph, policy, cache, and desktop files under workspaceRoot; each canvas points to its own package, state, and results paths.",
+    "The default canvas canonical paths are packageDir=canvases/default/package, stateFile=canvases/default/state.json, and resultsDir=canvases/default/results.",
     "External projects use the source directory as rootPath; managed projects can bind an optional sourceRoot while keeping plan files under workspaceRoot.",
     "Canvas ids must be CLI-safe because generated agent commands pass them to --canvas without shell quoting.",
     "Use canvas edges only when the whole downstream canvas waits for the whole upstream canvas.",

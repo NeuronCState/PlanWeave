@@ -28,7 +28,7 @@ import {
 } from "../desktop/index.js";
 import { createSqlitePlanGraphStore } from "../plangraph/index.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
-import { loadProjectGraph, writeProjectGraph } from "../projectGraph/index.js";
+import { canonicalProjectCanvasNode, loadProjectGraph, writeProjectGraph } from "../projectGraph/index.js";
 import type { PlanPackageManifest } from "../types.js";
 import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
 
@@ -212,7 +212,8 @@ describe("desktop graph edit API", () => {
     manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
     expect(manifest.nodes.some((node) => node.type === "task" && node.id === "T-DROPPED-TASK")).toBe(false);
     expect((await getDesktopLayout(root)).nodes).not.toContainEqual({ nodeId: "T-DROPPED-TASK", x: 480, y: 240 });
-    await expect(readJsonFile<{ nodes: Array<{ nodeId: string }> }>(join(init.workspace.workspaceRoot, "desktop/layout.json"))).resolves.toMatchObject({
+    const defaultWorkspace = await resolveTaskCanvasWorkspace(root, "default");
+    await expect(readJsonFile<{ nodes: Array<{ nodeId: string }> }>(join(defaultWorkspace.workspaceRoot, "desktop/layout.json"))).resolves.toMatchObject({
       nodes: expect.not.arrayContaining([expect.objectContaining({ nodeId: "T-DROPPED-TASK" })])
     });
 
@@ -284,7 +285,7 @@ describe("desktop graph edit API", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        { id: "default", type: "canvas", title: "Runtime plan", packageDir: "package", stateFile: "state.json", resultsDir: "results" },
+        canonicalProjectCanvasNode({ id: "default", title: "Runtime plan" }),
         {
           id: secondCanvas.canvasId,
           type: "canvas",

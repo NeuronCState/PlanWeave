@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, realpath } from "node:fs/promises";
+import { access, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -7,7 +7,8 @@ import { initWorkspace } from "../initWorkspace.js";
 import { writeJsonFile } from "../json.js";
 import { resolvePlanweaveHome } from "../paths.js";
 import { loadProjectGraph, projectGraphPath } from "../projectGraph/index.js";
-import { createTestWorkspace } from "./promptTestHelpers.js";
+import { createEmptyState } from "../state.js";
+import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
 
 afterEach(() => {
   delete process.env.PLANWEAVE_HOME;
@@ -71,6 +72,7 @@ describe("desktop project API", () => {
 
   it("materializes missing formal project graphs when opening existing legacy projects", async () => {
     const { init, root } = await createTestWorkspace();
+    await rm(projectGraphPath(init.workspace));
     const second = await createTaskCanvas(root, { name: "Legacy second canvas" });
 
     await expect(loadProjectGraph(root)).resolves.toMatchObject({
@@ -96,6 +98,25 @@ describe("desktop project API", () => {
         ]
       }
     });
+  });
+
+  it("does not materialize unmigrated root default projects on open", async () => {
+    const { init, root } = await createTestWorkspace();
+    await rm(projectGraphPath(init.workspace));
+    await rm(join(init.workspace.workspaceRoot, "canvases"), { recursive: true, force: true });
+    const packageDir = join(init.workspace.workspaceRoot, "package");
+    const manifest = basicManifest();
+    await writeJsonFile(join(packageDir, "manifest.json"), manifest);
+    await writePromptFiles(packageDir, manifest);
+    await writeJsonFile(join(init.workspace.workspaceRoot, "state.json"), createEmptyState());
+    await mkdir(join(init.workspace.workspaceRoot, "results"), { recursive: true });
+
+    await expect(initOrOpenProject(root)).resolves.toMatchObject({
+      projectId: init.workspace.id
+    });
+    const loaded = await loadProjectGraph(root);
+    await expect(access(projectGraphPath(init.workspace))).rejects.toThrow();
+    expect(loaded.source).not.toBe("project_graph");
   });
 
   it("normalizes legacy MCP-managed projects to their registered workspace root", async () => {

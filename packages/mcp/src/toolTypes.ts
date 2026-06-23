@@ -24,8 +24,10 @@ import type {
 
 export const planweaveToolNames = [
   "get_schema",
+  "get_planweave_guide",
   "get_authoring_rules",
   "get_plan_package_example",
+  "get_project_tree",
   "list_projects",
   "open_project",
   "init_project",
@@ -122,7 +124,6 @@ export type RuntimeGateway = {
   getPrompt(projectId: string, canvasId: string | null | undefined, ref: string): Promise<RenderedPromptPayload>;
   searchProject(projectId: string, args: SearchProjectArgs): Promise<SearchProjectPayload>;
   listReadyBlocks(projectId: string, canvasId?: string | null): Promise<ReadyBlocksPayload>;
-  getProjectOverview(projectId: string): Promise<DesktopProjectSummary>;
   getProjectGraph(projectId: string, canvasId?: string): Promise<DesktopGraphViewModel>;
   getTaskDetail(projectId: string, taskId: string, canvasId?: string): Promise<DesktopTaskDetail>;
   getBlockDetail(projectId: string, blockRef: string, canvasId?: string): Promise<DesktopBlockDetail>;

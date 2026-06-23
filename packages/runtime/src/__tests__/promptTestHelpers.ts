@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initWorkspace } from "../initWorkspace.js";
 import { writeJsonFile } from "../json.js";
+import { canonicalProjectCanvasNode, writeProjectGraph } from "../projectGraph/index.js";
 import type { InitWorkspaceResult, PlanPackageManifest, ReviewHookDefinition, ReviewVerdict } from "../types.js";
 
 export function basicManifest(options: {
@@ -112,6 +113,12 @@ export async function createTestWorkspace(manifest: PlanPackageManifest = basicM
   const init = await initWorkspace({ projectRoot: root });
   await writeJsonFile(init.workspace.manifestFile, manifest);
   await writePromptFiles(init.workspace.packageDir, manifest);
+  await writeProjectGraph(init.workspace, {
+    version: "plan-project/v1",
+    canvases: [canonicalProjectCanvasNode({ id: "default", title: manifest.project.title })],
+    edges: [],
+    crossTaskEdges: []
+  });
   return { home, root, init };
 }
 

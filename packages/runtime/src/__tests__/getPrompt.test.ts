@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { writeJsonFile } from "../json.js";
-import { writeProjectGraph } from "../projectGraph/index.js";
+import { canonicalProjectCanvasNode, writeProjectGraph } from "../projectGraph/index.js";
 import { resolveTaskCanvasWorkspace } from "../desktop/index.js";
 import { renderPrompt } from "../taskManager/index.js";
 import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
@@ -20,7 +20,7 @@ describe("renderPrompt", () => {
     expect(prompt).toContain("Project policy");
     expect(prompt).toContain("# T-001 task prompt");
     expect(prompt).toContain("# T-001#B-001 implementation prompt");
-    expect(prompt).toContain("planweave submit-result T-001#B-001 --report");
+    expect(prompt).toContain("planweave submit-result --canvas default T-001#B-001 --report");
   });
 
   it("renders review result JSON instructions for review blocks", async () => {
@@ -30,7 +30,7 @@ describe("renderPrompt", () => {
 
     expect(prompt).toContain("Required Review Result JSON");
     expect(prompt).toContain('"reviewBlockRef": "T-001#R-001"');
-    expect(prompt).toContain("planweave submit-review T-001#R-001 --result");
+    expect(prompt).toContain("planweave submit-review --canvas default T-001#R-001 --result");
   });
 
   it("scopes submission instructions for formal project graph canvases with arbitrary package paths", async () => {
@@ -42,14 +42,7 @@ describe("renderPrompt", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        {
-          id: "runtime",
-          type: "canvas",
-          title: "Runtime",
-          packageDir: "package",
-          stateFile: "state.json",
-          resultsDir: "results"
-        },
+        canonicalProjectCanvasNode({ id: "default", title: "Runtime" }),
         {
           id: "manual-canvas",
           type: "canvas",

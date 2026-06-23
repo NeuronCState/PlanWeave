@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -14,6 +14,29 @@ async function runCli(args: string[], env: NodeJS.ProcessEnv): Promise<{ stdout:
     cwd: repoRoot,
     env
   });
+}
+
+type CliFailure = Error & {
+  code: number;
+  stdout: string;
+  stderr: string;
+};
+
+function isCliFailure(error: unknown): error is CliFailure {
+  const candidate = error as { code?: unknown; stdout?: unknown; stderr?: unknown };
+  return error instanceof Error && typeof candidate.code === "number" && typeof candidate.stdout === "string" && typeof candidate.stderr === "string";
+}
+
+async function runCliExpectFailure(args: string[], env: NodeJS.ProcessEnv): Promise<CliFailure> {
+  try {
+    await runCli(args, env);
+  } catch (error) {
+    if (isCliFailure(error)) {
+      return error;
+    }
+    throw error;
+  }
+  throw new Error(`Expected planweave ${args.join(" ")} to fail.`);
 }
 
 function withoutInitCwd(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -93,7 +116,7 @@ describe("STEP-1 CLI contract", () => {
     });
     expect(JSON.parse(await readFile(init.projectGraph.path, "utf8"))).toMatchObject({
       version: "plan-project/v1",
-      canvases: [expect.objectContaining({ id: "default", packageDir: "package" })]
+      canvases: [expect.objectContaining({ id: "default", packageDir: "canvases/default/package" })]
     });
 
     const migrate = JSON.parse((await runCli(["project-graph", "migrate", "--json"], env)).stdout);
@@ -113,6 +136,44 @@ describe("STEP-1 CLI contract", () => {
     await expect(runCli(["project-graph", "migrate", "--json"], env)).rejects.toMatchObject({
       stderr: expect.stringContaining("planweave init --project-graph --json")
     });
+  }, 20_000);
+
+  it("reports default canvas migration conflicts without writing or quarantining root data", async () => {
+    const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    const root = await mkdtemp(join(tmpdir(), "planweave-project-"));
+    const env = { ...process.env, PLANWEAVE_HOME: home, INIT_CWD: root };
+    const init = JSON.parse((await runCli(["init", "--json"], env)).stdout);
+    const projectGraphBefore = await readFile(join(init.workspace.workspaceRoot, "project-graph.json"), "utf8");
+    const legacyPackageDir = join(init.workspace.workspaceRoot, "package");
+    await cp(init.workspace.packageDir, legacyPackageDir, { recursive: true });
+    await writeFile(
+      join(legacyPackageDir, "manifest.json"),
+      JSON.stringify(
+        {
+          version: "plan-package/v1",
+          project: { title: "Conflicting root package" },
+          execution: { parallel: { enabled: false, maxConcurrent: 1 } },
+          review: { maxFeedbackCycles: 1, completionPolicy: "strict" },
+          nodes: [],
+          edges: []
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+
+    const failure = await runCliExpectFailure(["project-graph", "migrate", "--json"], env);
+    const result = JSON.parse(failure.stdout);
+
+    expect(failure.code).not.toBe(0);
+    expect(result).toMatchObject({
+      action: "conflict",
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: "default_canvas_legacy_root_conflict" })])
+    });
+    await expect(readFile(join(init.workspace.workspaceRoot, "project-graph.json"), "utf8")).resolves.toBe(projectGraphBefore);
+    await expect(access(join(init.workspace.workspaceRoot, "package", "manifest.json"))).resolves.toBeUndefined();
+    await expect(access(join(init.workspace.workspaceRoot, "migration-quarantine"))).rejects.toThrow();
   }, 20_000);
 
   it("runs the block-level review feedback loop", async () => {
@@ -300,12 +361,12 @@ describe("STEP-1 CLI contract", () => {
           version: "plan-project/v1",
           canvases: [
             {
-              id: "runtime",
+              id: "default",
               type: "canvas",
-              title: "Runtime",
-              packageDir: "package",
-              stateFile: "state.json",
-              resultsDir: "results"
+              title: "Default",
+              packageDir: "canvases/default/package",
+              stateFile: "canvases/default/state.json",
+              resultsDir: "canvases/default/results"
             },
             {
               id: "desktop",
@@ -327,8 +388,8 @@ describe("STEP-1 CLI contract", () => {
 
     const paths = JSON.parse((await runCli([...rootArgs, "paths", "--json"], env)).stdout);
     expect(paths.projectGraphPath).toBe(join(init.workspace.workspaceRoot, "project-graph.json"));
-    expect(paths.activeCanvasId).toBe("runtime");
-    expect(paths.canvases.map((canvas: { canvasId: string }) => canvas.canvasId)).toEqual(["runtime", "desktop"]);
+    expect(paths.activeCanvasId).toBe("default");
+    expect(paths.canvases.map((canvas: { canvasId: string }) => canvas.canvasId)).toEqual(["default", "desktop"]);
 
     const initialDesktopStatus = JSON.parse((await runCli([...rootArgs, "status", "--json", "--canvas", "desktop"], env)).stdout);
     expect(initialDesktopStatus.claimHints.find((hint: { ref: string }) => hint.ref === "T-001#B-001")?.recommendedCommand).toContain(

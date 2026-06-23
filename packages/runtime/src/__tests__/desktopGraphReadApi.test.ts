@@ -146,7 +146,7 @@ describe("desktop graph read API", () => {
     expect(inheritedDetail.promptSources).toEqual([
       expect.objectContaining({ kind: "global", label: "PlanWeave Global Prompt", included: true }),
       expect.objectContaining({ kind: "projectCanvas", label: "Project/Canvas Prompt", included: true }),
-      expect.objectContaining({ kind: "projectGraph", label: "Project Canvas Context", included: true, missing: true }),
+      expect.objectContaining({ kind: "projectGraph", label: "Project Canvas Context", included: true, missing: false }),
       expect.objectContaining({ kind: "taskNode", label: "Task Node Prompt", included: true }),
       expect.objectContaining({ kind: "block", label: "Block Prompt", included: true })
     ]);
@@ -236,8 +236,9 @@ describe("desktop graph read API", () => {
 
   it("keeps snapshot fields when one first-screen part fails", async () => {
     const { root, init } = await createTestWorkspace();
-    await mkdir(join(init.workspace.workspaceRoot, "desktop"), { recursive: true });
-    await writeFile(join(init.workspace.workspaceRoot, "desktop", "layout.json"), "{", "utf8");
+    const workspace = await resolveTaskCanvasWorkspace(root, "default");
+    await mkdir(join(workspace.workspaceRoot, "desktop"), { recursive: true });
+    await writeFile(join(workspace.workspaceRoot, "desktop", "layout.json"), "{", "utf8");
 
     const snapshot = await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
 
@@ -267,7 +268,11 @@ describe("desktop graph read API", () => {
     const snapshot = await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
 
     expect(snapshot.graph?.tasks.map((task) => task.taskId)).toEqual(["T-001"]);
-    expect(snapshot.todoGroups?.ready.map((item) => item.ref)).toEqual(["T-001#B-001"]);
+    expect(snapshot.todoGroups?.ready.map((item) => item.ref)).toEqual([]);
+    expect(snapshot.todoGroups?.planned.map((item) => item.ref)).toEqual(["T-001#B-001", "T-001#R-001"]);
+    expect(snapshot.todoGroups?.planned[0]?.dependencyBlockers).toEqual([
+      expect.stringContaining("Project graph is invalid; no task canvas work can be claimed.")
+    ]);
     expect(snapshot.executionPlan?.phases.map((phase) => phase.canvasId)).toEqual(["default", brokenCanvas.canvasId]);
     expect(snapshot.statistics).toMatchObject({ taskTotal: 1, blockTotal: 2 });
     expect(snapshot.diagnostics).toEqual(expect.arrayContaining([

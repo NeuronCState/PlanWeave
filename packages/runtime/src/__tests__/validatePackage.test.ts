@@ -1,9 +1,10 @@
-import { rm } from "node:fs/promises";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createTaskCanvas, resolveTaskCanvasWorkspace } from "../desktop/index.js";
 import { writeJsonFile } from "../json.js";
-import { writeProjectGraph } from "../projectGraph/index.js";
+import { canonicalProjectCanvasNode, projectGraphPath, writeProjectGraph } from "../projectGraph/index.js";
+import { createEmptyState } from "../state.js";
 import { validatePackage } from "../validatePackage.js";
 import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
 
@@ -93,16 +94,7 @@ describe("validatePackage", () => {
     const { root, init } = await createTestWorkspace();
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
-      canvases: [
-        {
-          id: "default",
-          type: "canvas",
-          title: "Default",
-          packageDir: "package",
-          stateFile: "state.json",
-          resultsDir: "results"
-        }
-      ],
+      canvases: [canonicalProjectCanvasNode({ id: "default", title: "Default" })],
       edges: [{ from: "default", to: "missing-canvas", type: "depends_on" }],
       crossTaskEdges: [
         {
@@ -125,6 +117,98 @@ describe("validatePackage", () => {
         expect.objectContaining({
           code: "project_cross_task_from_missing",
           path: "project-graph.json:crossTaskEdges"
+        })
+      ])
+    );
+  });
+
+  it("warns for legacy root-only default canvas layout while validating the legacy package", async () => {
+    const { root, init } = await createTestWorkspace();
+    const manifest = basicManifest();
+    await rm(projectGraphPath(init.workspace));
+    await rm(join(init.workspace.workspaceRoot, "canvases"), { recursive: true, force: true });
+    await writeJsonFile(join(init.workspace.workspaceRoot, "package", "manifest.json"), manifest);
+    await writePromptFiles(join(init.workspace.workspaceRoot, "package"), manifest);
+    await writeJsonFile(join(init.workspace.workspaceRoot, "state.json"), createEmptyState());
+    await mkdir(join(init.workspace.workspaceRoot, "results"), { recursive: true });
+
+    const report = await validatePackage({ projectRoot: root });
+
+    expect(report.ok).toBe(true);
+    expect(report.errors).toEqual([]);
+    expect(report.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "default_canvas_legacy_root_layout"
+        })
+      ])
+    );
+    expect(report.warnings.filter((warning) => warning.code === "project_graph_missing_default_canvas_used")).toHaveLength(1);
+  });
+
+  it("reports canonical default missing with legacy root data without canonical validation noise", async () => {
+    const { root, init } = await createTestWorkspace();
+    await rm(join(init.workspace.workspaceRoot, "canvases"), { recursive: true, force: true });
+    await mkdir(join(init.workspace.workspaceRoot, "package"), { recursive: true });
+    await writeJsonFile(projectGraphPath(init.workspace), {
+      version: "plan-project/v1",
+      canvases: [canonicalProjectCanvasNode({ id: "default", title: "Default" })],
+      edges: [],
+      crossTaskEdges: [
+        {
+          from: { canvasId: "default", taskId: "T-MISSING" },
+          to: { canvasId: "default", taskId: "T-001" },
+          type: "depends_on"
+        }
+      ]
+    });
+    await writeFile(join(init.workspace.workspaceRoot, "package", "manifest.json"), "{ invalid json", "utf8");
+    await writeJsonFile(join(init.workspace.workspaceRoot, "state.json"), createEmptyState());
+    await mkdir(join(init.workspace.workspaceRoot, "results"), { recursive: true });
+
+    const report = await validatePackage({ projectRoot: root });
+
+    expect(report.ok).toBe(false);
+    expect(report.errors.map((error) => error.code)).toEqual(["default_canvas_canonical_missing_legacy_root_present"]);
+    expect(report.errors.map((error) => error.code)).not.toContain("project_canvas_manifest_read_failed");
+    expect(report.errors.map((error) => error.code)).not.toContain("workspace_missing");
+    expect(report.errors.map((error) => error.code).filter((code) => code.startsWith("project_cross_task_"))).toEqual([]);
+  });
+
+  it("reports mixed conflicting default canvas layouts as an error", async () => {
+    const { root, init } = await createTestWorkspace();
+    const legacyManifest = basicManifest({ includeSecondTask: true });
+    await writeJsonFile(join(init.workspace.workspaceRoot, "package", "manifest.json"), legacyManifest);
+    await writePromptFiles(join(init.workspace.workspaceRoot, "package"), legacyManifest);
+    await writeJsonFile(join(init.workspace.workspaceRoot, "state.json"), createEmptyState());
+    await mkdir(join(init.workspace.workspaceRoot, "results"), { recursive: true });
+
+    const report = await validatePackage({ projectRoot: root });
+
+    expect(report.ok).toBe(false);
+    expect(report.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "default_canvas_legacy_root_conflict"
+        })
+      ])
+    );
+  });
+
+  it("accepts mixed identical default canvas layouts with a warning", async () => {
+    const { root, init } = await createTestWorkspace();
+    await cp(init.workspace.packageDir, join(init.workspace.workspaceRoot, "package"), { recursive: true });
+    await cp(init.workspace.stateFile, join(init.workspace.workspaceRoot, "state.json"));
+    await cp(init.workspace.resultsDir, join(init.workspace.workspaceRoot, "results"), { recursive: true });
+
+    const report = await validatePackage({ projectRoot: root });
+
+    expect(report.ok).toBe(true);
+    expect(report.errors).toEqual([]);
+    expect(report.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "default_canvas_legacy_root_redundant"
         })
       ])
     );

@@ -1,45 +1,40 @@
-import { isAbsolute, relative } from "node:path";
-import type { ProjectWorkspace } from "../types.js";
 import type { TaskCanvasRegistry } from "../desktop/canvasRegistry.js";
-import type { ProjectGraphManifest } from "./types.js";
+import type { ProjectCanvasNode, ProjectGraphManifest } from "./types.js";
 import { supportedProjectGraphVersion } from "./types.js";
-
-function toWorkspaceRelative(workspace: ProjectWorkspace, path: string): string {
-  if (!isAbsolute(path)) {
-    return path.split("\\").join("/");
-  }
-  return relative(workspace.workspaceRoot, path).split("\\").join("/");
-}
+import { canonicalProjectCanvasNode, type CanonicalCanvasWorkspacePaths } from "./canonicalWorkspace.js";
 
 export function projectGraphFromLegacyRegistry(registry: TaskCanvasRegistry): ProjectGraphManifest {
   return {
     version: supportedProjectGraphVersion,
-    canvases: registry.canvases.map((canvas) => ({
-      id: canvas.canvasId,
-      type: "canvas",
-      title: canvas.name,
-      packageDir: canvas.packageDir,
-      stateFile: canvas.stateFile,
-      resultsDir: canvas.resultsDir
-    })),
+    canvases: registry.canvases.map((canvas) =>
+      canvas.canvasId === "default"
+        ? canonicalProjectCanvasNode({ id: "default", title: canvas.name })
+        : {
+            id: canvas.canvasId,
+            type: "canvas",
+            title: canvas.name,
+            packageDir: canvas.packageDir,
+            stateFile: canvas.stateFile,
+            resultsDir: canvas.resultsDir
+          }
+    ),
     edges: [],
     crossTaskEdges: []
   };
 }
 
-export function defaultCanvasProjectGraph(workspace: ProjectWorkspace, title: string): ProjectGraphManifest {
-  return {
-    version: supportedProjectGraphVersion,
-    canvases: [
-      {
+export function defaultCanvasProjectGraph(title: string, paths?: CanonicalCanvasWorkspacePaths): ProjectGraphManifest {
+  const canvas: ProjectCanvasNode = paths
+    ? {
         id: "default",
         type: "canvas",
         title,
-        packageDir: toWorkspaceRelative(workspace, workspace.packageDir),
-        stateFile: toWorkspaceRelative(workspace, workspace.stateFile),
-        resultsDir: toWorkspaceRelative(workspace, workspace.resultsDir)
+        ...paths
       }
-    ],
+    : canonicalProjectCanvasNode({ id: "default", title });
+  return {
+    version: supportedProjectGraphVersion,
+    canvases: [canvas],
     edges: [],
     crossTaskEdges: []
   };

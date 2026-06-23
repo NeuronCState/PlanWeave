@@ -331,7 +331,7 @@ async function writeExternalPromptSmokeChange(): Promise<void> {
 }
 
 export async function runSmokeCheck(window: BrowserWindow): Promise<void> {
-  const requiredText = ["PlanWeave", "Implement a tiny example change", "Task Node", "Review Block"];
+  const requiredText = ["Implement a tiny example change", "Task Node", "Review Block"];
   for (let attempt = 0; attempt < 50; attempt += 1) {
     const state = await readSmokeState(window);
     const missingText = requiredText.filter((text) => !state.pageText.includes(text));

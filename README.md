@@ -45,6 +45,8 @@ Your project is represented as a graph of task nodes and block documents. Each f
 - **Statistics, search, and todo views**: inspect development efficiency and project state without leaving the workflow.
 - **Local-first and file-backed**: plans, prompts, run records, and artifacts remain inspectable in your workspace.
 
+For the default canvas, inspectable files live under `canvases/default/package`, `canvases/default/state.json`, and `canvases/default/results` inside the PlanWeave workspace. Use `planweave paths --json` for the exact local paths.
+
 ## Quick Start
 
 PlanWeave is currently CLI-first. The desktop app is available for testing, but it is experimental and unsigned.
@@ -169,14 +171,14 @@ planweave validate --json
 planweave current
 planweave claim-next --dry-run
 planweave prompt T-001#B-001
-planweave submit-result T-001#B-001 --report report.md
+planweave submit-result --canvas default T-001#B-001 --report report.md
 ```
 
 Review gates and feedback loops can be handled manually too:
 
 ```bash
-planweave submit-review T-001#R-001 --result review-result.json
-planweave submit-feedback --report feedback-report.md
+planweave submit-review --canvas default T-001#R-001 --result review-result.json
+planweave submit-feedback --canvas default --report feedback-report.md
 ```
 
 PlanWeave resolves the target project root from the shell's current directory. Package managers may set `INIT_CWD`, which PlanWeave uses before `cwd`. When running from another directory, pass the global option before the subcommand:

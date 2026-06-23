@@ -8,7 +8,6 @@ import {
   initOrOpenProject,
   openProject,
   resolvePlanweaveHome,
-  resolveProjectWorkspace,
   resolveTaskCanvasWorkspace,
   validatePackage,
   type ValidationReport
@@ -29,9 +28,10 @@ async function exists(path: string): Promise<boolean> {
 
 export async function exportCanvasPackage(projectId: string, canvasId?: string): Promise<ExportedPlanPackage> {
   const project = await openProject({ projectId });
-  const workspace = await resolveTaskCanvasWorkspace(project.rootPath, canvasId);
+  const selectedCanvasId = canvasId ?? "default";
+  const workspace = await resolveTaskCanvasWorkspace(project.rootPath, selectedCanvasId);
   return {
-    canvasId: canvasId ?? null,
+    canvasId: selectedCanvasId,
     files: await readPackageFiles(workspace.packageDir)
   };
 }
@@ -51,8 +51,10 @@ export async function importPackageFiles(
   }));
   const tempRoot = await mkdtemp(join(tmpdir(), "planweave-mcp-import-"));
   try {
-    const tempProject = await initOrOpenProject(join(tempRoot, "project"));
-    const tempWorkspace = await resolveProjectWorkspace(tempProject.rootPath);
+    const tempProjectRoot = join(tempRoot, "project");
+    await mkdir(tempProjectRoot, { recursive: true });
+    const tempProject = await initOrOpenProject(tempProjectRoot);
+    const tempWorkspace = await resolveTaskCanvasWorkspace(tempProject.rootPath, "default");
     await replacePackageFiles(tempWorkspace.packageDir, normalizedFiles);
     const tempValidation = await validatePackage({ projectRoot: tempProject.rootPath });
     if (!tempValidation.ok) {
@@ -65,7 +67,7 @@ export async function importPackageFiles(
       throw new Error("Imported project already exists. Pass overwrite: true to replace its package files.");
     }
     const init = await initManagedWorkspace({ name });
-    const workspace = await resolveProjectWorkspace(init.workspace.rootPath);
+    const workspace = await resolveTaskCanvasWorkspace(init.workspace.rootPath, "default");
     await replacePackageFiles(workspace.packageDir, normalizedFiles);
     const validation = await validatePackage({ projectRoot: workspace.rootPath });
     if (!validation.ok) {

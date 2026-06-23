@@ -19,7 +19,7 @@ import {
 import { readJsonFile, writeJsonFile } from "../json.js";
 import type { AutoRunStepResult, PlanPackageManifest } from "../types.js";
 
-async function createWorkspaceFromExample(): Promise<{ home: string; root: string; packageDir: string }> {
+async function createWorkspaceFromExample(): Promise<{ home: string; root: string; packageDir: string; resultsDir: string }> {
   const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
   const root = await mkdtemp(join(tmpdir(), "planweave-project-"));
   process.env.PLANWEAVE_HOME = home;
@@ -30,7 +30,7 @@ async function createWorkspaceFromExample(): Promise<{ home: string; root: strin
   });
   await writeFile(join(home, "config", "global-prompt.md"), "Global execution rules.\n", "utf8");
   await writeFile(init.workspace.projectPromptFile, "Project execution rules.\n", "utf8");
-  return { home, root, packageDir: init.workspace.packageDir };
+  return { home, root, packageDir: init.workspace.packageDir, resultsDir: init.workspace.resultsDir };
 }
 
 async function writeReview(path: string, verdict: "passed" | "needs_changes", content: string): Promise<void> {
@@ -48,7 +48,7 @@ afterEach(() => {
 
 describe("STEP-1 block runtime", () => {
   it("runs implementation, review feedback, focused re-review, and completion", async () => {
-    const { home, root } = await createWorkspaceFromExample();
+    const { home, root, resultsDir } = await createWorkspaceFromExample();
 
     expect((await validatePackage({ projectRoot: root })).ok).toBe(true);
     expect(await claimNext({ projectRoot: root })).toMatchObject({
@@ -127,10 +127,10 @@ describe("STEP-1 block runtime", () => {
     expect(status.counts.blocks.completed).toBe(2);
     expect(status.counts.feedback.resolved).toBe(1);
     expect(
-      await readFile(join(home, "projects", status.projectId, "results", "T-001", "reviews", "R-001", "attempts", "REV-001", "review-result.json"), "utf8")
+      await readFile(join(resultsDir, "T-001", "reviews", "R-001", "attempts", "REV-001", "review-result.json"), "utf8")
     ).toContain("needs_changes");
     expect(
-      await readFile(join(home, "projects", status.projectId, "results", "T-001", "reviews", "R-001", "attempts", "REV-002", "review-result.json"), "utf8")
+      await readFile(join(resultsDir, "T-001", "reviews", "R-001", "attempts", "REV-002", "review-result.json"), "utf8")
     ).toContain("passed");
   });
 
@@ -285,7 +285,7 @@ describe("STEP-1 block runtime", () => {
   });
 
   it("runs one auto-run step with a configured codex-exec profile and records executor artifacts", async () => {
-    const { home, root, packageDir } = await createWorkspaceFromExample();
+    const { home, root, packageDir, resultsDir } = await createWorkspaceFromExample();
     const manifestPath = join(packageDir, "manifest.json");
     const manifest = await readJsonFile<PlanPackageManifest>(manifestPath);
     manifest.execution.defaultExecutor = "fake-codex";
@@ -306,8 +306,7 @@ describe("STEP-1 block runtime", () => {
       adapterResult: { kind: "block", executor: "fake-codex", adapter: "codex-exec" },
       submitResult: { runId: "RUN-001" }
     });
-    const status = await getExecutionStatus({ projectRoot: root });
-    const runDir = join(home, "projects", status.projectId, "results", "T-001", "blocks", "B-001", "runs", "RUN-001");
+    const runDir = join(resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-001");
     expect(await readFile(join(runDir, "prompt.md"), "utf8")).toContain("# T-001#B-001");
     expect(await readFile(join(runDir, "stdout.md"), "utf8")).toContain("Auto report for # T-001#B-001");
     expect(await readFile(join(runDir, "stderr.log"), "utf8")).toBe("");
@@ -315,7 +314,7 @@ describe("STEP-1 block runtime", () => {
   });
 
   it("stops a manual auto-run step after writing a prompt artifact without submitting the block", async () => {
-    const { home, root, packageDir } = await createWorkspaceFromExample();
+    const { home, root, packageDir, resultsDir } = await createWorkspaceFromExample();
     const manifestPath = join(packageDir, "manifest.json");
     const manifest = await readJsonFile<PlanPackageManifest>(manifestPath);
     manifest.execution.defaultExecutor = "manual";
@@ -334,7 +333,7 @@ describe("STEP-1 block runtime", () => {
       adapterResult: { kind: "manual", executor: "manual", adapter: "manual" }
     });
     const status = await getExecutionStatus({ projectRoot: root });
-    const promptPath = join(home, "projects", status.projectId, "results", "T-001", "blocks", "B-001", "runs", "RUN-001", "prompt.md");
+    const promptPath = join(resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-001", "prompt.md");
     expect(await readFile(promptPath, "utf8")).toContain("# T-001#B-001");
     expect(status.blocks.find((block) => block.ref === "T-001#B-001")?.status).toBe("in_progress");
   });

@@ -1,13 +1,14 @@
 import { join } from "node:path";
-import { mkdtemp } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { createTaskCanvas, listTaskCanvases, resolveTaskCanvasWorkspace } from "../desktop/index.js";
 import { writeJsonFile } from "../json.js";
 import { projectGraphManifestSchema } from "../projectGraph/schema.js";
-import { loadProjectGraph, projectGraphPath, writeProjectGraph } from "../projectGraph/loadProjectGraph.js";
+import { canonicalProjectCanvasNode, loadProjectGraph, projectGraphPath, writeProjectGraph } from "../projectGraph/index.js";
 import { materializeProjectGraph } from "../projectGraph/materializeProjectGraph.js";
 import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
+import { createEmptyState } from "../state.js";
 
 afterEach(() => {
   delete process.env.PLANWEAVE_HOME;
@@ -19,14 +20,7 @@ describe("project graph schema", () => {
       projectGraphManifestSchema.parse({
         version: "plan-project/v1",
         canvases: [
-          {
-            id: "default",
-            type: "canvas",
-            title: "Default plan",
-            packageDir: "package",
-            stateFile: "state.json",
-            resultsDir: "results"
-          }
+          canonicalProjectCanvasNode({ id: "default", title: "Default plan" })
         ],
         edges: [],
         crossTaskEdges: []
@@ -55,7 +49,8 @@ describe("project graph schema", () => {
   });
 
   it("derives a legacy project graph when project-graph.json is missing", async () => {
-    const { root } = await createTestWorkspace();
+    const { root, init } = await createTestWorkspace();
+    await rm(projectGraphPath(init.workspace));
     const second = await createTaskCanvas(root, { name: "Second plan" });
 
     const loaded = await loadProjectGraph(root);
@@ -69,16 +64,7 @@ describe("project graph schema", () => {
     const { root, init } = await createTestWorkspace();
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
-      canvases: [
-        {
-          id: "default",
-          type: "canvas",
-          title: "Formal default",
-          packageDir: "package",
-          stateFile: "state.json",
-          resultsDir: "results"
-        }
-      ],
+      canvases: [canonicalProjectCanvasNode({ id: "default", title: "Formal default" })],
       edges: [],
       crossTaskEdges: []
     });
@@ -93,6 +79,7 @@ describe("project graph schema", () => {
 
   it("materializes the current fallback graph as formal project-graph.json", async () => {
     const { root, init } = await createTestWorkspace();
+    await rm(projectGraphPath(init.workspace));
 
     const result = await materializeProjectGraph(root);
     const loaded = await loadProjectGraph(root);
@@ -107,11 +94,26 @@ describe("project graph schema", () => {
     expect(loaded.manifest.canvases).toEqual([
       expect.objectContaining({
         id: "default",
-        packageDir: "package",
-        stateFile: "state.json",
-        resultsDir: "results"
+        packageDir: "canvases/default/package",
+        stateFile: "canvases/default/state.json",
+        resultsDir: "canvases/default/results"
       })
     ]);
+  });
+
+  it("refuses to materialize a formal graph while legacy root default data needs migration", async () => {
+    const { root, init } = await createTestWorkspace();
+    await rm(projectGraphPath(init.workspace));
+    await rm(join(init.workspace.workspaceRoot, "canvases"), { recursive: true, force: true });
+    const packageDir = join(init.workspace.workspaceRoot, "package");
+    const manifest = basicManifest();
+    await writeJsonFile(join(packageDir, "manifest.json"), manifest);
+    await writePromptFiles(packageDir, manifest);
+    await writeJsonFile(join(init.workspace.workspaceRoot, "state.json"), createEmptyState());
+    await mkdir(join(init.workspace.workspaceRoot, "results"), { recursive: true });
+
+    await expect(materializeProjectGraph(root)).rejects.toThrow("project-graph migrate");
+    await expect(access(projectGraphPath(init.workspace))).rejects.toThrow();
   });
 
   it("rejects materializing a project graph before workspace init", async () => {
@@ -132,14 +134,7 @@ describe("project graph schema", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        {
-          id: "default",
-          type: "canvas",
-          title: "Default",
-          packageDir: "package",
-          stateFile: "state.json",
-          resultsDir: "results"
-        },
+        canonicalProjectCanvasNode({ id: "default", title: "Default" }),
         {
           id: canvas.canvasId,
           type: "canvas",

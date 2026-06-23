@@ -14,6 +14,7 @@ import {
 import type { DesktopAutoRunState } from "../desktop/index.js";
 import { initWorkspace } from "../initWorkspace.js";
 import { writeJsonFile } from "../json.js";
+import { canonicalProjectCanvasNode } from "../projectGraph/index.js";
 import { writeProjectGraph } from "../projectGraph/loadProjectGraph.js";
 import type { PlanPackageManifest, ProjectWorkspace } from "../types.js";
 import { createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
@@ -167,14 +168,7 @@ describe("desktop auto run persistence", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        {
-          id: "default",
-          type: "canvas",
-          title: "Default",
-          packageDir: "package",
-          stateFile: "state.json",
-          resultsDir: "results"
-        },
+        canonicalProjectCanvasNode({ id: "default", title: "Default" }),
         {
           id: "manual-canvas",
           type: "canvas",
@@ -221,14 +215,7 @@ describe("desktop auto run persistence", () => {
     await writeProjectGraph(historicalWorkspace.init.workspace, {
       version: "plan-project/v1",
       canvases: [
-        {
-          id: "default",
-          type: "canvas",
-          title: "Default",
-          packageDir: "package",
-          stateFile: "state.json",
-          resultsDir: "results"
-        },
+        canonicalProjectCanvasNode({ id: "default", title: "Default" }),
         {
           id: "manual-canvas",
           type: "canvas",

@@ -2,7 +2,7 @@ import { access, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { readJsonFile, writeJsonFile } from "../json.js";
-import { projectGraphPath, projectCanvasWorkspace } from "../projectGraph/index.js";
+import { canonicalProjectCanvasNode, projectGraphPath, projectCanvasWorkspace } from "../projectGraph/index.js";
 import { DEFAULT_CANVAS_WORKSPACE_STALE_THRESHOLD_MS } from "../projectGraph/canvasWorkspaceRecovery.js";
 import { runProjectDoctor } from "../taskManager/index.js";
 import type { ProjectGraphManifest } from "../projectGraph/index.js";
@@ -13,18 +13,14 @@ afterEach(() => {
   delete process.env.PLANWEAVE_HOME;
 });
 
-function singleCanvasProjectGraph(canvasId = "runtime"): ProjectGraphManifest {
+function singleCanvasProjectGraph(canvasId = "default"): ProjectGraphManifest {
   return {
     version: "plan-project/v1",
     canvases: [
-      {
+      canonicalProjectCanvasNode({
         id: canvasId,
-        type: "canvas",
-        title: "Runtime",
-        packageDir: "package",
-        stateFile: "state.json",
-        resultsDir: "results"
-      }
+        title: canvasId === "default" ? "Default" : "Runtime"
+      })
     ],
     edges: [],
     crossTaskEdges: []
@@ -35,7 +31,7 @@ function twoCanvasProjectGraph(): ProjectGraphManifest {
   return {
     version: "plan-project/v1",
     canvases: [
-      ...singleCanvasProjectGraph("runtime").canvases,
+      ...singleCanvasProjectGraph().canvases,
       {
         id: "desktop",
         type: "canvas",
@@ -76,8 +72,8 @@ async function ageCanvasRecoveryDirectory(path: string): Promise<void> {
 describe("runProjectDoctor", () => {
   it("reports project graph diagnostics", async () => {
     const { root, init } = await createTestWorkspace();
-    const graph = singleCanvasProjectGraph("runtime");
-    graph.edges.push({ from: "runtime", to: "missing", type: "depends_on" });
+    const graph = singleCanvasProjectGraph();
+    graph.edges.push({ from: "default", to: "missing", type: "depends_on" });
     await writeJsonFile(projectGraphPath(init.workspace), graph);
 
     const report = await runProjectDoctor({ projectRoot: root });
@@ -96,7 +92,7 @@ describe("runProjectDoctor", () => {
 
   it("reports missing canvas prompts with canvas id and path", async () => {
     const { root, init } = await createTestWorkspace();
-    await writeJsonFile(projectGraphPath(init.workspace), singleCanvasProjectGraph("runtime"));
+    await writeJsonFile(projectGraphPath(init.workspace), singleCanvasProjectGraph());
     await rm(join(init.workspace.packageDir, "nodes", "T-001", "prompt.md"));
 
     const report = await runProjectDoctor({ projectRoot: root });
@@ -104,11 +100,11 @@ describe("runProjectDoctor", () => {
     expect(report.ok).toBe(false);
     expect(report.canvasReports).toEqual([
       expect.objectContaining({
-        canvasId: "runtime",
+        canvasId: "default",
         errors: expect.arrayContaining([
           expect.objectContaining({
             code: "prompt_missing",
-            canvasId: "runtime",
+            canvasId: "default",
             source: "canvas_package",
             path: "package/nodes/T-001/prompt.md"
           })
@@ -147,7 +143,7 @@ describe("runProjectDoctor", () => {
 
   it("reports state issues with stable state file paths", async () => {
     const { root, init } = await createTestWorkspace();
-    await writeJsonFile(projectGraphPath(init.workspace), singleCanvasProjectGraph("runtime"));
+    await writeJsonFile(projectGraphPath(init.workspace), singleCanvasProjectGraph());
     await writeJsonFile(init.workspace.stateFile, {
       currentRefs: ["T-404#B-001"],
       currentFeedbackId: null,
@@ -166,7 +162,7 @@ describe("runProjectDoctor", () => {
       expect.arrayContaining([
         expect.objectContaining({
           code: "stale_current_ref",
-          canvasId: "runtime",
+          canvasId: "default",
           source: "canvas_doctor",
           path: "state.json:currentRefs"
         })
@@ -176,7 +172,7 @@ describe("runProjectDoctor", () => {
       expect.arrayContaining([
         expect.objectContaining({
           code: "orphan_state",
-          canvasId: "runtime",
+          canvasId: "default",
           source: "canvas_package",
           path: "state.json:blocks.T-OLD#B-001"
         })
@@ -245,7 +241,8 @@ describe("runProjectDoctor", () => {
   });
 
   it("keeps legacy project graph fallback warnings out of ok calculation", async () => {
-    const { root } = await createTestWorkspace();
+    const { root, init } = await createTestWorkspace();
+    await rm(projectGraphPath(init.workspace));
 
     const report = await runProjectDoctor({ projectRoot: root });
 
@@ -382,6 +379,7 @@ describe("runProjectDoctor", () => {
 
   it("reports legacy registry entries whose canvas workspace is missing", async () => {
     const { root, init } = await createTestWorkspace();
+    await rm(projectGraphPath(init.workspace));
     await writeJsonFile(join(init.workspace.workspaceRoot, "desktop", "canvases.json"), {
       version: "desktop-canvases/v1",
       canvases: [

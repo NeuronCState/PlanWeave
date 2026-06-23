@@ -5,6 +5,7 @@ import { PlanWeaveWorkspaceNotInitializedError } from "./errors.js";
 import { createProjectId } from "./projectId.js";
 import { resolvePlanweaveHome } from "./paths.js";
 import { readJsonFile } from "./json.js";
+import { canonicalCanvasWorkspacePaths } from "./projectGraph/canonicalWorkspace.js";
 import type { ProjectKind, ProjectMetadata, ProjectWorkspace } from "./types.js";
 
 export function projectWorkspacePaths(input: {
@@ -15,13 +16,14 @@ export function projectWorkspacePaths(input: {
   planweaveHome: string;
   workspaceRoot: string;
 }): ProjectWorkspace {
+  const defaultCanvasWorkspace = canonicalCanvasWorkspacePaths("default");
   return {
     ...input,
     projectFile: join(input.workspaceRoot, "project.json"),
-    packageDir: join(input.workspaceRoot, "package"),
-    manifestFile: join(input.workspaceRoot, "package", "manifest.json"),
-    stateFile: join(input.workspaceRoot, "state.json"),
-    resultsDir: join(input.workspaceRoot, "results"),
+    packageDir: join(input.workspaceRoot, defaultCanvasWorkspace.packageDir),
+    manifestFile: join(input.workspaceRoot, defaultCanvasWorkspace.packageDir, "manifest.json"),
+    stateFile: join(input.workspaceRoot, defaultCanvasWorkspace.stateFile),
+    resultsDir: join(input.workspaceRoot, defaultCanvasWorkspace.resultsDir),
     projectPromptFile: join(input.workspaceRoot, "policy", "project-prompt.md")
   };
 }

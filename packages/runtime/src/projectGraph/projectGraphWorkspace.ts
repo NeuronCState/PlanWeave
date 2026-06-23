@@ -25,7 +25,7 @@ export function projectCanvasWorkspace(projectWorkspace: ProjectWorkspace, canva
   assertWorkspaceChild(projectWorkspace, resultsDir);
   return {
     ...projectWorkspace,
-    workspaceRoot: canvas.id === "default" ? projectWorkspace.workspaceRoot : dirname(packageDir),
+    workspaceRoot: dirname(packageDir),
     packageDir,
     manifestFile: join(packageDir, "manifest.json"),
     stateFile,

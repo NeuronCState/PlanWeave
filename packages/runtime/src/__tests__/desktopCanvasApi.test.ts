@@ -1,4 +1,4 @@
-import { access, chmod, mkdir, readdir, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -13,12 +13,13 @@ import {
   removeTaskCanvas,
   resolveTaskCanvasWorkspace,
   saveDesktopLayout,
-  searchProject
+  searchProject,
+  selectTaskCanvas
 } from "../desktop/index.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { readProjectPaths } from "../paths.js";
 import { commitCanvasWorkspaceWrite, stageCanvasWorkspaceWrite } from "../projectGraph/canvasWorkspaceRecovery.js";
-import { loadProjectGraph, writeProjectGraph } from "../projectGraph/index.js";
+import { canonicalProjectCanvasNode, loadProjectGraph, projectGraphPath, writeProjectGraph } from "../projectGraph/index.js";
 import { claimNext, getCurrentWork, getExecutionStatus } from "../taskManager/index.js";
 import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
 
@@ -178,9 +179,9 @@ describe("desktop task canvas API", () => {
     expect(canvases).toEqual([
       expect.objectContaining({
         canvasId: "default",
-        name: "任务画布",
+        name: "Test Plan",
         diagnostics: expect.arrayContaining([
-          expect.objectContaining({ code: "desktop_manifest_title_read_failed" }),
+          expect.objectContaining({ code: "manifest_read_failed" }),
           expect.objectContaining({ code: "desktop_canvas_task_count_read_failed" })
         ])
       })
@@ -213,6 +214,7 @@ describe("desktop task canvas API", () => {
 
   it("loads legacy canvas registry records with id and inferred state paths", async () => {
     const { root, init } = await createTestWorkspace();
+    await rm(projectGraphPath(init.workspace));
     const manifest = basicManifest();
     const legacyPackageDir = join(init.workspace.workspaceRoot, "canvases", "legacy-import", "package");
     await writeJsonFile(join(legacyPackageDir, "manifest.json"), manifest);
@@ -255,9 +257,7 @@ describe("desktop task canvas API", () => {
       blockTypes: ["implementation"],
       executor: "manual"
     });
-    const registryPath = join(init.workspace.workspaceRoot, "desktop", "canvases.json");
-    const registry = await readJsonFile<Record<string, unknown>>(registryPath);
-    await writeJsonFile(registryPath, { ...registry, activeCanvasId: secondCanvas.canvasId });
+    await selectTaskCanvas(root, secondCanvas.canvasId);
 
     const activeWorkspace = await resolveTaskCanvasWorkspace(root);
     const overview = await getProjectOverview(root);
@@ -281,16 +281,7 @@ describe("desktop task canvas API", () => {
     const { root, init } = await createTestWorkspace();
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
-      canvases: [
-        {
-          id: "default",
-          type: "canvas",
-          title: "Test Plan",
-          packageDir: "package",
-          stateFile: "state.json",
-          resultsDir: "results"
-        }
-      ],
+      canvases: [canonicalProjectCanvasNode({ id: "default", title: "Test Plan" })],
       edges: [],
       crossTaskEdges: []
     });
@@ -353,16 +344,7 @@ describe("desktop task canvas API", () => {
     const { root, init } = await createTestWorkspace();
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
-      canvases: [
-        {
-          id: "default",
-          type: "canvas",
-          title: "Root plan",
-          packageDir: "package",
-          stateFile: "state.json",
-          resultsDir: "results"
-        },
-      ],
+      canvases: [canonicalProjectCanvasNode({ id: "default", title: "Root plan" })],
       edges: [],
       crossTaskEdges: []
     });
@@ -385,6 +367,7 @@ describe("desktop task canvas API", () => {
 
   it("quarantines legacy canvas workspaces when removing non-default canvases", async () => {
     const { root, init } = await createTestWorkspace();
+    await rm(projectGraphPath(init.workspace));
     const created = await createTaskCanvas(root, { name: "Legacy removable" });
     const canvasRoot = join(init.workspace.workspaceRoot, "canvases", created.canvasId);
 
@@ -401,6 +384,7 @@ describe("desktop task canvas API", () => {
 
   it("restores legacy canvas workspace on write failure", async () => {
     const { root, init } = await createTestWorkspace();
+    await rm(projectGraphPath(init.workspace));
     const created = await createTaskCanvas(root, { name: "Rollback" });
     const canvasRoot = join(init.workspace.workspaceRoot, "canvases", created.canvasId);
     const desktopRoot = join(init.workspace.workspaceRoot, "desktop");
@@ -424,21 +408,9 @@ describe("desktop task canvas API", () => {
     await writeProjectGraph(init.workspace, {
       version: "plan-project/v1",
       canvases: [
+        canonicalProjectCanvasNode({ id: "default", title: "Root plan" }),
         {
-          id: "default",
-          type: "canvas",
-          title: "Root plan",
-          packageDir: "package",
-          stateFile: "state.json",
-          resultsDir: "results"
-        },
-        {
-          id: "downstream",
-          type: "canvas",
-          title: "Downstream plan",
-          packageDir: "canvases/downstream/package",
-          stateFile: "canvases/downstream/state.json",
-          resultsDir: "canvases/downstream/results"
+          ...canonicalProjectCanvasNode({ id: "downstream", title: "Downstream plan" })
         }
       ],
       edges: [{ from: "downstream", to: "default", type: "depends_on" }],

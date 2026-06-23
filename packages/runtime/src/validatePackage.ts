@@ -6,11 +6,12 @@ import { compilePackageGraph } from "./graph/compileTaskGraph.js";
 import { readJsonFile } from "./json.js";
 import { findOrphanResults, findOrphanState } from "./package/orphans.js";
 import { resolveProjectWorkspace } from "./project.js";
-import { compileProjectGraph, loadProjectGraph, projectCanvasWorkspace } from "./projectGraph/index.js";
+import { compileProjectGraph, detectDefaultCanvasWorkspaceMigration, loadProjectGraph, projectCanvasWorkspace } from "./projectGraph/index.js";
 import { manifestSchema } from "./schema/manifest.js";
 import { readState } from "./state.js";
 import type { PlanPackageManifest, ProjectWorkspace, ValidationIssue, ValidationReport } from "./types.js";
 import { validateDesktopLayout } from "./validation/desktopLayoutValidation.js";
+import type { LoadedProjectGraph } from "./projectGraph/index.js";
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -77,6 +78,73 @@ function prefixProjectGraphIssue(validationIssue: ValidationIssue): ValidationIs
   };
 }
 
+function isCanonicalDefaultCanvasPath(canvas: { packageDir: string; stateFile: string; resultsDir: string }): boolean {
+  return (
+    canvas.packageDir === "canvases/default/package" &&
+    canvas.stateFile === "canvases/default/state.json" &&
+    canvas.resultsDir === "canvases/default/results"
+  );
+}
+
+function legacyRootDefaultGraph() {
+  return {
+    version: "plan-project/v1" as const,
+    canvases: [
+      {
+        id: "default",
+        type: "canvas" as const,
+        title: "任务画布",
+        packageDir: "package",
+        stateFile: "state.json",
+        resultsDir: "results"
+      }
+    ],
+    edges: [],
+    crossTaskEdges: []
+  };
+}
+
+function graphWithLegacyRootDefaultCanvas(loaded: LoadedProjectGraph): LoadedProjectGraph {
+  const legacyDefault = legacyRootDefaultGraph().canvases[0];
+  const hasDefault = loaded.manifest.canvases.some((canvas) => canvas.id === "default");
+  return {
+    ...loaded,
+    manifest: {
+      ...loaded.manifest,
+      canvases: hasDefault
+        ? loaded.manifest.canvases.map((canvas) => (canvas.id === "default" ? { ...legacyDefault, title: canvas.title, description: canvas.description } : canvas))
+        : [legacyDefault, ...loaded.manifest.canvases]
+    }
+  };
+}
+
+function hasCanonicalDefaultCanvasMissingWithLegacyRoot(loaded: LoadedProjectGraph, migrationAction: string): boolean {
+  return (
+    loaded.source === "project_graph" &&
+    migrationAction === "migrate" &&
+    loaded.manifest.canvases.some((canvas) => canvas.id === "default" && isCanonicalDefaultCanvasPath(canvas))
+  );
+}
+
+function graphWithoutCanonicalDefaultCanvas(loaded: LoadedProjectGraph): LoadedProjectGraph {
+  const prunedCanvasIds = new Set(
+    loaded.manifest.canvases
+      .filter((canvas) => canvas.id === "default" && isCanonicalDefaultCanvasPath(canvas))
+      .map((canvas) => canvas.id)
+  );
+  return {
+    ...loaded,
+    manifest: {
+      ...loaded.manifest,
+      canvases: loaded.manifest.canvases.filter((canvas) => !prunedCanvasIds.has(canvas.id)),
+      edges: loaded.manifest.edges.filter((edge) => !prunedCanvasIds.has(edge.from) && !prunedCanvasIds.has(edge.to)),
+      crossTaskEdges: loaded.manifest.crossTaskEdges.filter(
+        (edge) => !prunedCanvasIds.has(edge.from.canvasId) && !prunedCanvasIds.has(edge.to.canvasId)
+      )
+    }
+  };
+}
+
 async function validateWorkspacePackage(projectWorkspace: ProjectWorkspace, workspace: ProjectWorkspace): Promise<{
   errors: ValidationIssue[];
   warnings: ValidationIssue[];
@@ -130,17 +198,42 @@ export async function validatePackage(options: { projectRoot: string }): Promise
   const errors: ValidationIssue[] = [];
   const warnings: ValidationIssue[] = [];
   const workspace = await resolveProjectWorkspace(options.projectRoot);
+  const migrationPlan = await detectDefaultCanvasWorkspaceMigration(workspace);
+  if (migrationPlan.action === "conflict") {
+    errors.push(...migrationPlan.diagnostics);
+  }
   const seenPackageDirs = new Set<string>();
   const workspaceReports: Array<{ errors: ValidationIssue[]; warnings: ValidationIssue[] }> = [];
 
   try {
     const loaded = await loadProjectGraph(options.projectRoot);
-    const graph = await compileProjectGraph(loaded);
+    const canonicalDefaultMissingWithLegacyRoot = hasCanonicalDefaultCanvasMissingWithLegacyRoot(loaded, migrationPlan.action);
+    if (canonicalDefaultMissingWithLegacyRoot) {
+      errors.push(
+        issue(
+          "default_canvas_canonical_missing_legacy_root_present",
+          "project-graph.json points at the canonical default canvas, but canonical data is missing while legacy root default canvas data exists. Run 'planweave project-graph migrate' or restore canonical files.",
+          "project-graph.json:canvases"
+        )
+      );
+    } else if (migrationPlan.action === "migrate" || migrationPlan.action === "mixed_identical") {
+      warnings.push(...migrationPlan.diagnostics);
+    }
+    const graphInput =
+      loaded.source !== "project_graph" && migrationPlan.action === "migrate"
+        ? graphWithLegacyRootDefaultCanvas(loaded)
+        : canonicalDefaultMissingWithLegacyRoot
+          ? graphWithoutCanonicalDefaultCanvas(loaded)
+        : loaded;
+    const graph = await compileProjectGraph(graphInput);
     errors.push(...graph.diagnostics.errors.map(prefixProjectGraphIssue));
     warnings.push(...graph.diagnostics.warnings.map(prefixProjectGraphIssue));
     for (const canvasId of graph.canvasIdsInOrder) {
       const canvas = graph.canvasesById.get(canvasId);
       if (!canvas) {
+        continue;
+      }
+      if (canvas.id === "default" && canonicalDefaultMissingWithLegacyRoot) {
         continue;
       }
       const canvasWorkspace = projectCanvasWorkspace(loaded.workspace, canvas);

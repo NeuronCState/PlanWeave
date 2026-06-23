@@ -2,9 +2,18 @@ import { describe, expect, it } from "vitest";
 import * as z from "zod/v4";
 import { createGateway, project, readJson, schemaDocument } from "./toolTestHelpers.js";
 import { planweaveToolDefinitions } from "../toolDefinitions.js";
-import { handlePlanweaveTool } from "../tools.js";
+import { handlePlanweaveTool, planweaveToolNames } from "../tools.js";
 
 describe("handlePlanweaveTool", () => {
+  it("keeps compatibility aliases in the exported tool list", () => {
+    expect(planweaveToolNames).toEqual(expect.arrayContaining([
+      "get_project_overview",
+      "preview_execution_graph",
+      "write_task_prompt",
+      "write_block_prompt"
+    ]));
+  });
+
   it("returns schema documents as JSON text content", async () => {
     const result = readJson(await handlePlanweaveTool("get_schema", { topic: "manifest" }, createGateway()));
 
@@ -12,6 +21,27 @@ describe("handlePlanweaveTool", () => {
       topic: "manifest",
       documents: {
         manifest: schemaDocument
+      }
+    });
+  });
+
+  it("returns a PlanWeave guide with storage layout and tool navigation", async () => {
+    const result = readJson(await handlePlanweaveTool("get_planweave_guide", undefined, createGateway()));
+
+    expect(result).toMatchObject({
+      guide: {
+        summary: expect.stringContaining("MCP tools"),
+        workspaceLayout: expect.arrayContaining([
+          expect.stringContaining("default canvas"),
+          expect.stringContaining("canvases/default/package"),
+          expect.stringContaining("legacy default canvas data")
+        ]),
+        toolSelection: expect.arrayContaining([
+          expect.objectContaining({ need: expect.stringContaining("Find local projects"), tool: "get_project_tree" })
+        ]),
+        nonGoals: expect.arrayContaining([
+          expect.stringContaining("currently selected PlanWeave Desktop project")
+        ])
       }
     });
   });
@@ -32,6 +62,103 @@ describe("handlePlanweaveTool", () => {
     expect(JSON.stringify(result)).not.toContain("/sensitive");
   });
 
+  it("returns a project tree for selecting the correct registered project", async () => {
+    const gateway = createGateway();
+    const eccoProject = {
+      ...project,
+      projectId: "ecco-the-dolphin-f7761c39",
+      name: "Ecco the Dolphin"
+    };
+    const tidesingerProject = {
+      ...project,
+      projectId: "tidesinger-e7bb1716",
+      name: "TIDESINGER"
+    };
+    gateway.listProjects = async () => [eccoProject, tidesingerProject];
+
+    const result = readJson(await handlePlanweaveTool("get_project_tree", undefined, gateway));
+
+    expect(result).toMatchObject({
+      desktopSelection: null,
+      projects: [
+        {
+          project: {
+            projectId: "ecco-the-dolphin-f7761c39",
+            name: "Ecco the Dolphin",
+            activeCanvasId: "default"
+          },
+          validation: { ok: true },
+          status: {
+            projectId: "project-1",
+            warnings: [
+              {
+                path: "canvases/default/package/manifest.json"
+              }
+            ]
+          },
+          readyBlocks: [
+            {
+              ref: "T-001#I-001"
+            }
+          ],
+          canvases: [
+            {
+              canvasId: "default",
+              taskCount: 1,
+              tasks: [
+                {
+                  taskId: "T-001",
+                  blockCount: 1
+                }
+              ]
+            }
+          ],
+          errors: []
+        },
+        {
+          project: {
+            projectId: "tidesinger-e7bb1716",
+            name: "TIDESINGER",
+            activeCanvasId: "default"
+          }
+        }
+      ]
+    });
+    expect(JSON.stringify(result)).toContain("Use project.projectId and canvasId exactly as returned here");
+    expect(JSON.stringify(result)).not.toContain("/sensitive");
+    expect(gateway.validateProject).toHaveBeenCalledWith("ecco-the-dolphin-f7761c39");
+    expect(gateway.validateProject).toHaveBeenCalledWith("tidesinger-e7bb1716");
+    expect(gateway.getProjectGraph).toHaveBeenCalledWith("ecco-the-dolphin-f7761c39", "default");
+    expect(gateway.getProjectGraph).toHaveBeenCalledWith("tidesinger-e7bb1716", "default");
+  });
+
+  it("keeps other PlanWeave context visible when one context reader fails", async () => {
+    const gateway = createGateway();
+    gateway.getProjectGraph.mockRejectedValueOnce(new Error("Could not read /sensitive/home/projects/project-1/canvases/default/package/manifest.json"));
+
+    const result = readJson(await handlePlanweaveTool("get_project_tree", { projectId: "project-1" }, gateway));
+
+    expect(result).toMatchObject({
+      projects: [
+        {
+          project: {
+            projectId: "project-1"
+          },
+          validation: { ok: true },
+          canvases: [],
+          errors: [
+            {
+              scope: "get_project_graph:project-1:default",
+              message: "Could not read canvases/default/package/manifest.json"
+            }
+          ]
+        }
+      ],
+      errors: []
+    });
+    expect(JSON.stringify(result)).not.toContain("/sensitive");
+  });
+
   it("opens projects by projectId only", async () => {
     const gateway = createGateway();
     const result = readJson(await handlePlanweaveTool("open_project", { projectId: "project-1", rootPath: "/ignored" }, gateway));
@@ -39,6 +166,14 @@ describe("handlePlanweaveTool", () => {
     expect(gateway.openProject).toHaveBeenCalledWith("project-1");
     expect(JSON.stringify(result)).not.toContain("/ignored");
     expect(JSON.stringify(result)).not.toContain("/sensitive");
+  });
+
+  it("keeps get_project_overview as an open_project compatibility alias", async () => {
+    const gateway = createGateway();
+    const result = readJson(await handlePlanweaveTool("get_project_overview", { projectId: "project-1" }, gateway));
+
+    expect(gateway.openProject).toHaveBeenCalledWith("project-1");
+    expect(result).toMatchObject({ project: { projectId: "project-1" } });
   });
 
   it("validates projects by projectId only", async () => {
@@ -74,8 +209,8 @@ describe("handlePlanweaveTool", () => {
       warnings: [
         {
           code: "status_manifest_warning",
-          message: "Manifest warning at package/manifest.json",
-          path: "package/manifest.json"
+          message: "Manifest warning at canvases/default/package/manifest.json",
+          path: "canvases/default/package/manifest.json"
         }
       ]
     });
@@ -121,14 +256,14 @@ describe("handlePlanweaveTool", () => {
           canvasName: "Default",
           ref: "T-001#I-001",
           title: "Run log https://example.com/docs/path /api/status /Users/me/My Project/results/T-001/run.log",
-          excerpt: "needle appears in /Users/me/My Project/package/nodes/T-001/prompt.md"
+          excerpt: "needle appears in /Users/me/My Project/canvases/default/package/nodes/T-001/prompt.md"
         }
       ],
       diagnostics: [
         {
           code: "search_manifest_read_failed",
-          message: "Could not read /sensitive/home/projects/project-1/package/manifest.json",
-          path: "/sensitive/home/projects/project-1/package/manifest.json"
+          message: "Could not read /sensitive/home/projects/project-1/canvases/default/package/manifest.json",
+          path: "/sensitive/home/projects/project-1/canvases/default/package/manifest.json"
         }
       ]
     });
@@ -154,19 +289,19 @@ describe("handlePlanweaveTool", () => {
           canvasName: "Default",
           ref: "T-001#I-001",
           title: "Run log https://example.com/docs/path /api/status results/T-001/run.log",
-          excerpt: "needle appears in package/nodes/T-001/prompt.md"
+          excerpt: "needle appears in canvases/default/package/nodes/T-001/prompt.md"
         }
       ],
       diagnostics: [
         {
           code: "search_manifest_read_failed",
-          message: "Could not read package/manifest.json",
-          path: "package/manifest.json"
+          message: "Could not read canvases/default/package/manifest.json",
+          path: "canvases/default/package/manifest.json"
         }
       ]
     });
     expect(JSON.stringify(result)).not.toContain("/sensitive");
-    expect(JSON.stringify(result)).not.toContain("/sensitive/home/projects/project-1/package/manifest.json");
+    expect(JSON.stringify(result)).not.toContain("/sensitive/home/projects/project-1/canvases/default/package/manifest.json");
     expect(JSON.stringify(result)).not.toContain("/sensitive/home/projects/project-1/results/T-001/run.log");
     expect(JSON.stringify(result)).not.toContain("/Users/me/My Project");
     expect(JSON.stringify(result)).toContain("https://example.com/docs/path");
@@ -222,22 +357,6 @@ describe("handlePlanweaveTool", () => {
     );
   });
 
-  it("returns project overview without exposing local paths", async () => {
-    const gateway = createGateway();
-    const result = readJson(await handlePlanweaveTool("get_project_overview", { projectId: "project-1" }, gateway));
-
-    expect(gateway.getProjectOverview).toHaveBeenCalledWith("project-1");
-    expect(result).toEqual({
-      project: {
-        projectId: "project-1",
-        name: "Project One",
-        activeCanvasId: "default",
-        taskCanvases: project.taskCanvases
-      }
-    });
-    expect(JSON.stringify(result)).not.toContain("/sensitive");
-  });
-
   it("returns graph details for a selected canvas", async () => {
     const gateway = createGateway();
     const result = readJson(await handlePlanweaveTool("get_project_graph", { projectId: "project-1", canvasId: "default" }, gateway));
@@ -258,6 +377,14 @@ describe("handlePlanweaveTool", () => {
         ]
       }
     });
+  });
+
+  it("keeps preview_execution_graph as a get_project_graph compatibility alias", async () => {
+    const gateway = createGateway();
+    const result = readJson(await handlePlanweaveTool("preview_execution_graph", { projectId: "project-1", canvasId: "default" }, gateway));
+
+    expect(gateway.getProjectGraph).toHaveBeenCalledWith("project-1", "default");
+    expect(result).toMatchObject({ graph: { projectId: "project-1" } });
   });
 
   it("returns task, block, and review pipeline details", async () => {
@@ -591,20 +718,30 @@ describe("handlePlanweaveTool", () => {
     );
   });
 
-  it("reads and writes prompt surfaces through the matching tools", async () => {
+  it("reads prompt surfaces and writes prompt markdown through update tools", async () => {
     const gateway = createGateway();
     const projectPrompt = readJson(await handlePlanweaveTool("read_prompt", { projectId: "project-1", target: "project" }, gateway));
     const blockPrompt = readJson(
       await handlePlanweaveTool("read_prompt", { projectId: "project-1", target: "block", blockRef: "T-001#I-001", rendered: true }, gateway)
     );
 
-    await handlePlanweaveTool("write_task_prompt", { projectId: "project-1", taskId: "T-001", markdown: "# Changed" }, gateway);
+    await handlePlanweaveTool("update_task", { projectId: "project-1", taskId: "T-001", promptMarkdown: "# Changed" }, gateway);
     await handlePlanweaveTool("update_project_prompt", { projectId: "project-1", markdown: "# Project v2" }, gateway);
 
     expect(projectPrompt).toMatchObject({ target: "project", markdown: "# Project" });
     expect(blockPrompt).toMatchObject({ target: "block", blockRef: "T-001#I-001", markdown: "# Surface", rendered: true });
     expect(gateway.updateTask).toHaveBeenCalledWith("project-1", undefined, "T-001", { promptMarkdown: "# Changed" });
     expect(gateway.updateProjectPrompt).toHaveBeenCalledWith("project-1", "# Project v2");
+  });
+
+  it("keeps prompt writing compatibility aliases wired to update tools", async () => {
+    const gateway = createGateway();
+
+    await handlePlanweaveTool("write_task_prompt", { projectId: "project-1", canvasId: "default", taskId: "T-001", markdown: "# Task v2" }, gateway);
+    await handlePlanweaveTool("write_block_prompt", { projectId: "project-1", canvasId: "default", blockRef: "T-001#I-001", markdown: "# Block v2" }, gateway);
+
+    expect(gateway.updateTask).toHaveBeenCalledWith("project-1", "default", "T-001", { promptMarkdown: "# Task v2" });
+    expect(gateway.updateBlock).toHaveBeenCalledWith("project-1", "default", "T-001#I-001", { promptMarkdown: "# Block v2" });
   });
 
   it("exports and imports package file sets as structured content", async () => {
@@ -648,7 +785,7 @@ describe("handlePlanweaveTool", () => {
         {
           code: "missing_prompt",
           severity: "error",
-          suggestedAction: expect.stringContaining("write_*_prompt")
+          suggestedAction: expect.stringContaining("update_task or update_block")
         }
       ]
     });

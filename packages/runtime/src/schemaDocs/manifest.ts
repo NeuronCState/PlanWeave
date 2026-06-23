@@ -54,7 +54,7 @@ const edgeTypeSchema = edgeTypes.map((type) => `"${type}"`).join(" | ");
 export const manifestSchemaDocument: SchemaDocument<"manifest"> = {
   name: "manifest",
   summary: "Plan Package source graph schema.",
-  path: "package/manifest.json inside the CLI-returned packageDir",
+  path: "manifest.json inside the CLI-returned packageDir; default canvas uses canvases/default/package/manifest.json",
   ownership: "User/agent editable source. Do not write runtime state, results, or desktop layout here.",
   validation: ["planweave validate --json", "planweave refresh-prompts"],
   schema: {

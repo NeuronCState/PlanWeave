@@ -13,7 +13,7 @@ export const planweaveHelpTopics: HelpTopic[] = [
     summary: "Initialize or locate the PlanWeave workspace.",
     commands: ["paths --json", "init --project-graph --json", "project-graph migrate --json", "validate --json"],
     notes: [
-      "Use the CLI-returned package directory as the writable Plan Package location.",
+      "Use the CLI-returned packageDir, statePath, and resultsDir as the writable canvas package, state, and results locations.",
       "Use project-graph migrate to materialize a formal multi-canvas graph from legacy/default canvas sources.",
       "Run validate after editing manifest or prompt sources."
     ]

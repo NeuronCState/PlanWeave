@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { getDesktopLayout, resetDesktopLayout, saveDesktopLayout } from "../desktop/index.js";
+import { join } from "node:path";
+import { getDesktopLayout, resetDesktopLayout, resolveTaskCanvasWorkspace, saveDesktopLayout } from "../desktop/index.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import type { PlanPackageManifest } from "../types.js";
 import { validatePackage } from "../validatePackage.js";
@@ -10,6 +11,11 @@ afterEach(() => {
 });
 
 describe("desktop layout API", () => {
+  async function writeDefaultCanvasLayout(root: string, value: unknown): Promise<void> {
+    const workspace = await resolveTaskCanvasWorkspace(root, "default");
+    await writeJsonFile(join(workspace.workspaceRoot, "desktop", "layout.json"), value);
+  }
+
   it("stores desktop layout outside the Plan Package", async () => {
     const { root, init } = await createTestWorkspace();
 
@@ -32,7 +38,7 @@ describe("desktop layout API", () => {
 
   it("ignores stale layout node references and reports them during validation", async () => {
     const { root, init } = await createTestWorkspace();
-    await writeJsonFile(`${init.workspace.workspaceRoot}/desktop/layout.json`, {
+    await writeDefaultCanvasLayout(root, {
       version: "desktop-layout/v1",
       projectId: init.workspace.id,
       nodes: [
@@ -50,7 +56,7 @@ describe("desktop layout API", () => {
       expect.arrayContaining([
         expect.objectContaining({
           code: "stale_layout_reference",
-          path: "desktop/layout.json:T-STALE"
+          path: "canvases/default/desktop/layout.json:T-STALE"
         })
       ])
     );
@@ -58,7 +64,7 @@ describe("desktop layout API", () => {
 
   it("loads legacy object-map desktop layout files", async () => {
     const { root, init } = await createTestWorkspace();
-    await writeJsonFile(`${init.workspace.workspaceRoot}/desktop/layout.json`, {
+    await writeDefaultCanvasLayout(root, {
       version: 1,
       nodes: {
         "T-001": {
@@ -84,11 +90,11 @@ describe("desktop layout API", () => {
       expect.arrayContaining([
         expect.objectContaining({
           code: "legacy_layout_schema",
-          path: "desktop/layout.json:nodes"
+          path: "canvases/default/desktop/layout.json:nodes"
         }),
         expect.objectContaining({
           code: "stale_layout_reference",
-          path: "desktop/layout.json:T-STALE"
+          path: "canvases/default/desktop/layout.json:T-STALE"
         })
       ])
     );
@@ -96,7 +102,7 @@ describe("desktop layout API", () => {
 
   it("reports invalid desktop layout schema during validation without blocking graph display fallback", async () => {
     const { root, init } = await createTestWorkspace();
-    await writeJsonFile(`${init.workspace.workspaceRoot}/desktop/layout.json`, {
+    await writeDefaultCanvasLayout(root, {
       version: "desktop-layout/v1",
       projectId: init.workspace.id,
       nodes: [{ nodeId: "T-001", position: { x: 120, y: 240 } }],
@@ -112,7 +118,7 @@ describe("desktop layout API", () => {
       expect.arrayContaining([
         expect.objectContaining({
           code: "invalid_layout_schema",
-          path: "desktop/layout.json:nodes.0"
+          path: "canvases/default/desktop/layout.json:nodes.0"
         })
       ])
     );

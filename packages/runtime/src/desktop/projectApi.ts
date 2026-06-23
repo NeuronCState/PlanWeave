@@ -5,7 +5,7 @@ import { initManagedWorkspace, initWorkspace } from "../initWorkspace.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { resolvePlanweaveHome } from "../paths.js";
 import { normalizeProjectMetadata, readProject, resolveProjectWorkspace } from "../project.js";
-import { materializeProjectGraph, projectGraphPath } from "../projectGraph/index.js";
+import { detectDefaultCanvasWorkspaceMigration, materializeProjectGraph, projectGraphPath } from "../projectGraph/index.js";
 import type { ProjectMetadata, ProjectWorkspace } from "../types.js";
 import type { DesktopProjectSummary } from "./types.js";
 import { getActiveTaskCanvasId, listTaskCanvases } from "./canvasApi.js";
@@ -38,6 +38,10 @@ async function projectSummary(project: ProjectMetadata, workspaceRoot: string): 
 async function ensureFormalProjectGraph(projectRoot: string): Promise<void> {
   const workspace = await resolveProjectWorkspace(projectRoot);
   if (await exists(projectGraphPath(workspace))) {
+    return;
+  }
+  const migrationPlan = await detectDefaultCanvasWorkspaceMigration(workspace);
+  if (migrationPlan.action !== "none") {
     return;
   }
   const legacyActiveCanvasId = await readLegacyActiveCanvasId(projectRoot, workspace);

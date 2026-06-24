@@ -74,6 +74,7 @@ type WorkspaceTabsProps = {
   onKeepLocalPromptConflicts: () => void;
   projectLoading: boolean;
   onMarkNotificationRead: (notificationId: string) => void;
+  onAgentPromptCopied: () => void;
   onReloadPromptConflicts: () => Promise<void>;
   onEdgesChange: OnEdgesChange<Edge>;
   onNodeDragStop: (event: MouseEvent, node: Node) => Promise<void>;

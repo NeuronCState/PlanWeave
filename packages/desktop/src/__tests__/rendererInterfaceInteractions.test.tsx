@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import type { DesktopAutoRunState, DesktopCanvasGraphViewModel, DesktopGraphViewModel, DesktopProjectSummary, DesktopTaskDraft } from "@planweave-ai/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDesktopBridgeMock } from "./desktopBridgeMock";
+import { AppSuccessToast } from "../renderer/components/AppSuccessToast";
 import { buildNotificationItems } from "../renderer/notifications";
 import { ComponentPalette } from "../renderer/palette/ComponentPalette";
 import { FloatingAutoRunControl } from "../renderer/run/FloatingAutoRunControl";
@@ -205,6 +206,12 @@ describe("desktop renderer interface interactions", () => {
     ]);
   });
 
+  it("renders a visible success prompt after copy actions", () => {
+    render(<AppSuccessToast message="Copied agent prompt" onDismiss={vi.fn()} t={t} />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Copied agent prompt");
+  });
+
   it("routes sidebar navigation, canvas selection, and task selection through public callbacks", async () => {
     class ResizeObserverMock {
       disconnect = vi.fn();
@@ -309,6 +316,51 @@ describe("desktop renderer interface interactions", () => {
     await userEvent.type(input, "Renamed canvas{Enter}");
 
     expect(handleRenameTaskCanvas).toHaveBeenCalledWith(project, "canvas-main", "Renamed canvas");
+  });
+
+  it("copies an agent prompt from the task canvas context menu", async () => {
+    class ResizeObserverMock {
+      disconnect = vi.fn();
+      observe = vi.fn();
+      unobserve = vi.fn();
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    const handleCopyCanvasAgentPrompt = vi.fn();
+
+    render(
+      <ProjectSidebar
+        activeView="graph"
+        collapsed={false}
+        expandedProjectId={project.projectId}
+        graph={graph}
+        handleCopyCanvasAgentPrompt={handleCopyCanvasAgentPrompt}
+        handleDeleteProject={vi.fn().mockResolvedValue(undefined)}
+        handleDeleteTaskCanvas={vi.fn().mockResolvedValue(undefined)}
+        handleDeleteTaskNode={vi.fn().mockResolvedValue(undefined)}
+        handleOpenProject={vi.fn().mockResolvedValue(undefined)}
+        handleProjectNewGraph={vi.fn().mockResolvedValue(undefined)}
+        handleRenameTaskCanvas={vi.fn().mockResolvedValue(undefined)}
+        handleRevealProject={vi.fn().mockResolvedValue(undefined)}
+        handleTaskPanelSelect={vi.fn()}
+        loadProject={vi.fn().mockResolvedValue(undefined)}
+        notificationItems={[]}
+        onToggleSidebar={vi.fn()}
+        onTogglePinnedProject={vi.fn()}
+        pinnedProjectIds={new Set()}
+        projects={[project]}
+        resetLayout={vi.fn().mockResolvedValue(undefined)}
+        selectedProject={project}
+        selectedCanvasId="canvas-main"
+        selectedTaskPanelId={null}
+        setActiveView={vi.fn()}
+        t={t}
+      />
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Main canvas\s*2/ }));
+    await userEvent.click(await screen.findByText("Copy agent prompt"));
+
+    expect(handleCopyCanvasAgentPrompt).toHaveBeenCalledWith(project, "canvas-main");
   });
 
   it("keeps the selected canvas collapse control available while a task is selected", async () => {

@@ -35,8 +35,10 @@ vi.mock("@xyflow/react", async () => {
 
 const project: DesktopProjectSummary = {
   projectId: "P-001",
+  kind: "managed",
   name: "Demo",
   rootPath: "/tmp/demo",
+  sourceRoot: "/tmp/demo",
   workspaceRoot: "/tmp/demo",
   activeCanvasId: "canvas-main",
   taskCanvases: [
@@ -112,6 +114,7 @@ function flowNode(promptDraft = "# Prompt"): AppFlowNode {
       onBlockSelect: vi.fn(),
       onOverflowBlockSelect: vi.fn(),
       onTaskOpen: vi.fn(),
+      onAgentPromptCopy: vi.fn(),
       onAutoRunScopeStart: vi.fn().mockResolvedValue(undefined),
       onTaskDelete: vi.fn(),
       onBlockDelete: vi.fn(),

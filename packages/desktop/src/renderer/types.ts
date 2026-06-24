@@ -35,6 +35,7 @@ export type TaskNodeLabels = {
   feedbackMarker: string;
   deleteTask: string;
   deleteBlock: string;
+  copyAgentPrompt: string;
   runTask: string;
   runBlock: string;
   deleteTaskConfirm: string;
@@ -63,6 +64,7 @@ export type TaskNodeData = {
   onOverflowBlockSelect: (ref: string) => void;
   onTaskDelete: (taskId: string) => void;
   onTaskOpen: (taskId: string) => void;
+  onAgentPromptCopy: (taskId: string) => void;
   onAutoRunScopeStart: (scope: DesktopAutoRunScope) => Promise<void>;
   onBlockDelete: (ref: string) => void;
   onSelectedBlockChange: (block: DesktopBlockDetail) => void;
@@ -76,6 +78,7 @@ export type TaskFlowNode = Node<TaskNodeData, "task">;
 
 export type CanvasNodeLabels = {
   blocked: string;
+  copyAgentPrompt: string;
   error: string;
   open: string;
   warning: string;
@@ -87,6 +90,7 @@ export type CanvasNodeData = {
   labels: CanvasNodeLabels;
   selected: boolean;
   onOpen: (canvasId: string) => void;
+  onAgentPromptCopy: (canvasId: string) => void;
   onSelect: (canvasId: string) => void;
 };
 

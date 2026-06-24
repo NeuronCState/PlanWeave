@@ -2,6 +2,7 @@ import {
   AlertTriangleIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  ClipboardIcon,
   PencilIcon,
   SquarePenIcon,
   Trash2Icon,
@@ -29,6 +30,7 @@ type CanvasTreeItemProps = {
   graph: DesktopGraphViewModel | null;
   handleDeleteTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
   handleDeleteTaskNode: (taskId: string) => Promise<void>;
+  handleCopyCanvasAgentPrompt?: (project: DesktopProjectSummary, canvasId: string) => void;
   handleProjectNewGraph: (project: DesktopProjectSummary) => Promise<void>;
   handleRenameTaskCanvas: (project: DesktopProjectSummary, canvasId: string, name: string) => Promise<void>;
   handleTaskPanelSelect: (taskId: string | null) => void;
@@ -46,6 +48,7 @@ export function CanvasTreeItem({
   graph,
   handleDeleteTaskCanvas,
   handleDeleteTaskNode,
+  handleCopyCanvasAgentPrompt,
   handleProjectNewGraph,
   handleRenameTaskCanvas,
   handleTaskPanelSelect,
@@ -159,6 +162,12 @@ export function CanvasTreeItem({
                 <SquarePenIcon data-icon="inline-start" />
                 {t("newGraph")}
               </ContextMenuItem>
+              {handleCopyCanvasAgentPrompt ? (
+                <ContextMenuItem onSelect={() => handleCopyCanvasAgentPrompt(project, canvas.canvasId)}>
+                  <ClipboardIcon data-icon="inline-start" />
+                  {t("copyAgentPrompt")}
+                </ContextMenuItem>
+              ) : null}
               <ContextMenuItem onSelect={startRename}>
                 <PencilIcon data-icon="inline-start" />
                 {t("renameTaskCanvas")}

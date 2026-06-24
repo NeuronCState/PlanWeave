@@ -24,6 +24,7 @@ export function taskNodeLabels(t: ReturnType<typeof createTranslator>): TaskNode
     feedbackMarker: t("feedbackMarker"),
     deleteTask: t("deleteTask"),
     deleteBlock: t("deleteBlock"),
+    copyAgentPrompt: t("copyAgentPrompt"),
     runTask: t("runTask"),
     runBlock: t("runBlock"),
     deleteTaskConfirm: t("deleteTaskConfirm"),

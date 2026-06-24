@@ -33,6 +33,7 @@ export function TaskNodeCard({ data, selected }: NodeProps<TaskFlowNode>) {
     onPromptSave,
     onBlockSelect,
     onTaskOpen,
+    onAgentPromptCopy,
     onAutoRunScopeStart,
     onTaskDelete,
     onBlockDelete
@@ -170,6 +171,9 @@ export function TaskNodeCard({ data, selected }: NodeProps<TaskFlowNode>) {
         </Card>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        <ContextMenuItem onSelect={() => onAgentPromptCopy(task.taskId)}>
+          {labels.copyAgentPrompt}
+        </ContextMenuItem>
         <ContextMenuItem onSelect={() => void onAutoRunScopeStart({ kind: "task", taskId: task.taskId })}>
           {labels.runTask}
         </ContextMenuItem>

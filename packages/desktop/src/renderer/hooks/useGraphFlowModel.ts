@@ -40,6 +40,7 @@ type GraphFlowTaskActions = {
   handleOpenBlockInspector: TaskNodeData["onBlockSelect"];
   handleOpenRunRecord: TaskNodeData["onOpenRunRecord"];
   handleOpenTaskInspector: TaskNodeData["onTaskOpen"];
+  handleCopyAgentPrompt: TaskNodeData["onAgentPromptCopy"];
   handlePromptChange: TaskNodeData["onPromptChange"];
   handlePromptHistoryRedo: TaskNodeData["onPromptHistoryRedo"];
   handlePromptHistoryUndo: TaskNodeData["onPromptHistoryUndo"];
@@ -88,6 +89,7 @@ export function useGraphFlowModel({
     handleOpenBlockInspector,
     handleOpenRunRecord,
     handleOpenTaskInspector,
+    handleCopyAgentPrompt,
     handlePromptChange,
     handlePromptHistoryRedo,
     handlePromptHistoryUndo,
@@ -129,6 +131,7 @@ export function useGraphFlowModel({
         handleOpenBlockInspector,
         handleOpenBlockInspector,
         handleOpenTaskInspector,
+        handleCopyAgentPrompt,
         startAutoRunWithScope,
         handleDeleteTaskNode,
         handleDeleteBlock,
@@ -149,6 +152,7 @@ export function useGraphFlowModel({
     handleDeleteBlock,
     handleDeleteTaskNode,
     handleOpenBlockInspector,
+    handleCopyAgentPrompt,
     handleOpenRunRecord,
     handleOpenTaskInspector,
     handlePromptChange,

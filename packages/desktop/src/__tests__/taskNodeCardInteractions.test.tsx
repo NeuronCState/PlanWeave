@@ -60,6 +60,7 @@ function nodeData(patch: Partial<TaskNodeData> = {}): TaskNodeData {
     onBlockSelect: vi.fn(),
     onOverflowBlockSelect: vi.fn(),
     onTaskOpen: vi.fn(),
+    onAgentPromptCopy: vi.fn(),
     onAutoRunScopeStart: vi.fn().mockResolvedValue(undefined),
     onTaskDelete: vi.fn(),
     onBlockDelete: vi.fn(),

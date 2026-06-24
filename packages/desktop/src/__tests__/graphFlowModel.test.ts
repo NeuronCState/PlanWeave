@@ -66,6 +66,7 @@ describe("desktop graph flow model", () => {
       vi.fn(),
       vi.fn(),
       vi.fn(),
+      vi.fn(),
       vi.fn()
     );
 
@@ -78,6 +79,7 @@ const labels: TaskNodeLabels = {
   agent: "Agent",
   blockExecutionSummary: "Block execution summary",
   blockStack: "Block Stack",
+  copyAgentPrompt: "Copy agent prompt",
   customExecutor: "Custom executor",
   deleteBlock: "Delete block",
   deleteBlockConfirm: "Delete block?",

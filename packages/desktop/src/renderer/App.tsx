@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { type Edge, type ReactFlowInstance, useEdgesState, useNodesState } from "@xyflow/react";
-import type { DesktopPackageFileChangeEvent, DesktopPackageFileSyncResult } from "@planweave-ai/runtime";
+import type { DesktopPackageFileChangeEvent, DesktopPackageFileSyncResult, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { bridge, desktopCanvasReference } from "./bridge";
 import { nodeTypes } from "./graph/flowModel";
 import { createTranslator } from "./i18n";
@@ -32,6 +32,7 @@ import { useGraphFlowModel } from "./hooks/useGraphFlowModel";
 import { CollapsedSidebarControls, RightPaletteSidebar } from "./AppSidebars";
 import { AppSettingsRoute } from "./AppSettingsRoute";
 import { AppOverlays } from "./components/AppOverlays";
+import { writeAgentScopePromptToClipboard } from "./agentPrompt";
 
 const leftSidebarWidthBounds = { min: 220, max: 520, defaultValue: 280 };
 const rightSidebarWidthBounds = { min: 240, max: 520, defaultValue: 300 };
@@ -56,6 +57,7 @@ export function App() {
   const [fileSyncDiagnostics, setFileSyncDiagnostics] = useState<string[]>([]);
   const [fileSyncResult, setFileSyncResult] = useState<DesktopPackageFileSyncResult | null>(null);
   const [error, setError] = useState<string | null>(bridge ? null : t("bridgeUnavailable"));
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<AppFlowNode, Edge> | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<AppFlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -367,6 +369,33 @@ export function App() {
     }
   }, [openProjectInSession, refreshProjectDerivedState, selectedCanvasId, selectedProject, setError]);
 
+  const handleCopyAgentPrompt = useCallback(
+    (taskId?: string | null) => {
+      if (!selectedProject) {
+        return;
+      }
+      void writeAgentScopePromptToClipboard({
+        project: selectedProject,
+        canvasId: selectedCanvasId ?? selectedProject.activeCanvasId ?? "default",
+        taskId
+      })
+        .then(() => setSuccessMessage(t("agentPromptCopied")))
+        .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught)));
+    },
+    [selectedCanvasId, selectedProject, setError, t]
+  );
+  const handleCopyCanvasAgentPrompt = useCallback(
+    (project: DesktopProjectSummary, canvasId: string) => {
+      void writeAgentScopePromptToClipboard({
+        project,
+        canvasId
+      })
+        .then(() => setSuccessMessage(t("agentPromptCopied")))
+        .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught)));
+    },
+    [setError, t]
+  );
+
   useGraphFlowModel({
     blockActions: {
       saveSelectedBlockExecutor,
@@ -398,6 +427,7 @@ export function App() {
     taskActions: {
       handleDeleteBlock,
       handleDeleteTaskNode,
+      handleCopyAgentPrompt,
       handleOpenBlockInspector,
       handleOpenRunRecord,
       handleOpenTaskInspector,
@@ -496,7 +526,7 @@ export function App() {
     return (
       <div className="glass-surface relative h-screen min-h-0 overflow-hidden text-foreground">
         <AppSettingsRoute {...settingsRouteProps} />
-        <AppOverlays error={error} setError={setError} t={t} />
+        <AppOverlays error={error} successMessage={successMessage} setError={setError} setSuccessMessage={setSuccessMessage} t={t} />
       </div>
     );
   }
@@ -512,6 +542,7 @@ export function App() {
           handleBindSourceRoot={handleBindSourceRoot}
           handleOpenProject={handleOpenProject}
           handleProjectNewGraph={handleProjectNewGraph}
+          handleCopyCanvasAgentPrompt={handleCopyCanvasAgentPrompt}
           handleDeleteProject={handleDeleteProject}
           handleDeleteTaskCanvas={handleDeleteTaskCanvas}
           handleDeleteTaskNode={handleDeleteTaskNode}
@@ -600,6 +631,7 @@ export function App() {
           selectedTaskPanelId={selectedTaskPanelId}
           setActiveView={setActiveView}
           setError={setError}
+          onAgentPromptCopied={() => setSuccessMessage(t("agentPromptCopied"))}
           setAutoRunScopeMode={setAutoRunScopeMode}
           setSearchCanvasScope={setSearchCanvasScope}
           setFlowInstance={setFlowInstance}
@@ -645,7 +677,7 @@ export function App() {
         setRightSidebarCollapsed={setRightSidebarCollapsed}
         t={t}
       />
-      <AppOverlays error={error} setError={setError} t={t} />
+      <AppOverlays error={error} successMessage={successMessage} setError={setError} setSuccessMessage={setSuccessMessage} t={t} />
     </div>
   );
 }

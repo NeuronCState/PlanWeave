@@ -247,7 +247,7 @@ async function runRendererManualSmoke(window: BrowserWindow): Promise<Record<str
       await waitForText("UI Smoke Task");
       covered.push("search-created-task");
       await clickByTestId("sidebar-notifications");
-      await waitForText("通知");
+      await waitForSelector('[data-testid="notifications-view"]', "notifications view");
       await waitForText("检测到外部文件变更");
       covered.push("open-notifications");
       covered.push("external-file-change-notification");

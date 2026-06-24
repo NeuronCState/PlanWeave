@@ -28,7 +28,7 @@ export function NotificationsView({
   const unreadCount = notificationItems.filter((item) => !item.read).length;
 
   return (
-    <section className="flex h-full min-h-0 flex-col gap-4">
+    <section className="flex h-full min-h-0 flex-col gap-4" data-testid="notifications-view">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-normal text-text-strong">{t("notifications")}</h1>
         <div className="text-sm text-text-muted">

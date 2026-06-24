@@ -55,7 +55,6 @@ export function App() {
   const [lastFileChange, setLastFileChange] = useState<DesktopPackageFileChangeEvent | null>(null);
   const [fileSyncDiagnostics, setFileSyncDiagnostics] = useState<string[]>([]);
   const [fileSyncResult, setFileSyncResult] = useState<DesktopPackageFileSyncResult | null>(null);
-  const [dirtyPromptRefs, setDirtyPromptRefs] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(bridge ? null : t("bridgeUnavailable"));
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<AppFlowNode, Edge> | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<AppFlowNode>([]);
@@ -446,7 +445,6 @@ export function App() {
     reloadCurrentCanvas,
     selectedCanvasId,
     selectedProject,
-    setDirtyPromptRefs,
     setError,
     setFileSyncDiagnostics,
     setFileSyncResult,
@@ -456,7 +454,6 @@ export function App() {
   const { visibleTaskIds, visibleTasks } = useVisibleGraphTasks(graph, searchQuery);
   const notificationItems = buildNotificationItems({
     autoRunState,
-    dirtyPromptRefs,
     fileSyncDiagnostics,
     graph,
     lastFileChange,
@@ -547,7 +544,6 @@ export function App() {
           autoRunScopeMode={autoRunScopeMode}
           autoRunState={autoRunState}
           confirmTaskDraft={confirmTaskDraft}
-          dirtyPromptRefs={dirtyPromptRefs}
           edges={edges}
           executionPlan={executionPlan}
           fileSyncResult={fileSyncResult}

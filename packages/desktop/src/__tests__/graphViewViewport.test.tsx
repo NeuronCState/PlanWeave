@@ -129,7 +129,6 @@ function defaultProps(patch: Partial<ComponentProps<typeof GraphView>> = {}): Co
     autoRunControlStyle: {},
     autoRunScopeMode: "project",
     autoRunState: null,
-    dirtyPromptRefs: [],
     edges: [],
     graph: graph(),
     handleAutoRunClick: vi.fn().mockResolvedValue(undefined),

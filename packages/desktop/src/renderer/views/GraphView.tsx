@@ -26,7 +26,6 @@ type GraphViewProps = {
   autoRunControlStyle: CSSProperties;
   autoRunScopeMode: AutoRunScopeMode;
   autoRunState: DesktopAutoRunState | null;
-  dirtyPromptRefs: string[];
   edges: Edge[];
   fileSyncResult: DesktopPackageFileSyncResult | null;
   graph: DesktopGraphViewModel | null;
@@ -71,7 +70,6 @@ export function GraphView({
   autoRunControlStyle,
   autoRunScopeMode,
   autoRunState,
-  dirtyPromptRefs,
   edges,
   fileSyncResult,
   graph,
@@ -115,11 +113,8 @@ export function GraphView({
   const [localFlowInstance, setLocalFlowInstance] = useState<ReactFlowInstance<AppFlowNode, Edge> | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const combinedDirtyPromptRefs = useMemo(
-    () => [...new Set([...dirtyPromptRefs, ...(graph?.dirtyPromptRefs ?? [])])],
-    [dirtyPromptRefs, graph?.dirtyPromptRefs]
-  );
-  const dirtyPromptCount = combinedDirtyPromptRefs.length;
+  const dirtyPromptRefs = graph?.dirtyPromptRefs ?? [];
+  const dirtyPromptCount = dirtyPromptRefs.length;
   const visibleNodes = visibleTasks ? nodes.filter((node) => node.type !== "task" || visibleTaskIds.has(node.id)) : nodes;
   const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
   const visibleEdges = visibleTasks ? edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)) : edges;
@@ -281,7 +276,7 @@ export function GraphView({
         autoRunState={autoRunState}
         affectedTasks={fileSyncResult?.affectedTasks ?? []}
         diagnostics={fileSyncResult?.diagnostics ?? []}
-        dirtyPromptRefs={combinedDirtyPromptRefs}
+        dirtyPromptRefs={dirtyPromptRefs}
         dirtyPromptCount={dirtyPromptCount}
         handleAutoRunClick={handleAutoRunClick}
         handleRevealPathInFinder={handleRevealPathInFinder}

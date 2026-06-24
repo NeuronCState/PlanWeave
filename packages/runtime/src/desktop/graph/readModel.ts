@@ -9,6 +9,7 @@ import { listExecutorProfilesForManifest } from "../../autoRun/executors.js";
 import { buildPlanGraphViewProjection, loadPlanGraphPackage } from "../../plangraph/index.js";
 import type { PackageWorkspaceRef, ValidationIssue } from "../../types.js";
 import type { DesktopBlockDetail, DesktopGraphViewModel, DesktopTaskDetail, DesktopTaskExecutionOrder } from "../types.js";
+import { getDirtyPromptRefs } from "../fileSyncApi.js";
 import { getBlock, getTask, readOptionalFile, sortBlockRefsForTask } from "./graphHelpers.js";
 
 export type DesktopGraphViewModelContext = RuntimeContext & {
@@ -42,7 +43,7 @@ export function buildDesktopGraphViewModelContext(runtime: RuntimeContext, statu
 export async function buildGraphViewModel(context: DesktopGraphViewModelContext): Promise<DesktopGraphViewModel> {
   const { workspace, status, executorOptions } = context;
   const planGraphPackage = await loadPlanGraphPackage(workspace);
-  const dirtyPromptRefs = new Set<string>();
+  const dirtyPromptRefs = await getDirtyPromptRefs(workspace);
   const diagnostics = [...planGraphPackage.graph.diagnostics];
   const taskPromptMarkdownById = new Map<string, string>();
   for (const task of planGraphPackage.graph.tasks.values()) {
@@ -74,7 +75,7 @@ export async function buildGraphViewModel(context: DesktopGraphViewModelContext)
     tasks: projection.tasks,
     edges: projection.edges,
     diagnostics,
-    dirtyPromptRefs: [...dirtyPromptRefs]
+    dirtyPromptRefs
   };
 }
 

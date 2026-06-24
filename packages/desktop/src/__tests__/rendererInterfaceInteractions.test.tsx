@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import type { DesktopAutoRunState, DesktopCanvasGraphViewModel, DesktopGraphViewModel, DesktopProjectSummary, DesktopTaskDraft } from "@planweave-ai/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDesktopBridgeMock } from "./desktopBridgeMock";
+import { buildNotificationItems } from "../renderer/notifications";
 import { ComponentPalette } from "../renderer/palette/ComponentPalette";
 import { FloatingAutoRunControl } from "../renderer/run/FloatingAutoRunControl";
 import { ProjectSidebar } from "../renderer/sidebar/ProjectSidebar";
@@ -180,6 +181,30 @@ afterEach(() => {
 });
 
 describe("desktop renderer interface interactions", () => {
+  it("builds dirty prompt notifications from graph view model refs", () => {
+    const notificationGraph: DesktopGraphViewModel = {
+      ...graph,
+      dirtyPromptRefs: ["T-001#B-001"]
+    };
+
+    expect(
+      buildNotificationItems({
+        autoRunState: null,
+        fileSyncDiagnostics: [],
+        graph: notificationGraph,
+        lastFileChange: null,
+        promptConflicts: [],
+        settings,
+        t
+      }).filter((item) => item.id.startsWith("dirty-"))
+    ).toEqual([
+      expect.objectContaining({
+        id: "dirty-T-001#B-001",
+        detail: "T-001#B-001"
+      })
+    ]);
+  });
+
   it("routes sidebar navigation, canvas selection, and task selection through public callbacks", async () => {
     class ResizeObserverMock {
       disconnect = vi.fn();

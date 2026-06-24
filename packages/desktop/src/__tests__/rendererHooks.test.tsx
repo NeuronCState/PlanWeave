@@ -685,7 +685,6 @@ describe("desktop renderer hook interfaces", () => {
 
     const reloadCurrentCanvas = vi.fn().mockResolvedValue(undefined);
     const refreshProjectDerivedState = vi.fn().mockResolvedValue(undefined);
-    const setDirtyPromptRefs = vi.fn();
     const setFileSyncDiagnostics = vi.fn();
     const { result } = renderHook(() =>
       usePackageFileSync({
@@ -693,7 +692,6 @@ describe("desktop renderer hook interfaces", () => {
         reloadCurrentCanvas,
         selectedCanvasId: "canvas-main",
         selectedProject: project,
-        setDirtyPromptRefs,
         setError: vi.fn(),
         setFileSyncDiagnostics,
         setLastFileChange: vi.fn()
@@ -708,7 +706,47 @@ describe("desktop renderer hook interfaces", () => {
     expect(refreshProjectDerivedState).toHaveBeenCalledTimes(1);
     expect(reloadCurrentCanvas).not.toHaveBeenCalled();
     expect(setFileSyncDiagnostics).toHaveBeenCalledWith([]);
-    expect(setDirtyPromptRefs).toHaveBeenLastCalledWith(["tasks/T-ALPHA/prompt.md"]);
+  });
+
+  it("refreshes graph data when package sync reports dirty refs with an index failure", async () => {
+    const bridge = createDesktopBridgeMock({
+      refreshPackageFileChanges: vi.fn().mockResolvedValue({
+        ok: false,
+        fullRefresh: false,
+        primed: false,
+        affectedTasks: ["T-ALPHA"],
+        diagnostics: [{ code: "plangraph_index_refresh_failed", message: "SQLite index refresh failed.", path: "cache/plangraph.sqlite" }],
+        dirtyPromptRefs: ["T-ALPHA#B-001"]
+      })
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { usePackageFileSync } = await import("../renderer/hooks/usePackageFileSync");
+
+    const reloadCurrentCanvas = vi.fn().mockResolvedValue(undefined);
+    const refreshProjectDerivedState = vi.fn().mockResolvedValue(undefined);
+    const setError = vi.fn();
+    const setFileSyncDiagnostics = vi.fn();
+    const { result } = renderHook(() =>
+      usePackageFileSync({
+        refreshProjectDerivedState,
+        reloadCurrentCanvas,
+        selectedCanvasId: "canvas-main",
+        selectedProject: project,
+        setError,
+        setFileSyncDiagnostics,
+        setLastFileChange: vi.fn()
+      })
+    );
+
+    await act(async () => {
+      await result.current.refreshPackageFiles();
+    });
+
+    expect(setFileSyncDiagnostics).toHaveBeenCalledWith(["SQLite index refresh failed."]);
+    expect(setError).toHaveBeenCalledWith("SQLite index refresh failed.");
+    expect(refreshProjectDerivedState).toHaveBeenCalledTimes(1);
+    expect(reloadCurrentCanvas).not.toHaveBeenCalled();
   });
 
   it("passes watcher changed paths to package file refresh", async () => {
@@ -739,7 +777,6 @@ describe("desktop renderer hook interfaces", () => {
         reloadCurrentCanvas: vi.fn().mockResolvedValue(undefined),
         selectedCanvasId: "canvas-main",
         selectedProject: project,
-        setDirtyPromptRefs: vi.fn(),
         setError: vi.fn(),
         setFileSyncDiagnostics: vi.fn(),
         setLastFileChange
@@ -795,7 +832,6 @@ describe("desktop renderer hook interfaces", () => {
         reloadCurrentCanvas,
         selectedCanvasId: "canvas-main",
         selectedProject: project,
-        setDirtyPromptRefs: vi.fn(),
         setError: vi.fn(),
         setFileSyncDiagnostics: vi.fn(),
         setLastFileChange: vi.fn()
@@ -1350,7 +1386,6 @@ describe("desktop renderer hook interfaces", () => {
         reloadCurrentCanvas,
         selectedCanvasId: "canvas-main",
         selectedProject: project,
-        setDirtyPromptRefs: vi.fn(),
         setError: vi.fn(),
         setFileSyncDiagnostics: vi.fn(),
         setLastFileChange: vi.fn()

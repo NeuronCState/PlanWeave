@@ -13,6 +13,8 @@ import {
   getTaskExecutionOrder,
   getTodoGroups,
   resolveTaskCanvasWorkspace,
+  createDesktopPackageFileSnapshot,
+  detectDesktopPackageFileChanges,
   readProjectPrompt,
   readProjectPromptPolicy,
   updateProjectPromptPolicy,
@@ -68,6 +70,20 @@ describe("desktop graph read API", () => {
     expect(graph.tasks[0]).toMatchObject({
       title: "Implement test task",
       status: "ready"
+    });
+  });
+
+  it("exposes dirty prompt refs from desktop file sync in graph view models", async () => {
+    const { root, init } = await createTestWorkspace();
+    const snapshot = await createDesktopPackageFileSnapshot(root);
+    await writeFile(join(init.workspace.packageDir, "nodes", "T-001", "blocks", "B-001.prompt.md"), "# external block prompt edit\n", "utf8");
+
+    await expect(detectDesktopPackageFileChanges(root, snapshot.snapshotId)).resolves.toMatchObject({
+      dirtyPromptRefs: ["T-001#B-001"]
+    });
+
+    await expect(getGraphViewModel(root)).resolves.toMatchObject({
+      dirtyPromptRefs: ["T-001#B-001"]
     });
   });
 

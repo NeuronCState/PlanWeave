@@ -623,12 +623,13 @@ function affectedRefs(command: PlanGraphCommand, mutation: PlanPackageGraphMutat
   const prompts = mutation.sideEffects
     .filter((sideEffect) => sideEffect.kind === "writePrompt" || sideEffect.kind === "removePrompt")
     .map((sideEffect) => sideEffect.packagePath);
+  const manifestFiles = mutationChangesManifest(loaded, mutation) ? ["manifest.json"] : [];
   return {
     canvases: [],
     tasks: [...new Set([...mutation.affectedTasks, ...touched.tasks])],
     blocks: [...new Set(touched.blocks)],
     prompts: [...new Set(prompts)],
-    packageFiles: [...new Set([...(mutation.nextManifest ? ["manifest.json"] : []), ...prompts])]
+    packageFiles: [...new Set([...manifestFiles, ...prompts])]
   };
 }
 
@@ -640,8 +641,22 @@ function changedPaths(
   return affected.packageFiles.map((path) => repository.packageFilePath(loaded, path));
 }
 
+function mutationChangesManifest(loaded: LoadedPlanGraphPackage, mutation: PlanPackageGraphMutation): boolean {
+  return JSON.stringify(mutation.nextManifest) !== JSON.stringify(loaded.manifest);
+}
+
 function isNoopMutation(loaded: LoadedPlanGraphPackage, mutation: PlanPackageGraphMutation): boolean {
-  return mutation.sideEffects.length === 0 && JSON.stringify(mutation.nextManifest) === JSON.stringify(loaded.manifest);
+  return mutation.sideEffects.length === 0 && !mutationChangesManifest(loaded, mutation);
+}
+
+async function indexAppliedMutation(
+  store: Awaited<ReturnType<PlanGraphCommandDependencies["createIndexStore"]>>,
+  affected: PlanGraphAffectedRefs
+) {
+  if (affected.packageFiles.includes("manifest.json")) {
+    return store.rebuild();
+  }
+  return store.indexChangedPaths(affected.packageFiles);
 }
 
 function isDiagnostic(value: PlanPackageGraphMutation | PlanGraphCommand | PlanGraphCommand[] | PlanGraphCommandDiagnostic): value is PlanGraphCommandDiagnostic {
@@ -798,9 +813,9 @@ export async function executePlanGraphCommand(options: ExecutePlanGraphCommandOp
     });
   }
 
-  const store = await dependencies.createIndexStore({ projectRoot: options.projectRoot, indexPath: options.indexPath });
-  const graph = await store.rebuild();
   const affected = affectedRefs(options.command, mutation, loaded);
+  const store = await dependencies.createIndexStore({ projectRoot: options.projectRoot, indexPath: options.indexPath });
+  const graph = await indexAppliedMutation(store, affected);
   const result: AppliedPlanGraphCommand = {
     ok: true,
     workspaceRef: loaded.workspace,

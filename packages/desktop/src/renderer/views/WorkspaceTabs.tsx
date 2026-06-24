@@ -41,7 +41,6 @@ type WorkspaceTabsProps = {
   autoRunScopeMode: AutoRunScopeMode;
   autoRunState: DesktopAutoRunState | null;
   confirmTaskDraft: () => Promise<void>;
-  dirtyPromptRefs: string[];
   edges: Edge[];
   fileSyncResult: DesktopPackageFileSyncResult | null;
   generateTaskDraft: () => Promise<void>;

@@ -5,7 +5,6 @@ import type { DesktopUiSettings, NotificationItem } from "./types";
 
 export function buildNotificationItems({
   autoRunState,
-  dirtyPromptRefs,
   fileSyncDiagnostics,
   graph,
   lastFileChange,
@@ -14,7 +13,6 @@ export function buildNotificationItems({
   t
 }: {
   autoRunState: DesktopAutoRunState | null;
-  dirtyPromptRefs: string[];
   fileSyncDiagnostics: string[];
   graph: DesktopGraphViewModel | null;
   lastFileChange: DesktopPackageFileChangeEvent | null;
@@ -38,7 +36,7 @@ export function buildNotificationItems({
     }
   }
   if (settings.notifications.dirtyPrompts) {
-    for (const ref of [...new Set([...dirtyPromptRefs, ...(graph?.dirtyPromptRefs ?? [])])]) {
+    for (const ref of graph?.dirtyPromptRefs ?? []) {
       notificationItems.push({ id: `dirty-${ref}`, title: t("notifyDirtyPrompts"), detail: ref, tone: "secondary" });
     }
   }

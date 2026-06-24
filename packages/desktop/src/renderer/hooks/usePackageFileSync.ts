@@ -15,12 +15,19 @@ function shouldReloadCanvasAfterRefresh(options: DesktopPackageFileRefreshOption
   return result.fullRefresh || (options?.changedPaths ?? []).some(isProjectPromptChangePath);
 }
 
+function errorMessage(caught: unknown): string {
+  return caught instanceof Error ? caught.message : String(caught);
+}
+
+function syncErrorMessage(result: DesktopPackageFileSyncResult): string {
+  return result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+}
+
 type UsePackageFileSyncArgs = {
   reloadCurrentCanvas: () => Promise<void>;
   refreshProjectDerivedState: () => Promise<void>;
   selectedCanvasId: string | null;
   selectedProject: DesktopProjectSummary | null;
-  setDirtyPromptRefs: (refs: string[]) => void;
   setError: (message: string | null) => void;
   setFileSyncDiagnostics: (diagnostics: string[]) => void;
   setFileSyncResult?: (result: DesktopPackageFileSyncResult | null) => void;
@@ -32,7 +39,6 @@ export function usePackageFileSync({
   refreshProjectDerivedState,
   selectedCanvasId,
   selectedProject,
-  setDirtyPromptRefs,
   setError,
   setFileSyncDiagnostics,
   setFileSyncResult,
@@ -45,11 +51,16 @@ export function usePackageFileSync({
     try {
       const ref = desktopCanvasReference(selectedProject, selectedCanvasId);
       const result = options ? await bridge.refreshPackageFileChanges(ref, options) : await bridge.refreshPackageFileChanges(ref);
-      setDirtyPromptRefs(result.dirtyPromptRefs);
       setFileSyncDiagnostics(result.diagnostics.map((diagnostic) => diagnostic.message));
       setFileSyncResult?.(result);
       if (!result.ok) {
-        setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
+        const message = syncErrorMessage(result);
+        setError(message);
+        try {
+          await refreshProjectDerivedState();
+        } catch (caught) {
+          setError([message, errorMessage(caught)].filter(Boolean).join("\n"));
+        }
         return;
       }
       if (shouldReloadCanvasAfterRefresh(options, result)) {
@@ -57,11 +68,10 @@ export function usePackageFileSync({
       } else {
         await refreshProjectDerivedState();
       }
-      setDirtyPromptRefs(result.dirtyPromptRefs);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      setError(errorMessage(caught));
     }
-  }, [refreshProjectDerivedState, reloadCurrentCanvas, selectedCanvasId, selectedProject, setDirtyPromptRefs, setError, setFileSyncDiagnostics, setFileSyncResult]);
+  }, [refreshProjectDerivedState, reloadCurrentCanvas, selectedCanvasId, selectedProject, setError, setFileSyncDiagnostics, setFileSyncResult]);
 
   useEffect(() => {
     if (!bridge || !selectedProject) {

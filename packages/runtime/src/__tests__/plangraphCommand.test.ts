@@ -1,6 +1,6 @@
 import { access, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readJsonFile } from "../json.js";
 import {
   createSqlitePlanGraphStore,
@@ -272,6 +272,72 @@ describe("PlanGraph SQLite index and commands", () => {
     expect(result.ok).toBe(true);
     expect(result.graphVersion).not.toBe(base.graph.graphVersion);
     await expect(readFile(join(init.workspace.packageDir, "nodes/T-001/prompt.md"), "utf8")).resolves.toBe("# Updated PlanGraph prompt\n");
+  });
+
+  it("updates prompt-only commands through the incremental SQLite index path", async () => {
+    const { root, init } = await createTestWorkspace();
+    const base = await loadPlanGraphPackage(root);
+    const task = base.graph.tasks.get("T-001");
+    if (!task) {
+      throw new Error("Missing task fixture.");
+    }
+    const store = await createSqlitePlanGraphStore({ projectRoot: root });
+    const rebuild = vi.fn(store.rebuild);
+    const indexChangedPaths = vi.fn(store.indexChangedPaths);
+
+    const result = await executePlanGraphCommand({
+      projectRoot: root,
+      command: {
+        type: "updateTaskPrompt",
+        taskId: "T-001",
+        promptMarkdown: "# Incremental prompt index\n",
+        baseGraphVersion: base.graph.graphVersion,
+        basePromptHash: task.promptRef.contentHash
+      },
+      dependencies: {
+        createIndexStore: async () => ({
+          ...store,
+          rebuild,
+          indexChangedPaths
+        })
+      }
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.affected.packageFiles).toEqual(["nodes/T-001/prompt.md"]);
+    expect(result.changedPaths).toEqual([join(init.workspace.packageDir, "nodes/T-001/prompt.md")]);
+    expect(indexChangedPaths).toHaveBeenCalledWith(["nodes/T-001/prompt.md"]);
+    expect(rebuild).not.toHaveBeenCalled();
+  });
+
+  it("rebuilds the SQLite index for manifest-changing commands", async () => {
+    const { root } = await createTestWorkspace(basicManifest({ includeSecondTask: true }));
+    const base = await loadPlanGraphPackage(root);
+    const store = await createSqlitePlanGraphStore({ projectRoot: root });
+    const rebuild = vi.fn(store.rebuild);
+    const indexChangedPaths = vi.fn(store.indexChangedPaths);
+
+    const result = await executePlanGraphCommand({
+      projectRoot: root,
+      command: {
+        type: "addTaskDependency",
+        fromTaskId: "T-002",
+        toTaskId: "T-001",
+        baseGraphVersion: base.graph.graphVersion
+      },
+      dependencies: {
+        createIndexStore: async () => ({
+          ...store,
+          rebuild,
+          indexChangedPaths
+        })
+      }
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.affected.packageFiles).toEqual(["manifest.json"]);
+    expect(rebuild).toHaveBeenCalledOnce();
+    expect(indexChangedPaths).not.toHaveBeenCalled();
   });
 
   it("updates and undoes task fields through the command history", async () => {

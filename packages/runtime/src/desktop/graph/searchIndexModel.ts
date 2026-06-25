@@ -1,6 +1,6 @@
 import { resolvePackagePath } from "../../package/resolvePackagePath.js";
 import type { ValidationIssue } from "../../types.js";
-import type { DesktopSearchFilters, DesktopSearchResult, DesktopSearchResultKind } from "../types.js";
+import type { DesktopSearchFilters, DesktopSearchMatch, DesktopSearchMatchField, DesktopSearchResult, DesktopSearchResultKind } from "../types.js";
 import { appendDesktopDiagnostics } from "./desktopDiagnostics.js";
 import { blockRef, getTask, promptPreview, readOptionalFile } from "./graphHelpers.js";
 import type { CanvasExecutionSnapshot, ProjectTodoContext } from "./todoModel.js";
@@ -39,6 +39,7 @@ const defaultSearchLimit = 100;
 const minSearchLimit = 1;
 const maxSearchLimit = 100;
 const maxPromptPreviewLength = 220;
+const maxSearchMatchExcerptLength = 120;
 const promptPreviewWhitespacePattern = /\s/;
 
 function runRecordIdFromResultPath(path: string): string | null {
@@ -107,6 +108,60 @@ function documentMatches(document: DesktopSearchDocument, normalizedQuery: strin
   return document.normalizedTitle.includes(normalizedQuery) || document.normalizedBody.includes(normalizedQuery);
 }
 
+export function highlightableExcerpt(
+  source: string,
+  matchStart: number,
+  matchLength: number
+): Pick<DesktopSearchMatch, "excerpt" | "excerptStart"> {
+  const leftContext = Math.max(0, Math.floor((maxSearchMatchExcerptLength - matchLength) / 2));
+  let excerptStart = Math.max(0, matchStart - leftContext);
+  let excerptEnd = Math.min(source.length, excerptStart + maxSearchMatchExcerptLength);
+
+  if (excerptEnd - excerptStart < maxSearchMatchExcerptLength) {
+    excerptStart = Math.max(0, excerptEnd - maxSearchMatchExcerptLength);
+  }
+  if (excerptStart > 0) {
+    const nextWhitespace = source.slice(excerptStart, matchStart).search(promptPreviewWhitespacePattern);
+    if (nextWhitespace >= 0) {
+      excerptStart += nextWhitespace + 1;
+    }
+  }
+  if (excerptEnd < source.length) {
+    const trailingWhitespace = source.slice(matchStart + matchLength, excerptEnd).search(promptPreviewWhitespacePattern);
+    if (trailingWhitespace >= 0) {
+      excerptEnd = matchStart + matchLength + trailingWhitespace;
+    }
+  }
+
+  return { excerpt: source.slice(excerptStart, excerptEnd), excerptStart };
+}
+
+export function buildSearchMatch(
+  source: string,
+  normalizedSource: string,
+  normalizedQuery: string,
+  field: DesktopSearchMatchField
+): DesktopSearchMatch | null {
+  const start = normalizedSource.indexOf(normalizedQuery);
+  if (start < 0) {
+    return null;
+  }
+  return {
+    field,
+    start,
+    length: normalizedQuery.length,
+    ...highlightableExcerpt(source, start, normalizedQuery.length)
+  };
+}
+
+export function findDocumentMatch(document: DesktopSearchDocument, normalizedQuery: string): DesktopSearchMatch | null {
+  if (document.kind === "prompt") {
+    return buildSearchMatch(document.body, document.normalizedBody, normalizedQuery, "body");
+  }
+  return buildSearchMatch(document.title, document.normalizedTitle, normalizedQuery, "title")
+    ?? buildSearchMatch(document.body, document.normalizedBody, normalizedQuery, "body");
+}
+
 type RankedSearchResult = {
   document: DesktopSearchDocument;
   rank: SearchRank;
@@ -160,6 +215,7 @@ function compareSearchRank(left: RankedSearchResult, right: RankedSearchResult):
 
 function searchResultFromDocument(document: DesktopSearchDocument, normalizedQuery: string): DesktopSearchResult {
   const excerptSource = document.normalizedBody.includes(normalizedQuery) ? document.body : document.title;
+  const match = findDocumentMatch(document, normalizedQuery) ?? undefined;
   return {
     kind: document.kind,
     canvasId: document.canvasId,
@@ -168,6 +224,7 @@ function searchResultFromDocument(document: DesktopSearchDocument, normalizedQue
     targetRef: document.targetRef,
     title: document.title,
     excerpt: promptPreview(excerptSource),
+    match,
     path: document.path,
     recordId: document.recordId
   };

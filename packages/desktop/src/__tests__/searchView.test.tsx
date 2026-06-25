@@ -4,7 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { useState } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { DesktopSearchResultKind } from "@planweave-ai/runtime";
+import type { DesktopSearchResult, DesktopSearchResultKind } from "@planweave-ai/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DesktopSearchCanvasScope } from "../renderer/hooks/useDesktopSearch";
 import { createTranslator } from "../renderer/i18n";
@@ -99,5 +99,71 @@ describe("SearchView", () => {
     expect(screen.getByTestId("search-scope-all")).toHaveAttribute("aria-pressed", "true");
     await userEvent.click(screen.getByTestId("search-scope-current"));
     expect(screen.getByTestId("search-scope-current")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("labels task and block match sources from the runtime match field", () => {
+    stubResizeObserver();
+    const results: DesktopSearchResult[] = [
+      {
+        kind: "task",
+        ref: "T-001",
+        title: "Runtime task",
+        excerpt: "body match",
+        canvasId: "canvas-main",
+        canvasName: "Main",
+        targetRef: "T-001",
+        match: {
+          field: "body",
+          start: 0,
+          length: 4,
+          excerpt: "body match",
+          excerptStart: 0
+        }
+      },
+      {
+        kind: "block",
+        ref: "T-001#B-001",
+        title: "Implementation block",
+        excerpt: "title match",
+        canvasId: "canvas-main",
+        canvasName: "Main",
+        targetRef: "T-001#B-001",
+        match: {
+          field: "title",
+          start: 0,
+          length: 5,
+          excerpt: "title match",
+          excerptStart: 0
+        }
+      }
+    ];
+
+    render(
+      <SearchView
+        handleOpenProject={vi.fn().mockResolvedValue(undefined)}
+        handleSearchResultOpen={vi.fn().mockResolvedValue(undefined)}
+        searchCanvasScope="all"
+        searchQuery="match"
+        searchResultKinds={searchResultKinds}
+        searchResults={results}
+        selectedCanvasId="canvas-main"
+        selectedProject={{
+          projectId: "P-001",
+          name: "Demo",
+          rootPath: "/tmp/demo",
+          workspaceRoot: "/tmp/demo",
+          activeCanvasId: "canvas-main",
+          taskCanvases: []
+        }}
+        selectedSearchResultKinds={searchResultKinds}
+        setSearchCanvasScope={vi.fn()}
+        setSearchQuery={vi.fn()}
+        setSearchResultKindEnabled={vi.fn()}
+        t={createTranslator("en")}
+      />
+    );
+
+    expect(screen.getByText("Task body")).toBeInTheDocument();
+    expect(screen.getByText("Block title")).toBeInTheDocument();
   });
 });

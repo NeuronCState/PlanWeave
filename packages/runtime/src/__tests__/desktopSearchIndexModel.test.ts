@@ -149,6 +149,121 @@ describe("desktop search index model", () => {
     expect(results.map((result) => result.ref)).toEqual(["prompt-body"]);
   });
 
+  it("returns title match metadata before body metadata for non-prompt documents", () => {
+    const results = searchDesktopSearchIndex(searchIndex([
+      searchDocument({
+        ref: "title-and-body",
+        title: "Implement searchable needle",
+        body: "Body also contains needle"
+      })
+    ]), "needle");
+
+    expect(results[0]).toMatchObject({
+      ref: "title-and-body",
+      match: {
+        field: "title",
+        start: "Implement searchable ".length,
+        length: "needle".length,
+        excerpt: "Implement searchable needle",
+        excerptStart: 0
+      }
+    });
+  });
+
+  it("returns body match metadata when title does not match", () => {
+    const results = searchDesktopSearchIndex(searchIndex([
+      searchDocument({
+        ref: "body-only",
+        title: "Body only",
+        body: "Body source before needle and after"
+      })
+    ]), "needle");
+
+    expect(results[0]).toMatchObject({
+      ref: "body-only",
+      match: {
+        field: "body",
+        start: "Body source before ".length,
+        length: "needle".length,
+        excerpt: "Body source before needle and after",
+        excerptStart: 0
+      }
+    });
+  });
+
+  it("returns prompt body match metadata while ignoring prompt title matches", () => {
+    const results = searchDesktopSearchIndex(searchIndex([
+      searchDocument({
+        kind: "prompt",
+        ref: "prompt-body-match",
+        title: "Prompt title needle",
+        body: "Prompt body contains needle"
+      })
+    ]), "needle", { kinds: ["prompt"] });
+
+    expect(results[0]).toMatchObject({
+      ref: "prompt-body-match",
+      match: {
+        field: "body",
+        start: "Prompt body contains ".length,
+        length: "needle".length,
+        excerpt: "Prompt body contains needle",
+        excerptStart: 0
+      }
+    });
+  });
+
+  it("returns historical result body match metadata", () => {
+    const results = searchDesktopSearchIndex(searchIndex([
+      searchDocument({
+        kind: "run_record",
+        ref: "run-record",
+        title: "T-001/blocks/B-001/runs/RUN-001/report.md",
+        body: "Run output contains needle"
+      })
+    ]), "needle", { kinds: ["run_record"] });
+
+    expect(results[0]).toMatchObject({
+      ref: "run-record",
+      match: {
+        field: "body",
+        start: "Run output contains ".length,
+        length: "needle".length,
+        excerpt: "Run output contains needle",
+        excerptStart: 0
+      }
+    });
+  });
+
+  it("returns a bounded match excerpt that contains the query", () => {
+    const results = searchDesktopSearchIndex(searchIndex([
+      searchDocument({
+        ref: "long-body",
+        title: "Long body",
+        body: `${"before ".repeat(30)}needle ${"after ".repeat(30)}`
+      })
+    ]), "needle");
+
+    expect(results[0].match?.excerpt).toContain("needle");
+    expect(results[0].match?.excerpt.length).toBeLessThanOrEqual(120);
+  });
+
+  it("keeps match excerpt offsets aligned with the original source", () => {
+    const body = `${"alpha\n".repeat(20)}wide   needle\tmatch ${"omega ".repeat(20)}`;
+    const results = searchDesktopSearchIndex(searchIndex([
+      searchDocument({
+        ref: "spaced-body",
+        title: "Spaced body",
+        body
+      })
+    ]), "needle");
+    const match = results[0].match;
+
+    expect(match).toBeDefined();
+    expect(match?.excerpt).toBe(body.slice(match.excerptStart, match.excerptStart + match.excerpt.length));
+    expect(match?.excerpt.slice(match.start - match.excerptStart, match.start - match.excerptStart + match.length)).toBe("needle");
+  });
+
   it("uses body excerpts when the body matches and title excerpts only for title-only matches", () => {
     const results = searchDesktopSearchIndex(searchIndex([
       searchDocument({

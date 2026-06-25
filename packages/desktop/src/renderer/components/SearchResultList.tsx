@@ -21,12 +21,73 @@ export function searchNavigationTarget(result: DesktopSearchResult): SearchNavig
   return { kind: "none" };
 }
 
+export function highlightedSearchExcerpt(result: DesktopSearchResult): Array<{ text: string; highlighted: boolean }> {
+  const excerpt = result.match?.excerpt ?? result.excerpt;
+  const match = result.match;
+  if (!match || match.length <= 0) {
+    return [{ text: excerpt, highlighted: false }];
+  }
+  const highlightStart = match.start - match.excerptStart;
+  const highlightEnd = highlightStart + match.length;
+  if (highlightStart < 0 || highlightEnd > excerpt.length) {
+    return [{ text: excerpt, highlighted: false }];
+  }
+  return [
+    { text: excerpt.slice(0, highlightStart), highlighted: false },
+    { text: excerpt.slice(highlightStart, highlightEnd), highlighted: true },
+    { text: excerpt.slice(highlightEnd), highlighted: false }
+  ].filter((part) => part.text.length > 0);
+}
+
+export function searchMatchSourceLabel(
+  result: DesktopSearchResult,
+  labels: {
+    blockBody: string;
+    blockTitle: string;
+    feedback: string;
+    prompt: string;
+    reviewAttempt: string;
+    runRecord: string;
+    taskBody: string;
+    taskTitle: string;
+  }
+): string {
+  if (result.kind === "task") {
+    return result.match?.field === "body" ? labels.taskBody : labels.taskTitle;
+  }
+  if (result.kind === "block") {
+    return result.match?.field === "body" ? labels.blockBody : labels.blockTitle;
+  }
+  switch (result.kind) {
+    case "prompt":
+      return labels.prompt;
+    case "run_record":
+      return labels.runRecord;
+    case "review_attempt":
+      return labels.reviewAttempt;
+    case "feedback":
+      return labels.feedback;
+  }
+  const exhaustiveKind: never = result.kind;
+  return exhaustiveKind;
+}
+
 export function SearchResultList({
+  canvasLabel,
+  kindLabels,
+  matchSourceLabels,
   onOpenResult,
+  refLabel,
   results,
+  targetLabel,
   targetMissingLabel
 }: {
+  canvasLabel: string;
+  kindLabels: Record<DesktopSearchResult["kind"], string>;
+  matchSourceLabels: Parameters<typeof searchMatchSourceLabel>[1];
   results: DesktopSearchResult[];
+  refLabel: string;
+  targetLabel: string;
   targetMissingLabel: string;
   onOpenResult: (result: DesktopSearchResult) => void | Promise<void>;
 }) {
@@ -43,9 +104,37 @@ export function SearchResultList({
           >
             <div className="flex items-center justify-between gap-2">
               <span className="truncate text-sm font-medium">{result.title}</span>
-              <Badge variant={target.kind === "none" ? "destructive" : "outline"}>{result.kind}</Badge>
+              <Badge variant={target.kind === "none" ? "destructive" : "outline"}>{kindLabels[result.kind]}</Badge>
             </div>
-            <div className="line-clamp-2 text-xs text-muted-foreground">{result.excerpt}</div>
+            <div className="grid gap-1 text-xs text-text-muted sm:grid-cols-2">
+              <div className="min-w-0 truncate">
+                <span className="font-medium text-text">{canvasLabel}: </span>
+                {result.canvasName ?? result.canvasId ?? "project"}
+                {result.canvasName && result.canvasId ? ` (${result.canvasId})` : null}
+              </div>
+              <div className="min-w-0 truncate">
+                <span className="font-medium text-text">{refLabel}: </span>
+                {result.ref}
+              </div>
+              <div className="min-w-0 truncate">
+                <span className="font-medium text-text">{targetLabel}: </span>
+                {result.targetRef ?? result.ref}
+              </div>
+              <div className="min-w-0 truncate">
+                <span className="font-medium text-text">{searchMatchSourceLabel(result, matchSourceLabels)}</span>
+              </div>
+            </div>
+            <div className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+              {highlightedSearchExcerpt(result).map((part, index) =>
+                part.highlighted ? (
+                  <mark className="rounded-sm bg-state-warning-surface px-0.5 text-text-strong" key={index}>
+                    {part.text}
+                  </mark>
+                ) : (
+                  <span key={index}>{part.text}</span>
+                )
+              )}
+            </div>
             {target.kind === "none" ? <div className="text-xs text-destructive">{targetMissingLabel}</div> : null}
           </button>
         );

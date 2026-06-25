@@ -109,7 +109,13 @@ export async function handlePlanweaveTool(
         results: searchResult.results.map((result) => ({
           ...result,
           title: sanitizeLocalPaths(result.title),
-          excerpt: sanitizeLocalPaths(result.excerpt)
+          excerpt: sanitizeLocalPaths(result.excerpt),
+          match: result.match
+            ? {
+                ...result.match,
+                excerpt: sanitizeLocalPaths(result.match.excerpt)
+              }
+            : undefined
         })),
         diagnostics: sanitizeValidationIssues(searchResult.diagnostics)
       });

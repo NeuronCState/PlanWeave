@@ -22,15 +22,22 @@ const project: DesktopProjectSummary = {
   ]
 };
 
-function searchArgs() {
+function searchArgs(overrides: Partial<ReturnType<typeof searchArgsBase>> = {}) {
+  return {
+    ...searchArgsBase(),
+    ...overrides
+  };
+}
+
+function searchArgsBase() {
   return {
     handleBlockSelect: vi.fn().mockResolvedValue(undefined),
     handleOpenRunRecord: vi.fn().mockResolvedValue(undefined),
+    openTaskInspector: vi.fn().mockResolvedValue(undefined),
     loadProject: vi.fn().mockResolvedValue(undefined),
     selectedCanvasId: "canvas-main",
     selectedProject: project,
     setError: vi.fn(),
-    selectTaskPanel: vi.fn()
   };
 }
 
@@ -153,5 +160,66 @@ describe("desktop search hook", () => {
     });
 
     expect(result.current.searchResults).toEqual([]);
+  });
+
+  it("opens task, block, and record targets from search results", async () => {
+    const args = searchArgs();
+    vi.resetModules();
+    const { useDesktopSearch } = await import("../renderer/hooks/useDesktopSearch");
+
+    const { result } = renderHook(() => useDesktopSearch(args));
+
+    await act(async () => {
+      await result.current.handleSearchResultOpen({ kind: "prompt", ref: "T-001", targetRef: "T-001", title: "Task prompt", excerpt: "task" });
+      await result.current.handleSearchResultOpen({
+        kind: "review_attempt",
+        ref: "T-001/reviews/R-001/attempts/REV-001/review-result.json",
+        targetRef: "T-001#R-001",
+        title: "Review",
+        excerpt: "review"
+      });
+      await result.current.handleSearchResultOpen({
+        kind: "feedback",
+        ref: "FE-001",
+        targetRef: "T-001#R-001",
+        title: "Feedback",
+        excerpt: "feedback"
+      });
+      await result.current.handleSearchResultOpen({
+        kind: "run_record",
+        ref: "T-001/blocks/B-001/runs/RUN-001/report.md",
+        recordId: "T-001#B-001::RUN-001",
+        title: "Run",
+        excerpt: "run"
+      });
+    });
+
+    expect(args.openTaskInspector).toHaveBeenCalledWith("T-001", "canvas-main");
+    expect(args.handleBlockSelect).toHaveBeenCalledWith("T-001#R-001", "canvas-main");
+    expect(args.handleBlockSelect).toHaveBeenCalledTimes(2);
+    expect(args.handleOpenRunRecord).toHaveBeenCalledWith("T-001#B-001::RUN-001", "canvas-main");
+  });
+
+  it("loads the result canvas before opening its target", async () => {
+    const args = searchArgs();
+    vi.resetModules();
+    const { useDesktopSearch } = await import("../renderer/hooks/useDesktopSearch");
+
+    const { result } = renderHook(() => useDesktopSearch(args));
+
+    await act(async () => {
+      await result.current.handleSearchResultOpen({
+        kind: "prompt",
+        canvasId: "canvas-other",
+        ref: "T-REMOTE",
+        targetRef: "T-REMOTE",
+        title: "Remote task prompt",
+        excerpt: "remote"
+      });
+    });
+
+    expect(args.loadProject).toHaveBeenCalledWith(project, "canvas-other");
+    expect(args.openTaskInspector).toHaveBeenCalledWith("T-REMOTE", "canvas-other");
+    expect(args.loadProject.mock.invocationCallOrder[0]).toBeLessThan(args.openTaskInspector.mock.invocationCallOrder[0]);
   });
 });

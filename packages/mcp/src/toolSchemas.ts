@@ -269,6 +269,13 @@ const searchResultSchema = z.object({
   targetRef: z.string().optional(),
   title: z.string(),
   excerpt: z.string(),
+  match: z.object({
+    field: z.enum(["title", "body"]),
+    start: z.number(),
+    length: z.number(),
+    excerpt: z.string(),
+    excerptStart: z.number()
+  }).optional(),
   recordId: z.string().optional()
 }).passthrough();
 

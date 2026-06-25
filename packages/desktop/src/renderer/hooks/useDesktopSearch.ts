@@ -10,11 +10,11 @@ export const desktopSearchResultKinds: DesktopSearchResultKind[] = ["task", "blo
 type UseDesktopSearchArgs = {
   handleBlockSelect: (ref: string, canvasId?: string | null) => Promise<void>;
   handleOpenRunRecord: (recordId: string | null | undefined, canvasId?: string | null) => Promise<void>;
+  openTaskInspector: (taskId: string, canvasId?: string | null) => Promise<void>;
   loadProject: (project: DesktopProjectSummary, canvasId?: string | null) => Promise<void>;
   selectedCanvasId: string | null;
   selectedProject: DesktopProjectSummary | null;
   setError: (message: string | null) => void;
-  selectTaskPanel: (taskId: string | null) => void;
 };
 
 function normalizeSearchResultKinds(kinds: DesktopSearchResultKind[]): DesktopSearchResultKind[] {
@@ -25,11 +25,11 @@ function normalizeSearchResultKinds(kinds: DesktopSearchResultKind[]): DesktopSe
 export function useDesktopSearch({
   handleBlockSelect,
   handleOpenRunRecord,
+  openTaskInspector,
   loadProject,
   selectedCanvasId,
   selectedProject,
-  setError,
-  selectTaskPanel
+  setError
 }: UseDesktopSearchArgs) {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -111,19 +111,20 @@ export function useDesktopSearch({
         await loadProject(selectedProject, result.canvasId);
       }
       const target = searchNavigationTarget(result);
+      const canvasId = result.canvasId ?? selectedCanvasId;
       if (target.kind === "task") {
-        selectTaskPanel(target.ref);
+        await openTaskInspector(target.ref, canvasId);
         return;
       }
       if (target.kind === "block") {
-        await handleBlockSelect(target.ref, result.canvasId ?? selectedCanvasId);
+        await handleBlockSelect(target.ref, canvasId);
         return;
       }
       if (target.kind === "record") {
-        await handleOpenRunRecord(target.recordId, result.canvasId ?? selectedCanvasId);
+        await handleOpenRunRecord(target.recordId, canvasId);
       }
     },
-    [handleBlockSelect, handleOpenRunRecord, loadProject, selectedCanvasId, selectedProject, selectTaskPanel]
+    [handleBlockSelect, handleOpenRunRecord, loadProject, openTaskInspector, selectedCanvasId, selectedProject]
   );
 
   return {

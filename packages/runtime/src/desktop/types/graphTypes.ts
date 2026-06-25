@@ -297,6 +297,16 @@ export type DesktopSearchFilters = {
   limit?: number;
 };
 
+export type DesktopSearchMatchField = "title" | "body";
+
+export type DesktopSearchMatch = {
+  field: DesktopSearchMatchField;
+  start: number;
+  length: number;
+  excerpt: string;
+  excerptStart: number;
+};
+
 export type DesktopSearchResult = {
   kind: DesktopSearchResultKind;
   canvasId?: string;
@@ -305,6 +315,7 @@ export type DesktopSearchResult = {
   targetRef?: string;
   title: string;
   excerpt: string;
+  match?: DesktopSearchMatch;
   recordId?: string;
   path?: string;
 };

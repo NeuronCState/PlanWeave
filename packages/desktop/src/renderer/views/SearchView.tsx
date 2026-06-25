@@ -61,6 +61,24 @@ export function SearchView({
   const selectedKinds = new Set(selectedSearchResultKinds);
   const hasProject = Boolean(selectedProject);
   const hasQuery = Boolean(searchQuery.trim());
+  const kindLabels: Record<DesktopSearchResultKind, string> = {
+    task: searchKindLabel("task", t),
+    block: searchKindLabel("block", t),
+    prompt: searchKindLabel("prompt", t),
+    run_record: searchKindLabel("run_record", t),
+    review_attempt: searchKindLabel("review_attempt", t),
+    feedback: searchKindLabel("feedback", t)
+  };
+  const matchSourceLabels = {
+    blockBody: t("searchSourceBlockBody"),
+    blockTitle: t("searchSourceBlockTitle"),
+    feedback: t("searchSourceFeedback"),
+    prompt: t("searchSourcePrompt"),
+    reviewAttempt: t("searchSourceReviewAttempt"),
+    runRecord: t("searchSourceRunRecord"),
+    taskBody: t("searchSourceTaskBody"),
+    taskTitle: t("searchSourceTaskTitle")
+  };
   return (
     <section className="flex h-full min-h-0 flex-col gap-4">
       <div>
@@ -131,7 +149,16 @@ export function SearchView({
         ) : !hasQuery ? (
           <div className="rounded-md border border-border/80 bg-surface-muted/70 p-4 text-sm text-text-muted">{t("searchEmptyHint")}</div>
         ) : (
-          <SearchResultList results={searchResults} targetMissingLabel={t("searchTargetMissing")} onOpenResult={handleSearchResultOpen} />
+          <SearchResultList
+            canvasLabel={t("searchResultCanvas")}
+            kindLabels={kindLabels}
+            matchSourceLabels={matchSourceLabels}
+            refLabel={t("searchResultRef")}
+            results={searchResults}
+            targetLabel={t("searchResultTarget")}
+            targetMissingLabel={t("searchTargetMissing")}
+            onOpenResult={handleSearchResultOpen}
+          />
         )}
       </ScrollArea>
     </section>

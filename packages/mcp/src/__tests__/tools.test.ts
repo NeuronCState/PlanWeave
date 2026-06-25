@@ -264,7 +264,14 @@ describe("handlePlanweaveTool", () => {
           canvasName: "Default",
           ref: "T-001#I-001",
           title: "Run log https://example.com/docs/path /api/status /Users/me/My Project/results/T-001/run.log",
-          excerpt: "needle appears in /Users/me/My Project/canvases/default/package/nodes/T-001/prompt.md"
+          excerpt: "needle appears in /Users/me/My Project/canvases/default/package/nodes/T-001/prompt.md",
+          match: {
+            field: "body",
+            start: 0,
+            length: 6,
+            excerpt: "needle appears in /Users/me/My Project/canvases/default/package/nodes/T-001/prompt.md",
+            excerptStart: 0
+          }
         }
       ],
       diagnostics: [
@@ -297,7 +304,14 @@ describe("handlePlanweaveTool", () => {
           canvasName: "Default",
           ref: "T-001#I-001",
           title: "Run log https://example.com/docs/path /api/status results/T-001/run.log",
-          excerpt: "needle appears in canvases/default/package/nodes/T-001/prompt.md"
+          excerpt: "needle appears in canvases/default/package/nodes/T-001/prompt.md",
+          match: {
+            field: "body",
+            start: 0,
+            length: 6,
+            excerpt: "needle appears in canvases/default/package/nodes/T-001/prompt.md",
+            excerptStart: 0
+          }
         }
       ],
       diagnostics: [

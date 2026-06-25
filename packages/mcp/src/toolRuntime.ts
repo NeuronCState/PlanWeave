@@ -265,6 +265,12 @@ function sanitizeSearchResult(result: DesktopSearchResult): Omit<DesktopSearchRe
     targetRef: result.targetRef,
     title: sanitizeLocalPaths(result.title),
     excerpt: sanitizeLocalPaths(result.excerpt),
+    match: result.match
+      ? {
+          ...result.match,
+          excerpt: sanitizeLocalPaths(result.match.excerpt)
+        }
+      : undefined,
     recordId: result.recordId
   };
 }

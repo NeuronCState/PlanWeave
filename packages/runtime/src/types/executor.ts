@@ -24,44 +24,45 @@ export type ManualExecutorProfile = {
   adapter: "manual";
 };
 
+export type ExecutorRuntimeLimits = {
+  timeoutMs?: number;
+  maxStdoutBytes?: number;
+  maxStderrBytes?: number;
+};
+
 export type CodexExecExecutorProfile = {
   adapter: "codex-exec";
   command: string;
   args: string[];
   sandbox?: "read-only" | "workspace-write" | "danger-full-access";
   role?: string;
-  timeoutMs?: number;
-};
+} & ExecutorRuntimeLimits;
 
 export type OpencodeExecExecutorProfile = {
   adapter: "opencode-exec";
   command: string;
   args: string[];
   sandbox?: "read-only" | "workspace-write" | "danger-full-access";
-  timeoutMs?: number;
-};
+} & ExecutorRuntimeLimits;
 
 export type ClaudeCodeExecExecutorProfile = {
   adapter: "claude-code-exec";
   command: string;
   args: string[];
-  timeoutMs?: number;
-};
+} & ExecutorRuntimeLimits;
 
 export type PiExecExecutorProfile = {
   adapter: "pi-exec";
   command: string;
   args: string[];
-  timeoutMs?: number;
-};
+} & ExecutorRuntimeLimits;
 
 export type LocalReviewExecutorProfile = {
   adapter: "local-review";
   command: string;
   args: string[];
   sandbox?: "read-only" | "workspace-write" | "danger-full-access";
-  timeoutMs?: number;
-};
+} & ExecutorRuntimeLimits;
 
 export type ExecutorProfile =
   | ManualExecutorProfile

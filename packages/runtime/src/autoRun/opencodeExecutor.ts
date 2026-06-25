@@ -4,7 +4,18 @@ import { join } from "node:path";
 import { writeJsonFile } from "../json.js";
 import { resolvePackageWorkspace } from "../package/loadPackage.js";
 import type { ExecutorAdapterResult, OpencodeExecExecutorProfile, PackageWorkspaceRef } from "../types.js";
-import { finishRunMetadata, nextRunId, prepareBlockRun, workspaceExecutionCwd, workspaceExecutorEnv, type BlockClaim, type FeedbackClaim } from "./executorShared.js";
+import {
+  executorLimitFailureMessage,
+  executorRuntimeLimits,
+  finishRunMetadata,
+  nextRunId,
+  prepareBlockRun,
+  workspaceExecutionCwd,
+  workspaceExecutorEnv,
+  type BlockClaim,
+  type ExecutorRuntimeLimits,
+  type FeedbackClaim
+} from "./executorShared.js";
 import { opencodeInvocation } from "./opencodeInvocation.js";
 import { extractOpencodeSessionId, opencodeReport, parseOpencodeJsonOutput } from "./opencodeOutput.js";
 import { appendReviewResultFileInstruction, reviewResultEnvironment } from "./reviewResultContract.js";
@@ -18,6 +29,8 @@ async function runOpencodeStreamingCommand(options: {
   stdin: string;
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
+  maxStdoutBytes?: number;
+  maxStderrBytes?: number;
   stdoutPath: string;
   stderrPath: string;
   tmux?: TmuxSessionInfo | null;
@@ -33,9 +46,20 @@ async function runOpencodeStreamingCommand(options: {
     stderrPath: options.stderrPath,
     tmux: options.tmux,
     timeoutMs: options.timeoutMs,
+    maxStdoutBytes: options.maxStdoutBytes,
+    maxStderrBytes: options.maxStderrBytes,
     sessionIdFromOutput: extractOpencodeSessionId,
     onSessionId: options.onSessionId
   });
+}
+
+function executorFailureMessage(input: { executorName: string; result: StreamedCommandResult; limits: ExecutorRuntimeLimits }): string {
+  if (input.result.limitExceeded) {
+    return executorLimitFailureMessage({ executorName: input.executorName, limitExceeded: input.result.limitExceeded });
+  }
+  return input.result.timedOut
+    ? `Executor '${input.executorName}' timed out after ${input.limits.timeoutMs}ms.`
+    : input.result.stderr.trim() || `Executor '${input.executorName}' exited with code ${input.result.exitCode}.`;
 }
 
 export async function runOpencodeBlock(options: {
@@ -65,6 +89,7 @@ export async function runOpencodeBlock(options: {
       })
     : options.prompt;
   const invocation = opencodeInvocation(options.profile, prompt, executionCwd);
+  const limits = executorRuntimeLimits(options.profile);
   const tmux = await createTmuxSessionInfo({
     runDir: run.runDir,
     runId: run.runId,
@@ -103,7 +128,9 @@ export async function runOpencodeBlock(options: {
           })
         : undefined
     ),
-    timeoutMs: options.profile.timeoutMs,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     stdoutPath: join(run.runDir, "stdout.md"),
     stderrPath: join(run.runDir, "stderr.log"),
     tmux,
@@ -122,18 +149,16 @@ export async function runOpencodeBlock(options: {
     projectRoot: workspace.rootPath,
     executionCwd,
     sandbox: options.profile.sandbox ?? null,
-    timeoutMs: options.profile.timeoutMs ?? null,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     timedOut: result.timedOut,
     agentSessionId,
     opencodeSessionId: agentSessionId,
     resumed: false
   });
   if (result.exitCode !== 0) {
-    throw new Error(
-      result.timedOut
-        ? `Executor '${options.executorName}' timed out after ${options.profile.timeoutMs}ms.`
-        : result.stderr.trim() || `Executor '${options.executorName}' exited with code ${result.exitCode}.`
-    );
+    throw new Error(executorFailureMessage({ executorName: options.executorName, result, limits }));
   }
   if (jsonOutput.error) {
     throw new Error(`Executor '${options.executorName}' returned an OpenCode error event: ${jsonOutput.error}`);
@@ -182,6 +207,7 @@ export async function runOpencodeFeedback(options: {
   await mkdir(runDir, { recursive: true });
   await writeFile(join(runDir, "prompt.md"), options.claim.content, "utf8");
   const invocation = opencodeInvocation(options.profile, options.claim.content, options.executionCwd);
+  const limits = executorRuntimeLimits(options.profile);
   const tmux = await createTmuxSessionInfo({ runDir, runId, tmuxOwnerRunId: options.tmuxOwnerRunId, kind: "feedback", enabled: options.tmuxEnabled });
   await writeJsonFile(metadataPath, {
     runId,
@@ -197,7 +223,9 @@ export async function runOpencodeFeedback(options: {
     exitCode: null,
     command: options.profile.command,
     args: invocation.args,
-    timeoutMs: options.profile.timeoutMs ?? null,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     timedOut: false,
     agentSessionId: null,
     opencodeSessionId: null,
@@ -223,7 +251,9 @@ export async function runOpencodeFeedback(options: {
     cwd: options.executionCwd,
     stdin: invocation.stdin,
     env: workspaceExecutorEnv({ planweaveHome: options.planweaveHome }),
-    timeoutMs: options.profile.timeoutMs,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     stdoutPath: join(runDir, "stdout.md"),
     stderrPath: join(runDir, "stderr.log"),
     tmux,
@@ -239,17 +269,15 @@ export async function runOpencodeFeedback(options: {
     exitCode: result.exitCode,
     command: options.profile.command,
     args: invocation.args,
-    timeoutMs: options.profile.timeoutMs ?? null,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     timedOut: result.timedOut,
     agentSessionId,
     opencodeSessionId: agentSessionId
   });
   if (result.exitCode !== 0) {
-    throw new Error(
-      result.timedOut
-        ? `Executor '${options.executorName}' timed out after ${options.profile.timeoutMs}ms.`
-        : result.stderr.trim() || `Executor '${options.executorName}' exited with code ${result.exitCode}.`
-    );
+    throw new Error(executorFailureMessage({ executorName: options.executorName, result, limits }));
   }
   if (jsonOutput.error) {
     throw new Error(`Executor '${options.executorName}' returned an OpenCode error event: ${jsonOutput.error}`);

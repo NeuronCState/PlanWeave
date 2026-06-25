@@ -1,5 +1,4 @@
-import { readFile } from "node:fs/promises";
-import { execWithStreaming } from "./executorShared.js";
+import { execWithStreaming, type ExecutorOutputLimitExceeded } from "./executorShared.js";
 import type { TmuxSessionInfo } from "./tmuxExecutor.js";
 
 export type StreamedCommandResult = {
@@ -7,6 +6,7 @@ export type StreamedCommandResult = {
   stderr: string;
   exitCode: number;
   timedOut: boolean;
+  limitExceeded?: ExecutorOutputLimitExceeded;
 };
 
 function appendScanBuffer(previous: string, chunk: string): string {
@@ -14,13 +14,13 @@ function appendScanBuffer(previous: string, chunk: string): string {
 }
 
 async function readStreamedCommandResult(result: {
-  stdoutPath: string;
-  stderrPath: string;
+  stdout: string;
+  stderr: string;
   exitCode: number;
   timedOut: boolean;
+  limitExceeded?: ExecutorOutputLimitExceeded;
 }): Promise<StreamedCommandResult> {
-  const [stdout, stderr] = await Promise.all([readFile(result.stdoutPath, "utf8"), readFile(result.stderrPath, "utf8")]);
-  return { stdout, stderr, exitCode: result.exitCode, timedOut: result.timedOut };
+  return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode, timedOut: result.timedOut, limitExceeded: result.limitExceeded };
 }
 
 export async function runStreamingCommandWithSessionCapture(options: {
@@ -30,6 +30,8 @@ export async function runStreamingCommandWithSessionCapture(options: {
   stdin: string;
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
+  maxStdoutBytes?: number;
+  maxStderrBytes?: number;
   stdoutPath: string;
   stderrPath: string;
   tmux?: TmuxSessionInfo | null;
@@ -60,6 +62,8 @@ export async function runStreamingCommandWithSessionCapture(options: {
     stdoutPath: options.stdoutPath,
     stderrPath: options.stderrPath,
     timeoutMs: options.timeoutMs,
+    maxStdoutBytes: options.maxStdoutBytes,
+    maxStderrBytes: options.maxStderrBytes,
     tmux: options.tmux,
     onStdout: captureSessionId,
     onStderr: captureSessionId

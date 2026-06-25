@@ -159,6 +159,37 @@ describe("executor API helpers", () => {
     });
   });
 
+  it("fails executor version checks when preflight output exceeds the executor stdout limit", async () => {
+    const { root } = await createTestWorkspace();
+    const command = join(root, "noisy-version.js");
+    await writeFile(command, "#!/usr/bin/env node\nprocess.stdout.write('x'.repeat(2048));\n", "utf8");
+    await chmod(command, 0o755);
+    const manifest = basicManifest();
+    manifest.executors = {
+      "noisy-version": {
+        adapter: "codex-exec",
+        command,
+        args: ["exec", "-"],
+        maxStdoutBytes: 128,
+        maxStderrBytes: 128
+      }
+    };
+    const { root: projectRoot } = await createTestWorkspace(manifest);
+
+    const result = await testExecutorProfile({ projectRoot, executorName: "noisy-version" });
+
+    expect(result.ok).toBe(false);
+    expect(preflightCheck(result, "command_started")).toMatchObject({
+      status: "passed",
+      command
+    });
+    expect(preflightCheck(result, "command_version")).toMatchObject({
+      status: "failed",
+      output: expect.stringContaining("stdout output truncated after 128 bytes"),
+      exitCode: 1
+    });
+  });
+
   it("times out executor version checks quickly with a failed machine-readable check", async () => {
     const { root } = await createTestWorkspace();
     const command = join(root, "hanging-version.js");

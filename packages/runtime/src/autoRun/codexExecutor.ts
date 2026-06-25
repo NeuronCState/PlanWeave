@@ -4,7 +4,18 @@ import { writeJsonFile } from "../json.js";
 import { resolvePackageWorkspace } from "../package/loadPackage.js";
 import type { CodexExecExecutorProfile, ExecutorAdapterResult, PackageWorkspaceRef } from "../types.js";
 import { codexExecArgs, codexResumeArgs, extractCodexSessionId } from "./codexProtocol.js";
-import { finishRunMetadata, nextRunId, prepareBlockRun, workspaceExecutionCwd, workspaceExecutorEnv, type BlockClaim, type FeedbackClaim } from "./executorShared.js";
+import {
+  executorLimitFailureMessage,
+  executorRuntimeLimits,
+  finishRunMetadata,
+  nextRunId,
+  prepareBlockRun,
+  workspaceExecutionCwd,
+  workspaceExecutorEnv,
+  type BlockClaim,
+  type ExecutorRuntimeLimits,
+  type FeedbackClaim
+} from "./executorShared.js";
 import { runStreamingCommandWithSessionCapture, type StreamedCommandResult } from "./streamingExecutor.js";
 import { createTmuxSessionInfo, tmuxMetadataPatch, type TmuxSessionInfo } from "./tmuxExecutor.js";
 
@@ -15,6 +26,8 @@ async function runCodexStreamingCommand(options: {
   stdin: string;
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
+  maxStdoutBytes?: number;
+  maxStderrBytes?: number;
   stdoutPath: string;
   stderrPath: string;
   tmux?: TmuxSessionInfo | null;
@@ -30,9 +43,20 @@ async function runCodexStreamingCommand(options: {
     stderrPath: options.stderrPath,
     tmux: options.tmux,
     timeoutMs: options.timeoutMs,
+    maxStdoutBytes: options.maxStdoutBytes,
+    maxStderrBytes: options.maxStderrBytes,
     sessionIdFromOutput: extractCodexSessionId,
     onSessionId: options.onSessionId
   });
+}
+
+function executorFailureMessage(input: { executorName: string; result: StreamedCommandResult; limits: ExecutorRuntimeLimits }): string {
+  if (input.result.limitExceeded) {
+    return executorLimitFailureMessage({ executorName: input.executorName, limitExceeded: input.result.limitExceeded });
+  }
+  return input.result.timedOut
+    ? `Executor '${input.executorName}' timed out after ${input.limits.timeoutMs}ms.`
+    : input.result.stderr.trim() || `Executor '${input.executorName}' exited with code ${input.result.exitCode}.`;
 }
 
 export async function runCodexBlock(options: {
@@ -56,6 +80,7 @@ export async function runCodexBlock(options: {
   const args = codexExecArgs(options.profile);
   const stdoutPath = join(run.runDir, "stdout.md");
   const stderrPath = join(run.runDir, "stderr.log");
+  const limits = executorRuntimeLimits(options.profile);
   const tmux = await createTmuxSessionInfo({
     runDir: run.runDir,
     runId: run.runId,
@@ -82,7 +107,9 @@ export async function runCodexBlock(options: {
     cwd: executionCwd,
     stdin: options.prompt,
     env: workspaceExecutorEnv(workspace),
-    timeoutMs: options.profile.timeoutMs,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     stdoutPath,
     stderrPath,
     tmux,
@@ -91,7 +118,7 @@ export async function runCodexBlock(options: {
   let finalResult = result;
   codexSessionId = codexSessionId ?? extractCodexSessionId(`${result.stdout}\n${result.stderr}`);
   let resumed = false;
-  if (result.exitCode !== 0 && codexSessionId) {
+  if (result.exitCode !== 0 && codexSessionId && !result.limitExceeded) {
     const resumeStdoutPath = join(run.runDir, "resume-stdout.md");
     const resumeStderrPath = join(run.runDir, "resume-stderr.log");
     const resumeTmux = await createTmuxSessionInfo({
@@ -108,7 +135,9 @@ export async function runCodexBlock(options: {
       cwd: executionCwd,
       stdin: "",
       env: workspaceExecutorEnv(workspace),
-      timeoutMs: options.profile.timeoutMs,
+      timeoutMs: limits.timeoutMs,
+      maxStdoutBytes: limits.maxStdoutBytes,
+      maxStderrBytes: limits.maxStderrBytes,
       stdoutPath: resumeStdoutPath,
       stderrPath: resumeStderrPath,
       tmux: resumeTmux,
@@ -118,7 +147,8 @@ export async function runCodexBlock(options: {
       stdout: [result.stdout.trim(), "--- resume stdout ---", resumeResult.stdout.trim()].filter(Boolean).join("\n"),
       stderr: [result.stderr.trim(), "--- resume stderr ---", resumeResult.stderr.trim()].filter(Boolean).join("\n"),
       exitCode: resumeResult.exitCode,
-      timedOut: result.timedOut || resumeResult.timedOut
+      timedOut: result.timedOut || resumeResult.timedOut,
+      limitExceeded: resumeResult.limitExceeded
     };
     codexSessionId = codexSessionId ?? extractCodexSessionId(`${resumeResult.stdout}\n${resumeResult.stderr}`);
     resumed = true;
@@ -135,18 +165,16 @@ export async function runCodexBlock(options: {
     executionCwd,
     sandbox: options.profile.sandbox ?? null,
     role: options.profile.role ?? null,
-    timeoutMs: options.profile.timeoutMs ?? null,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     timedOut: finalResult.timedOut,
     agentSessionId: codexSessionId,
     codexSessionId,
     resumed
   });
   if (finalResult.exitCode !== 0) {
-    throw new Error(
-      finalResult.timedOut
-        ? `Executor '${options.executorName}' timed out after ${options.profile.timeoutMs}ms.`
-        : finalResult.stderr.trim() || `Executor '${options.executorName}' exited with code ${finalResult.exitCode}.`
-    );
+    throw new Error(executorFailureMessage({ executorName: options.executorName, result: finalResult, limits }));
   }
   if (options.claim.blockType === "review") {
     const resultPath = join(run.runDir, "review-result.json");
@@ -178,6 +206,7 @@ export async function runCodexFeedback(options: {
   await mkdir(runDir, { recursive: true });
   await writeFile(join(runDir, "prompt.md"), options.claim.content, "utf8");
   const args = codexExecArgs(options.profile);
+  const limits = executorRuntimeLimits(options.profile);
   const tmux = await createTmuxSessionInfo({ runDir, runId, tmuxOwnerRunId: options.tmuxOwnerRunId, kind: "feedback", enabled: options.tmuxEnabled });
   await writeJsonFile(metadataPath, {
     runId,
@@ -191,7 +220,9 @@ export async function runCodexFeedback(options: {
     startedAt,
     finishedAt: null,
     exitCode: null,
-    timeoutMs: options.profile.timeoutMs ?? null,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     timedOut: false,
     agentSessionId: null,
     codexSessionId: null,
@@ -214,7 +245,9 @@ export async function runCodexFeedback(options: {
     cwd: options.executionCwd,
     stdin: options.claim.content,
     env: workspaceExecutorEnv({ planweaveHome: options.planweaveHome }),
-    timeoutMs: options.profile.timeoutMs,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     stdoutPath: join(runDir, "stdout.md"),
     stderrPath: join(runDir, "stderr.log"),
     tmux,
@@ -226,17 +259,15 @@ export async function runCodexFeedback(options: {
     exitCode: result.exitCode,
     command: options.profile.command,
     args,
-    timeoutMs: options.profile.timeoutMs ?? null,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     timedOut: result.timedOut,
     agentSessionId: codexSessionId,
     codexSessionId
   });
   if (result.exitCode !== 0) {
-    throw new Error(
-      result.timedOut
-        ? `Executor '${options.executorName}' timed out after ${options.profile.timeoutMs}ms.`
-        : result.stderr.trim() || `Executor '${options.executorName}' exited with code ${result.exitCode}.`
-    );
+    throw new Error(executorFailureMessage({ executorName: options.executorName, result, limits }));
   }
   const reportPath = join(runDir, "report.md");
   await writeFile(reportPath, result.stdout, "utf8");

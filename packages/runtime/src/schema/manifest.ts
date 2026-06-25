@@ -18,6 +18,12 @@ const reviewHookSchema = z
   })
   .strict();
 
+const executorRuntimeLimitsSchema = {
+  timeoutMs: z.number().int().positive().optional(),
+  maxStdoutBytes: z.number().int().positive().optional(),
+  maxStderrBytes: z.number().int().positive().optional()
+};
+
 const executorProfileSchema = z.discriminatedUnion("adapter", [
   z
     .object({
@@ -31,7 +37,7 @@ const executorProfileSchema = z.discriminatedUnion("adapter", [
       args: z.array(z.string()).default(["exec", "-"]),
       sandbox: z.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
       role: z.string().min(1).optional(),
-      timeoutMs: z.number().int().positive().optional()
+      ...executorRuntimeLimitsSchema
     })
     .strict(),
   z
@@ -40,7 +46,7 @@ const executorProfileSchema = z.discriminatedUnion("adapter", [
       command: z.string().min(1),
       args: z.array(z.string()).default(["run", "-"]),
       sandbox: z.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
-      timeoutMs: z.number().int().positive().optional()
+      ...executorRuntimeLimitsSchema
     })
     .strict(),
   z
@@ -48,7 +54,7 @@ const executorProfileSchema = z.discriminatedUnion("adapter", [
       adapter: z.literal(executorAdapter.claudeCodeExec),
       command: z.string().min(1),
       args: z.array(z.string()).default(["-p"]),
-      timeoutMs: z.number().int().positive().optional()
+      ...executorRuntimeLimitsSchema
     })
     .strict(),
   z
@@ -56,7 +62,7 @@ const executorProfileSchema = z.discriminatedUnion("adapter", [
       adapter: z.literal(executorAdapter.piExec),
       command: z.string().min(1),
       args: z.array(z.string()).default(["-p"]),
-      timeoutMs: z.number().int().positive().optional()
+      ...executorRuntimeLimitsSchema
     })
     .strict(),
   z
@@ -65,7 +71,7 @@ const executorProfileSchema = z.discriminatedUnion("adapter", [
       command: z.string().min(1),
       args: z.array(z.string()).default([]),
       sandbox: z.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
-      timeoutMs: z.number().int().positive().optional()
+      ...executorRuntimeLimitsSchema
     })
     .strict()
 ]);

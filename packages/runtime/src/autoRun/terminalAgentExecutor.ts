@@ -1,10 +1,23 @@
 import { constants } from "node:fs";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { writeJsonFile } from "../json.js";
 import { resolvePackageWorkspace } from "../package/loadPackage.js";
 import type { ClaudeCodeExecExecutorProfile, ExecutorAdapterResult, PackageWorkspaceRef, PiExecExecutorProfile } from "../types.js";
-import { execWithStreaming, finishRunMetadata, nextRunId, prepareBlockRun, workspaceExecutionCwd, workspaceExecutorEnv, type BlockClaim, type FeedbackClaim } from "./executorShared.js";
+import {
+  execWithStreaming,
+  executorLimitFailureMessage,
+  executorRuntimeLimits,
+  finishRunMetadata,
+  nextRunId,
+  prepareBlockRun,
+  workspaceExecutionCwd,
+  workspaceExecutorEnv,
+  type BlockClaim,
+  type ExecutorRuntimeLimits,
+  type FeedbackClaim,
+  type StreamingCommandResult
+} from "./executorShared.js";
 import { appendReviewResultFileInstruction, reviewResultEnvironment } from "./reviewResultContract.js";
 import { createTmuxSessionInfo, tmuxMetadataPatch } from "./tmuxExecutor.js";
 
@@ -17,22 +30,25 @@ async function streamedResult(options: {
   stdin: string;
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
+  maxStdoutBytes?: number;
+  maxStderrBytes?: number;
   stdoutPath: string;
   stderrPath: string;
   tmux: Awaited<ReturnType<typeof createTmuxSessionInfo>>;
-}): Promise<{ stdout: string; stderr: string; exitCode: number; timedOut: boolean }> {
-  const result = await execWithStreaming(options);
-  const [stdout, stderr] = await Promise.all([readFile(result.stdoutPath, "utf8"), readFile(result.stderrPath, "utf8")]);
-  return { stdout, stderr, exitCode: result.exitCode, timedOut: result.timedOut };
+}): Promise<StreamingCommandResult> {
+  return execWithStreaming(options);
 }
 
-function throwIfFailed(input: { result: { stderr: string; exitCode: number; timedOut: boolean }; executorName: string; timeoutMs?: number }): void {
+function throwIfFailed(input: { result: StreamingCommandResult; executorName: string; limits: ExecutorRuntimeLimits }): void {
   if (input.result.exitCode === 0) {
     return;
   }
+  if (input.result.limitExceeded) {
+    throw new Error(executorLimitFailureMessage({ executorName: input.executorName, limitExceeded: input.result.limitExceeded }));
+  }
   throw new Error(
     input.result.timedOut
-      ? `Executor '${input.executorName}' timed out after ${input.timeoutMs}ms.`
+      ? `Executor '${input.executorName}' timed out after ${input.limits.timeoutMs}ms.`
       : input.result.stderr.trim() || `Executor '${input.executorName}' exited with code ${input.result.exitCode}.`
   );
 }
@@ -66,6 +82,7 @@ export async function runTerminalAgentBlock(options: {
   const prompt = reviewContract ? appendReviewResultFileInstruction(options.prompt, reviewContract) : options.prompt;
   const stdoutPath = join(run.runDir, "stdout.md");
   const stderrPath = join(run.runDir, "stderr.log");
+  const limits = executorRuntimeLimits(options.profile);
   const tmux = await createTmuxSessionInfo({
     runDir: run.runDir,
     runId: run.runId,
@@ -81,7 +98,9 @@ export async function runTerminalAgentBlock(options: {
     cwd: executionCwd,
     stdin: prompt,
     env: workspaceExecutorEnv(workspace, reviewContract ? reviewResultEnvironment(reviewContract) : undefined),
-    timeoutMs: options.profile.timeoutMs,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     stdoutPath,
     stderrPath,
     tmux
@@ -93,11 +112,13 @@ export async function runTerminalAgentBlock(options: {
     args: options.profile.args,
     projectRoot: workspace.rootPath,
     executionCwd,
-    timeoutMs: options.profile.timeoutMs ?? null,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     timedOut: result.timedOut,
     agentSessionId: null
   });
-  throwIfFailed({ result, executorName: options.executorName, timeoutMs: options.profile.timeoutMs });
+  throwIfFailed({ result, executorName: options.executorName, limits });
   if (options.claim.blockType === "review") {
     if (!reviewResultPath) {
       throw new Error(`Executor '${options.executorName}' did not prepare a review result path.`);
@@ -132,6 +153,7 @@ export async function runTerminalAgentFeedback(options: {
   await mkdir(runDir, { recursive: true });
   await writeFile(join(runDir, "prompt.md"), options.claim.content, "utf8");
   const tmux = await createTmuxSessionInfo({ runDir, runId, tmuxOwnerRunId: options.tmuxOwnerRunId, kind: "feedback", enabled: options.tmuxEnabled });
+  const limits = executorRuntimeLimits(options.profile);
   await writeJsonFile(metadataPath, {
     runId,
     feedbackId: options.claim.feedbackId,
@@ -146,7 +168,9 @@ export async function runTerminalAgentFeedback(options: {
     exitCode: null,
     command: options.profile.command,
     args: options.profile.args,
-    timeoutMs: options.profile.timeoutMs ?? null,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     timedOut: false,
     agentSessionId: null,
     ...tmuxMetadataPatch(tmux)
@@ -157,7 +181,9 @@ export async function runTerminalAgentFeedback(options: {
     cwd: options.executionCwd,
     stdin: options.claim.content,
     env: workspaceExecutorEnv({ planweaveHome: options.planweaveHome }),
-    timeoutMs: options.profile.timeoutMs,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     stdoutPath: join(runDir, "stdout.md"),
     stderrPath: join(runDir, "stderr.log"),
     tmux
@@ -165,10 +191,12 @@ export async function runTerminalAgentFeedback(options: {
   await finishRunMetadata(metadataPath, {
     finishedAt: new Date().toISOString(),
     exitCode: result.exitCode,
-    timeoutMs: options.profile.timeoutMs ?? null,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     timedOut: result.timedOut
   });
-  throwIfFailed({ result, executorName: options.executorName, timeoutMs: options.profile.timeoutMs });
+  throwIfFailed({ result, executorName: options.executorName, limits });
   const reportPath = join(runDir, "report.md");
   await writeFile(reportPath, result.stdout, "utf8");
   return { kind: "feedback", reportPath, runId, executor: options.executorName, adapter: options.profile.adapter, agentSessionId: null, ...result };

@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createWriteStream, constants } from "node:fs";
 import type { WriteStream } from "node:fs";
-import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, open, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import { writeJsonFile } from "../json.js";
@@ -11,6 +11,93 @@ import { runCommandInTmux, type TmuxSessionInfo } from "./tmuxExecutor.js";
 
 export type BlockClaim = Extract<ClaimResult, { kind: "block" }>;
 export type FeedbackClaim = Extract<ClaimResult, { kind: "feedback" }>;
+
+export const DEFAULT_EXECUTOR_TIMEOUT_MS = 30 * 60 * 1000;
+export const DEFAULT_EXECUTOR_MAX_STDOUT_BYTES = 10 * 1024 * 1024;
+export const DEFAULT_EXECUTOR_MAX_STDERR_BYTES = 2 * 1024 * 1024;
+export const EXECUTOR_FORCE_KILL_GRACE_MS = 500;
+
+export type ExecutorRuntimeLimits = {
+  timeoutMs: number;
+  maxStdoutBytes: number;
+  maxStderrBytes: number;
+};
+
+export type ExecutorOutputLimitExceeded = {
+  stream: "stdout" | "stderr";
+  limitBytes: number;
+};
+
+export type StreamingCommandResult = {
+  stdoutPath: string;
+  stderrPath: string;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  timedOut: boolean;
+  limitExceeded?: ExecutorOutputLimitExceeded;
+};
+
+export type StdinCommandResult = {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  timedOut: boolean;
+  limitExceeded?: ExecutorOutputLimitExceeded;
+};
+
+export function executorRuntimeLimits(profile: Pick<ExecutorProfile, "adapter"> & Partial<ExecutorRuntimeLimits>): ExecutorRuntimeLimits {
+  return {
+    timeoutMs: profile.timeoutMs ?? DEFAULT_EXECUTOR_TIMEOUT_MS,
+    maxStdoutBytes: profile.maxStdoutBytes ?? DEFAULT_EXECUTOR_MAX_STDOUT_BYTES,
+    maxStderrBytes: profile.maxStderrBytes ?? DEFAULT_EXECUTOR_MAX_STDERR_BYTES
+  };
+}
+
+export function executorLimitFailureMessage(input: { executorName: string; limitExceeded: ExecutorOutputLimitExceeded }): string {
+  return `Executor '${input.executorName}' exceeded ${input.limitExceeded.stream} output limit of ${input.limitExceeded.limitBytes} bytes; partial output was preserved.`;
+}
+
+function terminateChildWithFallback(
+  child: ReturnType<typeof spawn>,
+  forceKillTimeout: { value: ReturnType<typeof setTimeout> | undefined }
+): void {
+  child.kill("SIGTERM");
+  if (!forceKillTimeout.value) {
+    forceKillTimeout.value = setTimeout(() => {
+      child.kill("SIGKILL");
+    }, EXECUTOR_FORCE_KILL_GRACE_MS);
+    forceKillTimeout.value.unref();
+  }
+}
+
+function clearTimer(timer: { value: ReturnType<typeof setTimeout> | undefined }): void {
+  if (timer.value) {
+    clearTimeout(timer.value);
+    timer.value = undefined;
+  }
+}
+
+function outputLimitMarker(streamName: "stdout" | "stderr", limitBytes: number): string {
+  return `\n[planweave: ${streamName} output truncated after ${limitBytes} bytes; executor terminated]\n`;
+}
+
+export async function readBoundedTextFile(path: string, limitBytes: number): Promise<{ text: string; truncated: boolean }> {
+  const file = await open(path, "r");
+  try {
+    const stats = await file.stat();
+    const bytesToRead = Math.min(stats.size, limitBytes);
+    const buffer = Buffer.alloc(bytesToRead);
+    const { bytesRead } = await file.read(buffer, 0, bytesToRead, 0);
+    const text = buffer.subarray(0, bytesRead).toString("utf8");
+    if (stats.size <= limitBytes) {
+      return { text, truncated: false };
+    }
+    return { text: `${text}\n[planweave: output summary truncated after ${limitBytes} bytes]\n`, truncated: true };
+  } finally {
+    await file.close();
+  }
+}
 
 export function workspaceExecutorEnv(workspace: Pick<ProjectWorkspace, "planweaveHome">, env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return {
@@ -90,7 +177,11 @@ export async function execWithStdin(options: {
   stdin: string;
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
-}): Promise<{ stdout: string; stderr: string; exitCode: number; timedOut: boolean }> {
+  maxStdoutBytes?: number;
+  maxStderrBytes?: number;
+}): Promise<StdinCommandResult> {
+  const maxStdoutBytes = options.maxStdoutBytes ?? DEFAULT_EXECUTOR_MAX_STDOUT_BYTES;
+  const maxStderrBytes = options.maxStderrBytes ?? DEFAULT_EXECUTOR_MAX_STDERR_BYTES;
   return new Promise((resolve, reject) => {
     const child = spawn(options.command, options.args, {
       cwd: options.cwd,
@@ -99,30 +190,94 @@ export async function execWithStdin(options: {
     });
     let stdout = "";
     let stderr = "";
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
     let timedOut = false;
     let timeout: ReturnType<typeof setTimeout> | undefined;
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
-      stdout += chunk;
-    });
-    child.stderr.on("data", (chunk: string) => {
-      stderr += chunk;
-    });
-    child.on("error", reject);
+    const forceKillTimeout: { value: ReturnType<typeof setTimeout> | undefined } = { value: undefined };
+    const runtimeTimeout: { value: ReturnType<typeof setTimeout> | undefined } = { value: undefined };
+    let settled = false;
+    let limitExceeded: ExecutorOutputLimitExceeded | undefined;
+
+    const terminateChild = (): void => {
+      terminateChildWithFallback(child, forceKillTimeout);
+    };
+
+    const writeBoundedOutput = (streamName: "stdout" | "stderr", chunk: Buffer): void => {
+      if (limitExceeded) {
+        return;
+      }
+      const currentBytes = streamName === "stdout" ? stdoutBytes : stderrBytes;
+      const limitBytes = streamName === "stdout" ? maxStdoutBytes : maxStderrBytes;
+      const remainingBytes = limitBytes - currentBytes;
+      const allowedChunk = remainingBytes > 0 ? chunk.subarray(0, remainingBytes) : Buffer.alloc(0);
+      if (allowedChunk.length > 0) {
+        const allowedText = allowedChunk.toString("utf8");
+        if (streamName === "stdout") {
+          stdout += allowedText;
+          stdoutBytes += allowedChunk.length;
+        } else {
+          stderr += allowedText;
+          stderrBytes += allowedChunk.length;
+        }
+      }
+      if (currentBytes + chunk.length <= limitBytes) {
+        return;
+      }
+      const marker = outputLimitMarker(streamName, limitBytes);
+      if (streamName === "stdout") {
+        stdout += marker;
+      } else {
+        stderr += marker;
+      }
+      limitExceeded = { stream: streamName, limitBytes };
+      terminateChild();
+    };
+
+    const settleReject = (error: unknown): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      clearTimer(runtimeTimeout);
+      clearTimer(forceKillTimeout);
+      terminateChild();
+      reject(error);
+    };
+
+    child.stdout.on("data", (chunk: Buffer) => writeBoundedOutput("stdout", chunk));
+    child.stderr.on("data", (chunk: Buffer) => writeBoundedOutput("stderr", chunk));
+    child.stdout.on("error", settleReject);
+    child.stderr.on("error", settleReject);
+    child.stdin.on("error", settleReject);
+    child.on("error", settleReject);
     if (options.timeoutMs) {
       timeout = setTimeout(() => {
         timedOut = true;
-        child.kill("SIGTERM");
+        terminateChild();
       }, options.timeoutMs);
+      runtimeTimeout.value = timeout;
     }
     child.on("close", (code) => {
       if (timeout) {
         clearTimeout(timeout);
       }
-      resolve({ stdout, stderr, exitCode: timedOut ? 124 : code ?? 1, timedOut });
+      clearTimer(runtimeTimeout);
+      clearTimer(forceKillTimeout);
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve({ stdout, stderr, exitCode: limitExceeded ? 1 : timedOut ? 124 : code ?? 1, timedOut, limitExceeded });
     });
-    child.stdin.end(options.stdin);
+    try {
+      child.stdin.end(options.stdin);
+    } catch (error) {
+      settleReject(error);
+    }
   });
 }
 
@@ -142,12 +297,17 @@ export async function execWithStreaming(options: {
   stdoutPath: string;
   stderrPath: string;
   timeoutMs?: number;
+  maxStdoutBytes?: number;
+  maxStderrBytes?: number;
   tmux?: TmuxSessionInfo | null;
   onStdout?: (chunk: string) => void | Promise<void>;
   onStderr?: (chunk: string) => void | Promise<void>;
-}): Promise<{ stdoutPath: string; stderrPath: string; exitCode: number; timedOut: boolean }> {
+}): Promise<StreamingCommandResult> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_EXECUTOR_TIMEOUT_MS;
+  const maxStdoutBytes = options.maxStdoutBytes ?? DEFAULT_EXECUTOR_MAX_STDOUT_BYTES;
+  const maxStderrBytes = options.maxStderrBytes ?? DEFAULT_EXECUTOR_MAX_STDERR_BYTES;
   if (options.tmux) {
-    return runCommandInTmux({
+    const result = await runCommandInTmux({
       command: options.command,
       args: options.args,
       cwd: options.cwd,
@@ -155,11 +315,18 @@ export async function execWithStreaming(options: {
       env: options.env,
       stdoutPath: options.stdoutPath,
       stderrPath: options.stderrPath,
-      timeoutMs: options.timeoutMs,
+      timeoutMs,
+      maxStdoutBytes,
+      maxStderrBytes,
       tmux: options.tmux,
       onStdout: options.onStdout,
       onStderr: options.onStderr
     });
+    const [stdout, stderr] = await Promise.all([readBoundedTextFile(result.stdoutPath, maxStdoutBytes), readBoundedTextFile(result.stderrPath, maxStderrBytes)]);
+    const limitExceeded =
+      result.limitExceeded ??
+      (stdout.truncated ? { stream: "stdout" as const, limitBytes: maxStdoutBytes } : stderr.truncated ? { stream: "stderr" as const, limitBytes: maxStderrBytes } : undefined);
+    return { ...result, stdout: stdout.text, stderr: stderr.text, exitCode: limitExceeded ? 1 : result.exitCode, limitExceeded };
   }
   await mkdir(dirname(options.stdoutPath), { recursive: true });
   await mkdir(dirname(options.stderrPath), { recursive: true });
@@ -174,48 +341,135 @@ export async function execWithStreaming(options: {
     });
     let timedOut = false;
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    const forceKillTimeout: { value: ReturnType<typeof setTimeout> | undefined } = { value: undefined };
+    let stdout = "";
+    let stderr = "";
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let settled = false;
+    let streamsClosed = false;
+    let callbackError: unknown;
+    let limitExceeded: ExecutorOutputLimitExceeded | undefined;
     let callbackChain = Promise.resolve();
+
+    const closeStreams = (): void => {
+      if (streamsClosed) {
+        return;
+      }
+      streamsClosed = true;
+      stdoutStream.destroy();
+      stderrStream.destroy();
+    };
+
+    const terminateChild = (): void => {
+      terminateChildWithFallback(child, forceKillTimeout);
+    };
+
+    const settleReject = (error: unknown): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      terminateChild();
+      closeStreams();
+      reject(error);
+    };
 
     const enqueueCallback = (callback: ((chunk: string) => void | Promise<void>) | undefined, chunk: string): void => {
       if (!callback) {
         return;
       }
-      callbackChain = callbackChain.then(() => callback(chunk));
+      callbackChain = callbackChain.then(() => callback(chunk)).catch((error: unknown) => {
+        callbackError = error;
+        terminateChild();
+      });
     };
 
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
-      if (!stdoutStream.write(chunk)) {
-        child.stdout.pause();
-        stdoutStream.once("drain", () => child.stdout.resume());
+    const writeBoundedOutput = (streamName: "stdout" | "stderr", chunk: Buffer): void => {
+      if (limitExceeded) {
+        return;
       }
-      enqueueCallback(options.onStdout, chunk);
-    });
-    child.stderr.on("data", (chunk: string) => {
-      if (!stderrStream.write(chunk)) {
-        child.stderr.pause();
-        stderrStream.once("drain", () => child.stderr.resume());
+      const stream = streamName === "stdout" ? stdoutStream : stderrStream;
+      const currentBytes = streamName === "stdout" ? stdoutBytes : stderrBytes;
+      const limitBytes = streamName === "stdout" ? maxStdoutBytes : maxStderrBytes;
+      const remainingBytes = limitBytes - currentBytes;
+      const allowedChunk = remainingBytes > 0 ? chunk.subarray(0, remainingBytes) : Buffer.alloc(0);
+      if (allowedChunk.length > 0) {
+        const allowedText = allowedChunk.toString("utf8");
+        if (streamName === "stdout") {
+          stdout += allowedText;
+          stdoutBytes += allowedChunk.length;
+        } else {
+          stderr += allowedText;
+          stderrBytes += allowedChunk.length;
+        }
+        if (!stream.write(allowedChunk)) {
+          const readable = streamName === "stdout" ? child.stdout : child.stderr;
+          readable.pause();
+          stream.once("drain", () => readable.resume());
+        }
       }
-      enqueueCallback(options.onStderr, chunk);
-    });
-    child.on("error", reject);
-    if (options.timeoutMs) {
+      if (currentBytes + chunk.length <= limitBytes) {
+        enqueueCallback(streamName === "stdout" ? options.onStdout : options.onStderr, chunk.toString("utf8"));
+        return;
+      }
+      const marker = outputLimitMarker(streamName, limitBytes);
+      stream.write(marker);
+      if (streamName === "stdout") {
+        stdout += marker;
+      } else {
+        stderr += marker;
+      }
+      limitExceeded = { stream: streamName, limitBytes };
+      terminateChild();
+    };
+
+    stdoutStream.on("error", settleReject);
+    stderrStream.on("error", settleReject);
+    child.stdout.on("data", (chunk: Buffer) => writeBoundedOutput("stdout", chunk));
+    child.stderr.on("data", (chunk: Buffer) => writeBoundedOutput("stderr", chunk));
+    child.on("error", settleReject);
+    child.stdin.on("error", settleReject);
+    if (timeoutMs) {
       timeout = setTimeout(() => {
         timedOut = true;
-        child.kill("SIGTERM");
-      }, options.timeoutMs);
+        terminateChild();
+      }, timeoutMs);
     }
     child.on("close", (code) => {
       if (timeout) {
         clearTimeout(timeout);
       }
+      clearTimer(forceKillTimeout);
+      if (settled) {
+        return;
+      }
+      settled = true;
       Promise.all([finishWriteStream(stdoutStream), finishWriteStream(stderrStream), callbackChain])
         .then(() => {
-          resolve({ stdoutPath: options.stdoutPath, stderrPath: options.stderrPath, exitCode: timedOut ? 124 : code ?? 1, timedOut });
+          if (callbackError) {
+            reject(callbackError);
+            return;
+          }
+          resolve({
+            stdoutPath: options.stdoutPath,
+            stderrPath: options.stderrPath,
+            stdout,
+            stderr,
+            exitCode: limitExceeded ? 1 : timedOut ? 124 : code ?? 1,
+            timedOut,
+            limitExceeded
+          });
         })
         .catch(reject);
     });
-    child.stdin.end(options.stdin);
+    try {
+      child.stdin.end(options.stdin);
+    } catch (error) {
+      settleReject(error);
+    }
   });
 }

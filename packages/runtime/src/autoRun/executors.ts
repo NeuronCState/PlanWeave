@@ -11,7 +11,7 @@ import type {
 } from "../types.js";
 import { claudeCodeIntegration } from "./claudeCodeIntegration.js";
 import { codexIntegration } from "./codexIntegration.js";
-import { execWithStdin, workspaceExecutionCwd, type BlockClaim } from "./executorShared.js";
+import { execWithStdin, executorLimitFailureMessage, executorRuntimeLimits, workspaceExecutionCwd, type BlockClaim } from "./executorShared.js";
 import type { ExecutorIntegration, ExecutorRuntimeOptions } from "./executorIntegration.js";
 import { localReviewIntegration } from "./localReviewIntegration.js";
 import { manualIntegration } from "./manualExecutor.js";
@@ -307,6 +307,7 @@ export async function testExecutorProfile(options: {
 
   let result;
   const versionTimeoutMs = options.versionTimeoutMs ?? executorPreflightVersionTimeoutMs;
+  const limits = executorRuntimeLimits({ ...profile, timeoutMs: versionTimeoutMs });
   const executionCwd = workspaceExecutionCwd(workspace);
   try {
     result = await execWithStdin({
@@ -314,7 +315,9 @@ export async function testExecutorProfile(options: {
       args: ["--version"],
       cwd: executionCwd,
       stdin: "",
-      timeoutMs: versionTimeoutMs
+      timeoutMs: limits.timeoutMs,
+      maxStdoutBytes: limits.maxStdoutBytes,
+      maxStderrBytes: limits.maxStderrBytes
     });
   } catch (error) {
     return finalizePreflightResult({
@@ -339,7 +342,18 @@ export async function testExecutorProfile(options: {
 
   const output = result.stdout.trim() || result.stderr.trim();
   const versionCheck: ExecutorPreflightCheck =
-    result.timedOut
+    result.limitExceeded
+      ? {
+          check: "command_version",
+          status: "failed",
+          message: executorLimitFailureMessage({ executorName: profile.name, limitExceeded: result.limitExceeded }),
+          command: profile.command,
+          cwd: executionCwd,
+          output,
+          exitCode: result.exitCode,
+          timedOut: false
+        }
+      : result.timedOut
       ? {
           check: "command_version",
           status: "failed",

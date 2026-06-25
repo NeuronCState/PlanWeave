@@ -1,4 +1,5 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,7 +7,32 @@ import { createTmuxSessionInfo, isTmuxAvailable, killActiveTmuxSessions, killTmu
 
 let tempDirs: string[] = [];
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForFile(path: string): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      await stat(path);
+      return;
+    } catch {
+      await sleep(100);
+    }
+  }
+  await stat(path);
+}
+
+async function hasTmuxSession(sessionName: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const child = spawn("tmux", ["has-session", "-t", sessionName], { stdio: "ignore" });
+    child.on("error", () => resolve(false));
+    child.on("close", (code) => resolve(code === 0));
+  });
+}
+
 afterEach(async () => {
+  await killActiveTmuxSessions();
   await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
   tempDirs = [];
 });
@@ -94,6 +120,85 @@ describe("tmux executor", () => {
     await expect(running).resolves.toMatchObject({ exitCode: 130, timedOut: false });
   });
 
+  it("terminates a tmux-backed command when stdout exceeds its limit", async () => {
+    if (!(await isTmuxAvailable())) {
+      return;
+    }
+    const dir = await mkdtemp(join(tmpdir(), "planweave-tmux-limit-"));
+    tempDirs.push(dir);
+    const tmux = await createTmuxSessionInfo({
+      runDir: dir,
+      runId: "RUN-LIMIT",
+      ref: "T-001#B-003",
+      kind: "block"
+    });
+    const stdoutPath = join(dir, "stdout.md");
+    const donePath = join(dir, ".tmux-stdout.md", "done.json");
+
+    const result = await runCommandInTmux({
+      command: process.execPath,
+      args: ["-e", "process.stdout.write('x'.repeat(1024 * 1024)); setTimeout(() => {}, 1000);"],
+      cwd: dir,
+      stdin: "",
+      stdoutPath,
+      stderrPath: join(dir, "stderr.log"),
+      timeoutMs: 5000,
+      maxStdoutBytes: 128,
+      maxStderrBytes: 128,
+      tmux: tmux!,
+      onStdout: () => undefined,
+      onStderr: () => undefined
+    });
+
+    expect(result).toMatchObject({
+      exitCode: 1,
+      timedOut: false,
+      limitExceeded: { stream: "stdout", limitBytes: 128 }
+    });
+    expect((await stat(stdoutPath)).size).toBeLessThan(256);
+    await expect(readFile(stdoutPath, "utf8")).resolves.toContain("stdout output truncated after 128 bytes");
+    await expect(readFile(donePath, "utf8").then((content) => JSON.parse(content) as Record<string, unknown>)).resolves.toMatchObject({
+      exitCode: 1,
+      timedOut: false,
+      limitExceeded: { stream: "stdout", limitBytes: 128 }
+    });
+  });
+
+  it("kills a tmux session when a stdout callback rejects", async () => {
+    if (!(await isTmuxAvailable())) {
+      return;
+    }
+    const dir = await mkdtemp(join(tmpdir(), "planweave-tmux-callback-"));
+    tempDirs.push(dir);
+    const tmux = await createTmuxSessionInfo({
+      runDir: dir,
+      runId: "RUN-CALLBACK",
+      ref: "T-001#B-004",
+      kind: "block"
+    });
+
+    await expect(
+      runCommandInTmux({
+        command: process.execPath,
+        args: ["-e", "process.on('SIGTERM', () => {}); process.stdout.write('trigger'); setInterval(() => {}, 100);"],
+        cwd: dir,
+        stdin: "",
+        stdoutPath: join(dir, "stdout.md"),
+        stderrPath: join(dir, "stderr.log"),
+        timeoutMs: 5000,
+        maxStdoutBytes: 1024,
+        maxStderrBytes: 1024,
+        tmux: tmux!,
+        onStdout: () => {
+          throw new Error("tmux stdout callback failed");
+        },
+        onStderr: () => undefined
+      })
+    ).rejects.toThrow("tmux stdout callback failed");
+
+    await expect(hasTmuxSession(tmux!.sessionName)).resolves.toBe(false);
+  });
+
   it("kills only active tmux sessions owned by the requested run", async () => {
     if (!(await isTmuxAvailable())) {
       return;
@@ -146,5 +251,72 @@ describe("tmux executor", () => {
     await expect(runA).resolves.toMatchObject({ exitCode: 130, timedOut: false });
     await expect(killActiveTmuxSessions()).resolves.toContain(runBTmux!.sessionName);
     await expect(runB).resolves.toMatchObject({ exitCode: 130, timedOut: false });
+  });
+
+  it("force stops the running tmux command process when killing sessions for a run", async () => {
+    if (!(await isTmuxAvailable())) {
+      return;
+    }
+    const dir = await mkdtemp(join(tmpdir(), "planweave-tmux-force-stop-"));
+    tempDirs.push(dir);
+    const heartbeatPath = join(dir, "heartbeat.txt");
+    const childPidPath = join(dir, "child.pid");
+    const tmux = await createTmuxSessionInfo({
+      runDir: dir,
+      runId: "RUN-FORCE-STOP",
+      tmuxOwnerRunId: "AUTO-RUN-FORCE-STOP",
+      ref: "T-001#B-003",
+      kind: "block"
+    });
+
+    let childPid: number | null = null;
+    try {
+      const running = runCommandInTmux({
+        command: process.execPath,
+        args: [
+          "-e",
+          `
+const { spawn } = require("node:child_process");
+const childCode = ${JSON.stringify(`
+const fs = require("node:fs");
+const heartbeatPath = ${JSON.stringify(heartbeatPath)};
+const childPidPath = ${JSON.stringify(childPidPath)};
+process.on("SIGTERM", () => {});
+fs.writeFileSync(childPidPath, String(process.pid));
+fs.writeFileSync(heartbeatPath, "start");
+setInterval(() => fs.appendFileSync(heartbeatPath, "x"), 50);
+`)};
+const child = spawn(process.execPath, ["-e", childCode], { detached: true, stdio: "ignore" });
+child.unref();
+setInterval(() => {}, 100);
+`
+        ],
+        cwd: dir,
+        stdin: "",
+        stdoutPath: join(dir, "stdout.md"),
+        stderrPath: join(dir, "stderr.log"),
+        timeoutMs: 10000,
+        tmux: tmux!,
+        onStdout: () => undefined,
+        onStderr: () => undefined
+      });
+
+      await waitForFile(heartbeatPath);
+      await waitForFile(childPidPath);
+      childPid = Number.parseInt(await readFile(childPidPath, "utf8"), 10);
+      await expect(killTmuxSessionsForRun("AUTO-RUN-FORCE-STOP")).resolves.toEqual([tmux!.sessionName]);
+      await expect(running).resolves.toMatchObject({ exitCode: 130, timedOut: false });
+      const sizeAfterStop = (await stat(heartbeatPath)).size;
+      await sleep(800);
+      expect((await stat(heartbeatPath)).size).toBe(sizeAfterStop);
+    } finally {
+      if (childPid !== null) {
+        try {
+          process.kill(childPid, "SIGKILL");
+        } catch {
+          // The process is expected to be gone when termination works.
+        }
+      }
+    }
   });
 });

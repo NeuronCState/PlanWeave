@@ -50,7 +50,9 @@ describe("plan-package/v1 manifest schema", () => {
         command: "codex",
         args: ["exec", "-"],
         sandbox: "workspace-write",
-        timeoutMs: 120000
+        timeoutMs: 120000,
+        maxStdoutBytes: 4096,
+        maxStderrBytes: 2048
       })
       .withExecutor("codex-reviewer", {
         adapter: "codex-exec",
@@ -87,6 +89,8 @@ describe("plan-package/v1 manifest schema", () => {
     expect(result.success).toBe(true);
     expect(result.data?.execution.defaultExecutor).toBe("codex-auto");
     expect(result.data?.executors?.["codex-auto"]?.timeoutMs).toBe(120000);
+    expect(result.data?.executors?.["codex-auto"]?.maxStdoutBytes).toBe(4096);
+    expect(result.data?.executors?.["codex-auto"]?.maxStderrBytes).toBe(2048);
     expect(result.data?.executors?.["codex-reviewer"]?.role).toBe("reviewer");
     expect(result.data?.executors?.opencode?.adapter).toBe("opencode-exec");
     expect(result.data?.executors?.["claude-code"]?.adapter).toBe("claude-code-exec");
@@ -114,6 +118,21 @@ describe("plan-package/v1 manifest schema", () => {
         command: "codex",
         args: ["exec", "-"],
         timeoutMs: 0
+      })
+      .build();
+
+    const result = manifestSchema.safeParse(manifest);
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects non-positive executor output limits", () => {
+    const manifest = manifestTestBuilder()
+      .withExecutor("codex-auto", {
+        adapter: "codex-exec",
+        command: "codex",
+        args: ["exec", "-"],
+        maxStdoutBytes: 0
       })
       .build();
 

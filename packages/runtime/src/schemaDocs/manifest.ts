@@ -6,7 +6,14 @@ import {
   type ExecutorAdapterName,
   type ReviewTriggerCondition
 } from "../types.js";
+import { DEFAULT_EXECUTOR_MAX_STDERR_BYTES, DEFAULT_EXECUTOR_MAX_STDOUT_BYTES, DEFAULT_EXECUTOR_TIMEOUT_MS } from "../autoRun/executorShared.js";
 import type { SchemaDocument } from "./types.js";
+
+const runtimeLimitFields = {
+  timeoutMs: `positive integer milliseconds, optional; default runtime limit: ${DEFAULT_EXECUTOR_TIMEOUT_MS}`,
+  maxStdoutBytes: `positive integer bytes, optional; default runtime limit: ${DEFAULT_EXECUTOR_MAX_STDOUT_BYTES}`,
+  maxStderrBytes: `positive integer bytes, optional; default runtime limit: ${DEFAULT_EXECUTOR_MAX_STDERR_BYTES}`
+};
 
 const executorProfileSchema: Record<ExecutorAdapterName, Record<string, unknown>> = {
   manual: { adapter: executorAdapter.manual },
@@ -16,33 +23,33 @@ const executorProfileSchema: Record<ExecutorAdapterName, Record<string, unknown>
     args: 'string[], default: ["exec", "-"]',
     sandbox: '"read-only" | "workspace-write" | "danger-full-access", optional',
     role: "string, optional",
-    timeoutMs: "positive integer, optional"
+    ...runtimeLimitFields
   },
   "opencode-exec": {
     adapter: executorAdapter.opencodeExec,
     command: "string, non-empty",
     args: 'string[], default: ["run", "-"]',
     sandbox: '"read-only" | "workspace-write" | "danger-full-access", optional',
-    timeoutMs: "positive integer, optional"
+    ...runtimeLimitFields
   },
   "claude-code-exec": {
     adapter: executorAdapter.claudeCodeExec,
     command: "string, non-empty",
     args: 'string[], default: ["-p"]',
-    timeoutMs: "positive integer, optional"
+    ...runtimeLimitFields
   },
   "pi-exec": {
     adapter: executorAdapter.piExec,
     command: "string, non-empty",
     args: 'string[], default: ["-p"]',
-    timeoutMs: "positive integer, optional"
+    ...runtimeLimitFields
   },
   "local-review": {
     adapter: executorAdapter.localReview,
     command: "string, non-empty",
     args: "string[], default: []",
     sandbox: '"read-only" | "workspace-write" | "danger-full-access", optional',
-    timeoutMs: "positive integer, optional"
+    ...runtimeLimitFields
   }
 };
 

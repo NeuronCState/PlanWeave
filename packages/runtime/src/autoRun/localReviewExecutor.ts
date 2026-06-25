@@ -1,11 +1,33 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import { writeJsonFile } from "../json.js";
 import { resolvePackageWorkspace } from "../package/loadPackage.js";
 import type { ExecutorAdapterResult, LocalReviewExecutorProfile, PackageWorkspaceRef } from "../types.js";
-import { execWithStreaming, finishRunMetadata, nextRunId, prepareBlockRun, workspaceExecutionCwd, workspaceExecutorEnv, type BlockClaim, type FeedbackClaim } from "./executorShared.js";
+import {
+  execWithStreaming,
+  executorLimitFailureMessage,
+  executorRuntimeLimits,
+  finishRunMetadata,
+  nextRunId,
+  prepareBlockRun,
+  workspaceExecutionCwd,
+  workspaceExecutorEnv,
+  type BlockClaim,
+  type ExecutorRuntimeLimits,
+  type FeedbackClaim,
+  type StreamingCommandResult
+} from "./executorShared.js";
 import { createTmuxSessionInfo, tmuxMetadataPatch } from "./tmuxExecutor.js";
+
+function executorFailureMessage(input: { executorName: string; result: StreamingCommandResult; limits: ExecutorRuntimeLimits }): string {
+  if (input.result.limitExceeded) {
+    return executorLimitFailureMessage({ executorName: input.executorName, limitExceeded: input.result.limitExceeded });
+  }
+  return input.result.timedOut
+    ? `Executor '${input.executorName}' timed out after ${input.limits.timeoutMs}ms.`
+    : input.result.stderr.trim() || `Executor '${input.executorName}' exited with code ${input.result.exitCode}.`;
+}
 
 export async function runLocalReviewBlock(options: {
   projectRoot: PackageWorkspaceRef;
@@ -31,6 +53,7 @@ export async function runLocalReviewBlock(options: {
   const { blockId } = parseBlockRef(options.claim.ref);
   const stdoutPath = join(run.runDir, "stdout.md");
   const stderrPath = join(run.runDir, "stderr.log");
+  const limits = executorRuntimeLimits(options.profile);
   const tmux = await createTmuxSessionInfo({
     runDir: run.runDir,
     runId: run.runId,
@@ -50,41 +73,35 @@ export async function runLocalReviewBlock(options: {
       PLANWEAVE_TASK_ID: options.claim.taskId,
       PLANWEAVE_BLOCK_ID: blockId
     }),
-    timeoutMs: options.profile.timeoutMs,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     stdoutPath,
     stderrPath,
     tmux
   });
-  const result = {
-    stdout: await readFile(stdoutPath, "utf8"),
-    stderr: await readFile(stderrPath, "utf8"),
-    exitCode: streamed.exitCode,
-    timedOut: streamed.timedOut
-  };
   await finishRunMetadata(run.metadataPath, {
     finishedAt: new Date().toISOString(),
-    exitCode: result.exitCode,
+    exitCode: streamed.exitCode,
     command: options.profile.command,
     args: options.profile.args,
     projectRoot: workspace.rootPath,
     executionCwd,
     sandbox: options.profile.sandbox ?? null,
-    timeoutMs: options.profile.timeoutMs ?? null,
-    timedOut: result.timedOut,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
+    timedOut: streamed.timedOut,
     agentSessionId: null,
     codexSessionId: null,
     resumed: false
   });
-  if (result.exitCode !== 0) {
-    throw new Error(
-      result.timedOut
-        ? `Executor '${options.executorName}' timed out after ${options.profile.timeoutMs}ms.`
-        : result.stderr.trim() || `Executor '${options.executorName}' exited with code ${result.exitCode}.`
-    );
+  if (streamed.exitCode !== 0) {
+    throw new Error(executorFailureMessage({ executorName: options.executorName, result: streamed, limits }));
   }
   const resultPath = join(run.runDir, "review-result.json");
-  await writeJsonFile(resultPath, JSON.parse(result.stdout.trim()));
-  return { kind: "review", resultPath, runId: run.runId, executor: options.executorName, adapter: "local-review", agentSessionId: null, codexSessionId: null, ...result };
+  await writeJsonFile(resultPath, JSON.parse(streamed.stdout.trim()));
+  return { kind: "review", resultPath, runId: run.runId, executor: options.executorName, adapter: "local-review", agentSessionId: null, codexSessionId: null, ...streamed };
 }
 
 export async function runLocalReviewFeedback(options: {
@@ -104,6 +121,7 @@ export async function runLocalReviewFeedback(options: {
   const metadataPath = join(runDir, "metadata.json");
   const stdoutPath = join(runDir, "stdout.md");
   const stderrPath = join(runDir, "stderr.log");
+  const limits = executorRuntimeLimits(options.profile);
   const startedAt = new Date().toISOString();
   await mkdir(runDir, { recursive: true });
   await writeFile(join(runDir, "prompt.md"), options.claim.content, "utf8");
@@ -122,7 +140,9 @@ export async function runLocalReviewFeedback(options: {
     exitCode: null,
     command: options.profile.command,
     args: options.profile.args,
-    timeoutMs: options.profile.timeoutMs ?? null,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     timedOut: false,
     agentSessionId: null,
     codexSessionId: null,
@@ -134,35 +154,29 @@ export async function runLocalReviewFeedback(options: {
     cwd: options.executionCwd,
     stdin: options.claim.content,
     env: workspaceExecutorEnv({ planweaveHome: options.planweaveHome }),
-    timeoutMs: options.profile.timeoutMs,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
     stdoutPath,
     stderrPath,
     tmux
   });
-  const result = {
-    stdout: await readFile(stdoutPath, "utf8"),
-    stderr: await readFile(stderrPath, "utf8"),
-    exitCode: streamed.exitCode,
-    timedOut: streamed.timedOut
-  };
   await finishRunMetadata(metadataPath, {
     finishedAt: new Date().toISOString(),
-    exitCode: result.exitCode,
+    exitCode: streamed.exitCode,
     command: options.profile.command,
     args: options.profile.args,
-    timeoutMs: options.profile.timeoutMs ?? null,
-    timedOut: result.timedOut,
+    timeoutMs: limits.timeoutMs,
+    maxStdoutBytes: limits.maxStdoutBytes,
+    maxStderrBytes: limits.maxStderrBytes,
+    timedOut: streamed.timedOut,
     agentSessionId: null,
     codexSessionId: null
   });
-  if (result.exitCode !== 0) {
-    throw new Error(
-      result.timedOut
-        ? `Executor '${options.executorName}' timed out after ${options.profile.timeoutMs}ms.`
-        : result.stderr.trim() || `Executor '${options.executorName}' exited with code ${result.exitCode}.`
-    );
+  if (streamed.exitCode !== 0) {
+    throw new Error(executorFailureMessage({ executorName: options.executorName, result: streamed, limits }));
   }
   const reportPath = join(runDir, "report.md");
-  await writeFile(reportPath, result.stdout, "utf8");
-  return { kind: "feedback", reportPath, runId, executor: options.executorName, adapter: "local-review", agentSessionId: null, codexSessionId: null, ...result };
+  await writeFile(reportPath, streamed.stdout, "utf8");
+  return { kind: "feedback", reportPath, runId, executor: options.executorName, adapter: "local-review", agentSessionId: null, codexSessionId: null, ...streamed };
 }

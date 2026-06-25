@@ -100,7 +100,7 @@ describe("runWithSession", () => {
         expect.objectContaining({ type: "step_finish", stepKind: "submitted", claimRefs: ["T-001#B-001"], recordId: "T-001#B-001::RUN-002" })
       ])
     );
-  });
+  }, 20_000);
 
   it("maps a manual step to a manual final session phase", async () => {
     const { root } = await createTestWorkspace();

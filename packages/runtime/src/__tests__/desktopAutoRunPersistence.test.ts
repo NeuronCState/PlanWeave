@@ -6,6 +6,7 @@ import {
   createTaskCanvas,
   getAutoRunState,
   getLatestAutoRunSummary,
+  listAutoRunEvents,
   resolveTaskCanvasWorkspace,
   resumeAutoRun,
   startAutoRun,
@@ -96,6 +97,15 @@ function desktopRunNumber(runId: string): number {
   const match = /^DESKTOP-RUN-(\d+)$/.exec(runId);
   expect(match).not.toBeNull();
   return Number.parseInt(match![1], 10);
+}
+
+async function waitForRun(runId: string, predicate: (state: Awaited<ReturnType<typeof getAutoRunState>>) => boolean) {
+  let state = await getAutoRunState(runId);
+  for (let attempt = 0; attempt < 500 && !predicate(state); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    state = await getAutoRunState(runId);
+  }
+  return state;
 }
 
 describe("desktop auto run persistence", () => {
@@ -327,6 +337,33 @@ describe("desktop auto run persistence", () => {
     await expect(resumeAutoRun(paused.runId)).resolves.toMatchObject({
       runId: paused.runId,
       phase: "running"
+    });
+  });
+
+  it("keeps stopped runs readable from disk after releasing terminal state", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { root } = await createTestWorkspace(manifest);
+
+    const started = await startAutoRun(root, null, { kind: "project" }, 0, noTmux);
+    startedRunIds.add(started.runId);
+    expect(await waitForRun(started.runId, (state) => state.phase === "paused")).toMatchObject({
+      runId: started.runId,
+      phase: "paused"
+    });
+
+    await expect(stopAutoRun(started.runId)).resolves.toMatchObject({
+      runId: started.runId,
+      phase: "stopped"
+    });
+    await expect(getAutoRunState(started.runId)).rejects.toThrow(`Auto Run '${started.runId}' does not exist.`);
+    await expect(getLatestAutoRunSummary(root, null)).resolves.toMatchObject({
+      runId: started.runId,
+      phase: "stopped"
+    });
+    await expect(listAutoRunEvents(root, null, started.runId)).resolves.toMatchObject({
+      runId: started.runId,
+      diagnostics: [],
+      events: expect.arrayContaining([expect.objectContaining({ type: "run_stopped", phase: "stopped" })])
     });
   });
 

@@ -46,6 +46,7 @@ async function setState(runId: string, patch: Partial<DesktopAutoRunState>, even
   if (changedEventType) {
     emitAutoRunChanged(next, changedEventType);
   }
+  releaseRunResources(runId, next);
   return next;
 }
 
@@ -165,6 +166,7 @@ async function runLoop(runId: string): Promise<void> {
     }
   } finally {
     activeLoops.delete(runId);
+    releaseRunResources(runId);
   }
 }
 
@@ -178,6 +180,17 @@ function canRehydratePersistedRun(state: DesktopAutoRunState): boolean {
 
 function isRunIdConflictProtected(state: DesktopAutoRunState): boolean {
   return state.phase === "running" || state.phase === "pausing" || state.phase === "paused" || state.phase === "manual";
+}
+
+function releaseRunResources(runId: string, state = runs.get(runId)): void {
+  if (!state || isRunIdConflictProtected(state)) {
+    return;
+  }
+  runWorkspaces.delete(runId);
+  if (activeLoops.has(runId)) {
+    return;
+  }
+  runs.delete(runId);
 }
 
 function assertRunIdMatchesExistingTarget(state: DesktopAutoRunState): void {
@@ -276,7 +289,6 @@ export async function stopAutoRun(runId: string): Promise<DesktopAutoRunState> {
   }
   const killed = current.phase === "running" || current.phase === "pausing" ? await killTmuxSessionsForRun(runId) : [];
   const stopped = await setState(runId, { phase: "stopped" }, "run_stopped", { killedTmuxSessions: killed });
-  runWorkspaces.delete(runId);
   return cloneAutoRunState(stopped);
 }
 
@@ -299,7 +311,7 @@ export async function getLatestAutoRunSummary(projectRoot: string, canvasId?: st
     return cloneAutoRunState(latest);
   }
   const persistedLatest = (await listPersistedAutoRunStates(workspace, { hasActiveLoop: (runId) => activeLoops.has(runId) }))
-    .filter((run) => run.projectRoot === workspace.rootPath && run.canvasId === normalizedCanvasId)
+    .filter((run) => (run.projectRoot === projectRoot || run.projectRoot === workspace.rootPath) && run.canvasId === normalizedCanvasId)
     .at(0);
   if (!persistedLatest) {
     return null;

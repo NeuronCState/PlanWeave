@@ -32,6 +32,23 @@ async function waitForRun(runId: string, predicate: (state: Awaited<ReturnType<t
   return state;
 }
 
+async function waitForLatestRunSummary(
+  projectRoot: string,
+  canvasId: string | null,
+  runId: string,
+  predicate: (state: NonNullable<Awaited<ReturnType<typeof getLatestAutoRunSummary>>>) => boolean
+) {
+  let state = await getLatestAutoRunSummary(projectRoot, canvasId);
+  for (let attempt = 0; attempt < 500 && (!state || state.runId !== runId || !predicate(state)); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    state = await getLatestAutoRunSummary(projectRoot, canvasId);
+  }
+  if (!state || state.runId !== runId) {
+    throw new Error(`Auto Run '${runId}' was not the latest summary.`);
+  }
+  return state;
+}
+
 describe("desktop auto run API", () => {
   it("starts, pauses, resumes, stops, and summarizes project-level Auto Run", async () => {
     const manifest = manifestTestBuilder()
@@ -197,8 +214,50 @@ describe("desktop auto run API", () => {
 
     await expect(stopAutoRun(started.runId)).resolves.toMatchObject({ phase: "stopped" });
     await new Promise((resolve) => setTimeout(resolve, 300));
-    await expect(getAutoRunState(started.runId)).resolves.toMatchObject({ phase: "stopped" });
+    await expect(getLatestAutoRunSummary(root, null)).resolves.toMatchObject({ runId: started.runId, phase: "stopped" });
     await expect(readFile(started.eventLogPath, "utf8")).resolves.toContain('"type":"run_stopped"');
+  });
+
+  it("keeps completed runs readable from persisted summaries after releasing terminal state", async () => {
+    const manifest = manifestTestBuilder()
+      .withExecutor("fake-codex", {
+        adapter: "codex-exec",
+        command: process.execPath,
+        args: [
+          "-e",
+          "let input=''; process.stdin.on('data', c => input += c); process.stdin.on('end', () => { console.log('completed auto run ' + input.split('\\n')[0]); });"
+        ]
+      })
+      .withExecutor("pass-review", {
+        adapter: "local-review",
+        command: process.execPath,
+        args: [
+          "-e",
+          "let input=''; process.stdin.on('data', c => input += c); process.stdin.on('end', () => { console.log(JSON.stringify({ reviewBlockRef: 'T-001#R-001', taskId: 'T-001', verdict: 'passed', content: 'review passed' })); });"
+        ]
+      })
+      .withDefaultExecutor("fake-codex")
+      .withBlock("T-001", "R-001", (block) => ({ ...block, executor: "pass-review" }))
+      .build();
+    const { root } = await createTestWorkspace(manifest);
+
+    const started = await startAutoRun(root, null, { kind: "project" }, 5, noTmux);
+    startedRunIds.add(started.runId);
+
+    const completed = await waitForLatestRunSummary(root, null, started.runId, (state) => state.phase === "completed");
+
+    expect(completed).toMatchObject({
+      runId: started.runId,
+      phase: "completed",
+      currentRef: null,
+      latestRecordId: "T-001#R-001::RUN-001",
+      latestOutputSummary: "no_claimable_blocks"
+    });
+    await expect(getAutoRunState(started.runId)).rejects.toThrow(`Auto Run '${started.runId}' does not exist.`);
+    await expect(getLatestAutoRunSummary(root, null)).resolves.toMatchObject({
+      runId: started.runId,
+      phase: "completed"
+    });
   });
 
   it("runs selected task and selected block Auto Run through the Task Manager claim order", async () => {
@@ -293,7 +352,7 @@ describe("desktop auto run API", () => {
 
     const run = await startAutoRun(root, null, { kind: "project" }, 5, noTmux);
     startedRunIds.add(run.runId);
-    const state = await waitForRun(run.runId, (nextState) => nextState.phase !== "running");
+    const state = await waitForLatestRunSummary(root, null, run.runId, (nextState) => nextState.phase !== "running");
 
     expect(state).toMatchObject({
       phase: "blocked",
@@ -341,7 +400,7 @@ describe("desktop auto run API", () => {
 
     const firstRun = await startAutoRun(root, null, { kind: "project" }, 10, noTmux);
     startedRunIds.add(firstRun.runId);
-    const firstState = await waitForRun(firstRun.runId, (nextState) => nextState.phase !== "running");
+    const firstState = await waitForLatestRunSummary(root, null, firstRun.runId, (nextState) => nextState.phase !== "running");
 
     expect(firstState).toMatchObject({
       phase: "blocked",

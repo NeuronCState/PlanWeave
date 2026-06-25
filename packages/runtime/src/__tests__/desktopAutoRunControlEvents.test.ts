@@ -3,7 +3,7 @@ import { access, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { getAutoRunState, pauseAutoRun, resumeAutoRun, startAutoRun, stopAutoRun } from "../desktop/index.js";
+import { getAutoRunState, getLatestAutoRunSummary, pauseAutoRun, resumeAutoRun, startAutoRun, stopAutoRun } from "../desktop/index.js";
 import type { PlanPackageManifest } from "../types.js";
 import { basicManifest, createTestWorkspace } from "./promptTestHelpers.js";
 
@@ -54,6 +54,18 @@ async function waitForEvent(eventLogPath: string, predicate: (event: AutoRunEven
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   throw new Error(`Timed out waiting for Auto Run event. Observed events: ${events.map((event) => event.type).join(", ")}`);
+}
+
+async function waitForRunRelease(runId: string): Promise<void> {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    try {
+      await getAutoRunState(runId);
+    } catch {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`Timed out waiting for Auto Run '${runId}' to release in-memory state.`);
 }
 
 async function waitForPath(path: string): Promise<void> {
@@ -177,7 +189,8 @@ describe("desktop auto run control events", () => {
     });
 
     await expect(stopAutoRun(started.runId)).resolves.toMatchObject({ runId: started.runId, phase: "stopped" });
-    await expect(getAutoRunState(started.runId)).resolves.toMatchObject({ runId: started.runId, phase: "stopped" });
+    await expect(getAutoRunState(started.runId)).rejects.toThrow(`Auto Run '${started.runId}' does not exist.`);
+    await expect(getLatestAutoRunSummary(root, null)).resolves.toMatchObject({ runId: started.runId, phase: "stopped" });
 
     const events = await readAutoRunEvents(manual.eventLogPath);
     expect(events).toEqual(
@@ -214,11 +227,8 @@ describe("desktop auto run control events", () => {
     await waitForPath(markerPath);
     await waitForPath(join(workspace.init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-001", "report.md"));
     await waitForEvent(started.eventLogPath, (event) => event.type === "stopped_step_ignored");
-    await expect(getAutoRunState(started.runId)).resolves.toMatchObject({
-      runId: started.runId,
-      phase: "stopped",
-      stepCount: 0
-    });
+    await waitForRunRelease(started.runId);
+    await expect(getLatestAutoRunSummary(workspace.root, null)).resolves.toMatchObject({ runId: started.runId, phase: "stopped", stepCount: 0 });
 
     const events = await readAutoRunEvents(started.eventLogPath);
     expect(events).toEqual(

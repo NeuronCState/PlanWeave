@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getAutoRunRetrospective,
-  getAutoRunState,
+  getLatestAutoRunSummary,
   getLatestAutoRunRetrospective,
   listAutoRunEvents,
   startAutoRun,
@@ -25,11 +25,19 @@ afterEach(async () => {
   delete process.env.PLANWEAVE_HOME;
 });
 
-async function waitForRun(runId: string, predicate: (state: Awaited<ReturnType<typeof getAutoRunState>>) => boolean) {
-  let state = await getAutoRunState(runId);
-  for (let attempt = 0; attempt < 500 && !predicate(state); attempt += 1) {
+async function waitForRunSummary(
+  projectRoot: string,
+  canvasId: string | null,
+  runId: string,
+  predicate: (state: NonNullable<Awaited<ReturnType<typeof getLatestAutoRunSummary>>>) => boolean
+) {
+  let state = await getLatestAutoRunSummary(projectRoot, canvasId);
+  for (let attempt = 0; attempt < 500 && (!state || state.runId !== runId || !predicate(state)); attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 20));
-    state = await getAutoRunState(runId);
+    state = await getLatestAutoRunSummary(projectRoot, canvasId);
+  }
+  if (!state || state.runId !== runId) {
+    throw new Error(`Auto Run '${runId}' was not the latest summary.`);
   }
   return state;
 }
@@ -118,7 +126,7 @@ describe("desktop auto run retrospective API", () => {
 
     const run = await startAutoRun(root, null, { kind: "project" }, 5, noTmux);
     startedRunIds.add(run.runId);
-    const state = await waitForRun(run.runId, (nextState) => nextState.phase !== "running");
+    const state = await waitForRunSummary(root, null, run.runId, (nextState) => nextState.phase !== "running");
     expect(state.phase).toBe("completed");
 
     const eventLog = await listAutoRunEvents(root, null, run.runId);
@@ -194,7 +202,7 @@ describe("desktop auto run retrospective API", () => {
 
     const run = await startAutoRun(root, null, { kind: "project" }, 5, noTmux);
     startedRunIds.add(run.runId);
-    const state = await waitForRun(run.runId, (nextState) => nextState.phase !== "running");
+    const state = await waitForRunSummary(root, null, run.runId, (nextState) => nextState.phase !== "running");
     expect(state.phase).toBe("blocked");
 
     const summary = await getAutoRunRetrospective(root, null, run.runId);

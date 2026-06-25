@@ -332,7 +332,7 @@ describe("STEP-1 CLI contract", () => {
     const text = (await runCli(["run-status"], env)).stdout;
     expect(text).toContain("latest record: T-001#B-001::RUN-001");
     expect(text).toContain("next action: Complete the manual step, then submit the result.");
-  }, 20_000);
+  }, cliWorkflowTimeoutMs);
 
   it("creates CLI run and reset sessions that can be queried", async () => {
     const home = await mkdtemp(join(tmpdir(), "planweave-home-"));

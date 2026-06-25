@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getTunnelClientBinaryStartError, resolveTunnelClientBinary } from "../main/mcpTunnel/tunnelClientBinary";
+import {
+  getTunnelClientBinaryStartError,
+  resolveTunnelClientBinary,
+  resolveTunnelClientBinaryStartTarget,
+  type TunnelClientBinaryStartTarget
+} from "../main/mcpTunnel/tunnelClientBinary";
 import { downloadOfficialTunnelClient, parseSha256Sums, selectTunnelClientReleaseAssets, tunnelClientPlatformAsset } from "../main/mcpTunnel/tunnelClientDownloader";
 import { readTunnelClientConfig, writeTunnelClientConfig } from "../main/mcpTunnel/tunnelClientStore";
 
@@ -56,6 +61,27 @@ fi
 if [ "$1" = "init" ]; then
   echo "secret-runtime-key tunnel_0123456789abcdef0123456789abcdef" >&2
   exit 2
+fi
+exit 1
+`
+  );
+  await chmod(binaryPath, 0o700);
+  return binaryPath;
+}
+
+async function writeMarkerTunnelClientScript(markerPath: string): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "planweave-tunnel-client-"));
+  const binaryPath = join(dir, "tunnel-client");
+  await writeFile(
+    binaryPath,
+    `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "tunnel-client test"
+  exit 0
+fi
+if [ "$1" = "init" ] || [ "$1" = "run" ]; then
+  echo "$1" >> "${markerPath}"
+  exit 0
 fi
 exit 1
 `
@@ -117,12 +143,13 @@ describe("MCP tunnel process helpers", () => {
   it("marks the tunnel running only after the health endpoint is ready", async () => {
     const { TunnelClientProcessManager } = await import("../main/mcpTunnel/tunnelClientProcess");
     const binaryPath = await writeTunnelClientScript();
+    const binary = await resolveTunnelClientBinaryStartTarget(binaryPath);
     const fetchMock = vi.fn().mockResolvedValue(new Response("ok", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     const manager = new TunnelClientProcessManager();
 
     const status = await manager.start({
-      binaryPath,
+      binary,
       localMcpEndpoint: "http://127.0.0.1:8787/mcp",
       input: {
         tunnelId: "tunnel_0123456789abcdef0123456789abcdef",
@@ -142,6 +169,7 @@ describe("MCP tunnel process helpers", () => {
   it("polls the health endpoint until the tunnel becomes ready", async () => {
     const { TunnelClientProcessManager } = await import("../main/mcpTunnel/tunnelClientProcess");
     const binaryPath = await writeTunnelClientScript();
+    const binary = await resolveTunnelClientBinaryStartTarget(binaryPath);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response("not ready", { status: 503 }))
@@ -150,7 +178,7 @@ describe("MCP tunnel process helpers", () => {
     const manager = new TunnelClientProcessManager({ readyTimeoutMs: 500 });
 
     const status = await manager.start({
-      binaryPath,
+      binary,
       localMcpEndpoint: "http://127.0.0.1:8787/mcp",
       input: {
         tunnelId: "tunnel_0123456789abcdef0123456789abcdef",
@@ -167,11 +195,12 @@ describe("MCP tunnel process helpers", () => {
   it("keeps the tunnel in error when the health endpoint is not ready", async () => {
     const { TunnelClientProcessManager } = await import("../main/mcpTunnel/tunnelClientProcess");
     const binaryPath = await writeTunnelClientScript();
+    const binary = await resolveTunnelClientBinaryStartTarget(binaryPath);
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not ready", { status: 503 })));
     const manager = new TunnelClientProcessManager({ readyTimeoutMs: 50 });
 
     const status = await manager.start({
-      binaryPath,
+      binary,
       localMcpEndpoint: "http://127.0.0.1:8787/mcp",
       input: {
         tunnelId: "tunnel_0123456789abcdef0123456789abcdef",
@@ -182,6 +211,48 @@ describe("MCP tunnel process helpers", () => {
     expect(status.phase).toBe("error");
     expect(status.ready).toBe(false);
     expect(status.error).toBe("tunnel-client started but /readyz is not ready.");
+  });
+
+  it("does not start an unverified managed tunnel-client binary", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "planweave-tunnel-client-"));
+    const markerPath = join(dir, "started");
+    const binaryPath = await writeMarkerTunnelClientScript(markerPath);
+    await expect(
+      resolveTunnelClientBinaryStartTarget(binaryPath, {
+        assetName: "tunnel-client-test-darwin-arm64.zip",
+        assetSha256: "1".repeat(64),
+        binarySha256: ""
+      })
+    ).rejects.toThrow("Managed tunnel-client install metadata is missing the binary checksum.");
+    await expect(exists(markerPath)).resolves.toBe(false);
+  });
+
+  it("does not start when the resolved tunnel-client binary is unavailable", async () => {
+    await expect(resolveTunnelClientBinaryStartTarget(join(tmpdir(), "planweave-missing-tunnel-client", "tunnel-client"))).rejects.toThrow(
+      "Tunnel client binary is missing or not executable."
+    );
+  });
+
+  it("does not start an untrusted structural tunnel-client descriptor", async () => {
+    const { TunnelClientProcessManager } = await import("../main/mcpTunnel/tunnelClientProcess");
+    const dir = await mkdtemp(join(tmpdir(), "planweave-tunnel-client-"));
+    const markerPath = join(dir, "started");
+    const binaryPath = await writeMarkerTunnelClientScript(markerPath);
+    const untrustedBinary = (await resolveTunnelClientBinary(binaryPath)) as unknown as TunnelClientBinaryStartTarget;
+    const manager = new TunnelClientProcessManager();
+
+    const status = await manager.start({
+      binary: untrustedBinary,
+      localMcpEndpoint: "http://127.0.0.1:8787/mcp",
+      input: {
+        tunnelId: "tunnel_0123456789abcdef0123456789abcdef",
+        runtimeApiKey: "secret-runtime-key"
+      }
+    });
+
+    expect(status.phase).toBe("error");
+    expect(status.error).toBe("Tunnel client binary start target is not trusted.");
+    await expect(exists(markerPath)).resolves.toBe(false);
   });
 
   it("allows manually configured tunnel-client binaries when they are executable and not quarantined", async () => {
@@ -269,10 +340,61 @@ describe("MCP tunnel process helpers", () => {
       assetName: "tunnel-client-test-darwin-arm64.zip",
       assetSha256: "1".repeat(64),
       sha256: actualSha256,
-      version: "tunnel-client test",
+      version: null,
       verified: true,
       error: null
     });
+  });
+
+  it("does not execute tunnel-client while resolving a matching managed checksum", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "planweave-tunnel-client-"));
+    const markerPath = join(dir, "version-called");
+    const binaryPath = join(dir, "tunnel-client");
+    await writeFile(
+      binaryPath,
+      `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "called" > "${markerPath}"
+  echo "tunnel-client test"
+  exit 0
+fi
+if [ "$1" = "init" ] || [ "$1" = "run" ]; then
+  exit 0
+fi
+exit 1
+`
+    );
+    await chmod(binaryPath, 0o700);
+    const actualSha256 = await sha256(binaryPath);
+
+    const status = await resolveTunnelClientBinary(binaryPath, {
+      assetName: "tunnel-client-test-darwin-arm64.zip",
+      assetSha256: "1".repeat(64),
+      binarySha256: actualSha256
+    });
+
+    expect(status).toMatchObject({
+      path: binaryPath,
+      available: true,
+      source: "managed",
+      verified: true,
+      version: null,
+      error: null
+    });
+    await expect(exists(markerPath)).resolves.toBe(false);
+
+    await expect(
+      resolveTunnelClientBinaryStartTarget(binaryPath, {
+        assetName: "tunnel-client-test-darwin-arm64.zip",
+        assetSha256: "1".repeat(64),
+        binarySha256: actualSha256
+      })
+    ).resolves.toMatchObject({
+      path: binaryPath,
+      available: true,
+      source: "managed"
+    });
+    await expect(exists(markerPath)).resolves.toBe(false);
   });
 
   it("does not execute tunnel-client before checksum verification passes", async () => {
@@ -364,7 +486,7 @@ exit 1
     const zipBytes = zipSync({ [platformAsset.binaryName]: binaryBytes });
     const zipHash = createHash("sha256").update(zipBytes).digest("hex");
     const fetchMock = vi.fn(async (url: string) => {
-      if (url.includes("api.github.com")) {
+      if (new URL(url).hostname === "api.github.com") {
         return new Response(
           JSON.stringify({
             tag_name: "v-test",
@@ -430,10 +552,11 @@ exit 1
   it("redacts runtime API keys and tunnel IDs from tunnel-client init failures", async () => {
     const { TunnelClientProcessManager } = await import("../main/mcpTunnel/tunnelClientProcess");
     const binaryPath = await writeFailingInitTunnelClientScript();
+    const binary = await resolveTunnelClientBinaryStartTarget(binaryPath);
     const manager = new TunnelClientProcessManager();
 
     const status = await manager.start({
-      binaryPath,
+      binary,
       localMcpEndpoint: "http://127.0.0.1:8787/mcp",
       input: {
         tunnelId: "tunnel_0123456789abcdef0123456789abcdef",

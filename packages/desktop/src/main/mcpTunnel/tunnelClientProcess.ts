@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TunnelClientStatus } from "../../shared/mcpTunnel.js";
+import { assertTunnelClientBinaryStartTarget, type TunnelClientBinaryStartTarget } from "./tunnelClientBinary.js";
 
 const profileName = "planweave-local-http";
 const healthListenAddr = "127.0.0.1:0";
@@ -34,10 +35,10 @@ export function buildTunnelClientRunArgs(healthUrlFile: string): string[] {
   return ["run", "--profile", profileName, "--harpoon.allow-plaintext-http", "--health.listen-addr", healthListenAddr, "--health.url-file", healthUrlFile];
 }
 
-function execTunnelClient(binaryPath: string, args: string[], runtimeApiKey: string, tunnelId: string): Promise<void> {
+function execTunnelClient(binary: TunnelClientBinaryStartTarget, args: string[], runtimeApiKey: string, tunnelId: string): Promise<void> {
   return new Promise((resolve, reject) => {
     execFile(
-      binaryPath,
+      binary.path,
       args,
       {
         env: {
@@ -93,7 +94,7 @@ export class TunnelClientProcessManager {
   }
 
   async start(options: {
-    binaryPath: string;
+    binary: TunnelClientBinaryStartTarget;
     localMcpEndpoint: string;
     input: {
       tunnelId: string;
@@ -121,8 +122,9 @@ export class TunnelClientProcessManager {
       error: null
     };
     try {
+      const binary = assertTunnelClientBinaryStartTarget(options.binary);
       await execTunnelClient(
-        options.binaryPath,
+        binary,
         buildTunnelClientInitArgs({
           tunnelId,
           mcpServerUrl: options.localMcpEndpoint
@@ -135,7 +137,7 @@ export class TunnelClientProcessManager {
       try {
         healthDir = await mkdtemp(join(tmpdir(), "planweave-tunnel-health-"));
         const healthUrlFile = join(healthDir, "url");
-        child = spawn(options.binaryPath, buildTunnelClientRunArgs(healthUrlFile), {
+        child = spawn(binary.path, buildTunnelClientRunArgs(healthUrlFile), {
           env: {
             ...process.env,
             CONTROL_PLANE_TUNNEL_ID: tunnelId,

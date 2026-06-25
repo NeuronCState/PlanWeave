@@ -14,6 +14,15 @@ export type TunnelClientBinaryVerification = {
   binarySha256: string;
 };
 
+const tunnelClientBinaryStartTargetBrand = Symbol("TunnelClientBinaryStartTarget");
+
+export type TunnelClientBinaryStartTarget = TunnelClientBinaryStatus & {
+  readonly [tunnelClientBinaryStartTargetBrand]: true;
+  path: string;
+  available: true;
+  source: "managed" | "manual";
+};
+
 export function getTunnelClientBinaryStartError(binary: TunnelClientBinaryStatus): string | null {
   if (!binary.available || !binary.path) {
     return binary.error ?? "Tunnel client binary is not available.";
@@ -24,6 +33,34 @@ export function getTunnelClientBinaryStartError(binary: TunnelClientBinaryStatus
   return null;
 }
 
+function createTunnelClientBinaryStartTarget(binary: TunnelClientBinaryStatus): TunnelClientBinaryStartTarget {
+  const startError = getTunnelClientBinaryStartError(binary);
+  if (startError) {
+    throw new Error(startError);
+  }
+  const path = binary.path;
+  if (!path) {
+    throw new Error("Tunnel client binary is not available.");
+  }
+  if (binary.source !== "managed" && binary.source !== "manual") {
+    throw new Error("Tunnel client binary source is not available.");
+  }
+  return {
+    ...binary,
+    [tunnelClientBinaryStartTargetBrand]: true,
+    path,
+    available: true,
+    source: binary.source
+  };
+}
+
+export function assertTunnelClientBinaryStartTarget(binary: TunnelClientBinaryStartTarget): TunnelClientBinaryStartTarget {
+  if (binary[tunnelClientBinaryStartTargetBrand] !== true) {
+    throw new Error("Tunnel client binary start target is not trusted.");
+  }
+  return createTunnelClientBinaryStartTarget(binary);
+}
+
 async function isExecutable(path: string): Promise<boolean> {
   try {
     await access(path, constants.X_OK);
@@ -31,18 +68,6 @@ async function isExecutable(path: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-function readVersion(path: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(path, ["--version"], { timeout: 10_000 }, (error, stdout, stderr) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve(`${stdout}${stderr}`.trim());
-    });
-  });
 }
 
 function hasMacQuarantine(path: string): Promise<boolean> {
@@ -187,20 +212,6 @@ export async function resolveTunnelClientBinary(path: string | null, verificatio
         error: "macOS blocked tunnel-client because the downloaded file is quarantined. Allow it in Privacy & Security or remove the quarantine attribute before starting."
       };
     }
-    const version = await readVersion(trimmed);
-    if (!version.toLowerCase().includes("tunnel-client")) {
-      return {
-        path: trimmed,
-        available: false,
-        source: "managed",
-        assetName: verification?.assetName ?? null,
-        assetSha256,
-        sha256,
-        version,
-        verified: false,
-        error: "Configured binary did not identify itself as tunnel-client."
-      };
-    }
     return {
       path: trimmed,
       available: true,
@@ -208,7 +219,7 @@ export async function resolveTunnelClientBinary(path: string | null, verificatio
       assetName: verification?.assetName ?? null,
       assetSha256,
       sha256,
-      version,
+      version: null,
       verified: true,
       error: null
     };
@@ -225,4 +236,11 @@ export async function resolveTunnelClientBinary(path: string | null, verificatio
       error: error instanceof Error ? error.message : String(error)
     };
   }
+}
+
+export async function resolveTunnelClientBinaryStartTarget(
+  path: string | null,
+  verification?: TunnelClientBinaryVerification | null
+): Promise<TunnelClientBinaryStartTarget> {
+  return createTunnelClientBinaryStartTarget(await resolveTunnelClientBinary(path, verification));
 }

@@ -11,7 +11,7 @@ import {
 } from "../../shared/mcpTunnel.js";
 import { LocalMcpServerManager } from "./localMcpProcess.js";
 import { downloadOfficialTunnelClient } from "./tunnelClientDownloader.js";
-import { getTunnelClientBinaryStartError, resolveTunnelClientBinary, tunnelClientDownloadUrl } from "./tunnelClientBinary.js";
+import { resolveTunnelClientBinary, resolveTunnelClientBinaryStartTarget, tunnelClientDownloadUrl } from "./tunnelClientBinary.js";
 import type { TunnelClientBinaryVerification } from "./tunnelClientBinary.js";
 import { TunnelClientProcessManager } from "./tunnelClientProcess.js";
 import { readTunnelClientConfig, writeTunnelClientConfig } from "./tunnelClientStore.js";
@@ -205,12 +205,7 @@ export async function startTunnel(input: StartTunnelInput = {}): Promise<McpTunn
     encryptedRuntimeApiKey = encryptRuntimeApiKey(runtimeApiKey);
     await persistTunnelClientConfig();
   }
-  const binary = await resolveTunnelClientBinary(tunnelClientPath, tunnelClientVerification);
-  const binaryStartError = getTunnelClientBinaryStartError(binary);
-  const binaryPath = binary.path;
-  if (binaryStartError || !binaryPath) {
-    throw new Error(binaryStartError ?? "Tunnel client binary is not available.");
-  }
+  const binaryStartTarget = await resolveTunnelClientBinaryStartTarget(tunnelClientPath, tunnelClientVerification);
   let localStatus = localMcp.getStatus();
   if (localStatus.phase !== "running" || !localStatus.endpoint) {
     if (localStatus.phase === "starting" || localStatus.phase === "stopping") {
@@ -223,7 +218,7 @@ export async function startTunnel(input: StartTunnelInput = {}): Promise<McpTunn
     throw new Error(localStatus.error ? `Failed to start the local PlanWeave MCP server: ${localStatus.error}` : "Failed to start the local PlanWeave MCP server.");
   }
   await tunnelClient.start({
-    binaryPath,
+    binary: binaryStartTarget,
     localMcpEndpoint: localStatus.endpoint,
     input: {
       tunnelId: effectiveTunnelId,

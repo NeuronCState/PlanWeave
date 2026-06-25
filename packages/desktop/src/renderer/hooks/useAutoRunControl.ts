@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import type * as React from "react";
-import type { DesktopAutoRunScope, DesktopAutoRunState, DesktopBlockDetail, DesktopProjectSummary } from "@planweave-ai/runtime";
+import type { DesktopAutoRunRetrospectiveSummary, DesktopAutoRunScope, DesktopAutoRunState, DesktopBlockDetail, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { autoRunEventMatchesCanvas, shouldRefreshGraphForAutoRunEvent } from "../autoRunEvents";
 import { bridge, desktopCanvasReference } from "../bridge";
 import type { createTranslator } from "../i18n";
+import { buildAutoRunNextActionDescriptor, type AutoRunNextActionDescriptor } from "../run/autoRunNextActions";
 import type { AutoRunScopeMode, FloatingControlDrag, FloatingControlPosition } from "../types";
 import { clamp } from "../viewHelpers";
 
@@ -14,13 +15,14 @@ type UseAutoRunControlArgs = {
   selectedBlock: DesktopBlockDetail | null;
   selectedProject: DesktopProjectSummary | null;
   selectedTaskPanelId: string | null;
+  handleOpenRunRecord: (recordId: string | null | undefined, canvasId?: string | null) => Promise<void>;
   setError: (message: string | null) => void;
   setAutoRunState: (state: DesktopAutoRunState | null) => void;
   t: ReturnType<typeof createTranslator>;
   tmuxMonitoringEnabled: boolean;
 };
 
-function isActiveAutoRunState(state: DesktopAutoRunState | null): state is DesktopAutoRunState {
+function isActiveAutoRunState(state: DesktopAutoRunState | null): boolean {
   return state?.phase === "running" || state?.phase === "pausing";
 }
 
@@ -31,6 +33,7 @@ export function useAutoRunControl({
   selectedBlock,
   selectedProject,
   selectedTaskPanelId,
+  handleOpenRunRecord,
   setError,
   setAutoRunState,
   t,
@@ -40,6 +43,7 @@ export function useAutoRunControl({
   const [miniRunPanelOpen, setMiniRunPanelOpen] = useState(false);
   const [autoRunControlPosition, setAutoRunControlPosition] = useState<FloatingControlPosition | null>(null);
   const [autoRunControlDrag, setAutoRunControlDrag] = useState<FloatingControlDrag | null>(null);
+  const [autoRunRetrospective, setAutoRunRetrospective] = useState<DesktopAutoRunRetrospectiveSummary | null>(null);
 
   const applyAutoRunState = useCallback(async (nextState: DesktopAutoRunState, options: { refreshDerivedState?: boolean } = {}) => {
     setAutoRunState(nextState);
@@ -47,7 +51,35 @@ export function useAutoRunControl({
       await onAutoRunDerivedStateRefresh?.();
     }
   }, [onAutoRunDerivedStateRefresh, setAutoRunState]);
-  const activeRunId = isActiveAutoRunState(autoRunState) ? autoRunState.runId : null;
+  const autoRunRunId = autoRunState?.runId ?? null;
+  const activeRunId = isActiveAutoRunState(autoRunState) ? autoRunRunId : null;
+
+  useEffect(() => {
+    if (!bridge || !selectedProject || isActiveAutoRunState(autoRunState)) {
+      setAutoRunRetrospective(null);
+      return;
+    }
+    let cancelled = false;
+    const ref = desktopCanvasReference(selectedProject, selectedCanvasId);
+    const loadRetrospective = autoRunRunId
+      ? bridge.getAutoRunRetrospective(ref, autoRunRunId)
+      : bridge.getLatestAutoRunRetrospective(ref);
+    void loadRetrospective
+      .then((summary) => {
+        if (!cancelled) {
+          setAutoRunRetrospective(summary);
+        }
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setAutoRunRetrospective(null);
+          setError(caught instanceof Error ? caught.message : String(caught));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [autoRunRunId, autoRunState?.phase, selectedCanvasId, selectedProject, setError]);
 
   useEffect(() => {
     if (!bridge || !selectedProject) {
@@ -79,6 +111,26 @@ export function useAutoRunControl({
     }
     return { kind: "block", blockRef: selectedBlock.ref };
   }, [autoRunScopeMode, selectedBlock, selectedTaskPanelId]);
+
+  const autoRunNextAction = buildAutoRunNextActionDescriptor({
+    labels: {
+      copyManualCommand: t("copyManualCommand"),
+      inspectRecord: t("inspectRecord"),
+      retryRef: t("retryRef"),
+      reviewStatus: t("reviewStatus"),
+      resume: t("resume"),
+      start: t("start"),
+      wait: t("wait")
+    },
+    noCommandReason: t("manualCommandUnavailable"),
+    noRecordReason: t("recordUnavailable"),
+    noRefReason: t("retryRefUnavailable"),
+    noRunReason: t("runUnavailable"),
+    noScopeReason: t("selectBlockFirst"),
+    retrospective: autoRunRetrospective,
+    selectedScopeReady: Boolean(selectedAutoRunScope()),
+    state: autoRunState
+  });
 
   const startAutoRunWithScope = useCallback(async (scope: DesktopAutoRunScope) => {
     if (!bridge || !selectedProject) {
@@ -124,6 +176,86 @@ export function useAutoRunControl({
       setError(caught instanceof Error ? caught.message : String(caught));
     }
   }, [applyAutoRunState, autoRunState, selectedAutoRunScope, selectedProject, setError, startAutoRunWithScope, t]);
+
+  const openRecordOrRevealPath = useCallback(async (action: AutoRunNextActionDescriptor) => {
+    if (action.recordId) {
+      await handleOpenRunRecord(action.recordId, autoRunState?.canvasId ?? selectedCanvasId);
+      return;
+    }
+    if (bridge && action.targetPath) {
+      await bridge.revealPathInFinder(action.targetPath);
+    }
+  }, [autoRunState?.canvasId, handleOpenRunRecord, selectedCanvasId]);
+
+  const handleAutoRunNextAction = useCallback(async (action: AutoRunNextActionDescriptor) => {
+    if (!action.enabled) {
+      return;
+    }
+    if (!bridge || !selectedProject) {
+      setError(t("bridgeUnavailable"));
+      return;
+    }
+    try {
+      if (action.command === "start") {
+        const scope = selectedAutoRunScope();
+        if (!scope) {
+          setError(t("selectBlockFirst"));
+          return;
+        }
+        await startAutoRunWithScope(scope);
+        return;
+      }
+      if (action.command === "wait") {
+        return;
+      }
+      if (action.command === "resume") {
+        if (!autoRunState) {
+          setError(t("runUnavailable"));
+          return;
+        }
+        await applyAutoRunState(await bridge.resumeAutoRun(autoRunState.runId));
+        return;
+      }
+      if (action.command === "copy_manual_command") {
+        if (!action.manualCommand) {
+          setError(t("manualCommandUnavailable"));
+          return;
+        }
+        if (!navigator.clipboard) {
+          setError(`${t("manualCommandUnavailable")}: ${action.manualCommand}`);
+          return;
+        }
+        await navigator.clipboard.writeText(action.manualCommand);
+        return;
+      }
+      if (action.command === "inspect_record" || action.command === "review_status") {
+        await openRecordOrRevealPath(action);
+        return;
+      }
+      if (action.command === "retry_ref") {
+        if (!action.ref) {
+          setError(t("retryRefUnavailable"));
+          return;
+        }
+        const ref = desktopCanvasReference(selectedProject, selectedCanvasId);
+        await bridge.unblockBlock(ref, action.ref, "Retry requested from Auto Run.");
+        await applyAutoRunState(await bridge.startAutoRun(ref, { kind: "block", blockRef: action.ref }, 20, { tmuxEnabled: tmuxMonitoringEnabled }));
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [
+    applyAutoRunState,
+    autoRunState,
+    openRecordOrRevealPath,
+    selectedAutoRunScope,
+    selectedCanvasId,
+    selectedProject,
+    setError,
+    startAutoRunWithScope,
+    t,
+    tmuxMonitoringEnabled
+  ]);
 
   const stopAutoRunClick = useCallback(async () => {
     if (!bridge || !autoRunState) {
@@ -183,9 +315,12 @@ export function useAutoRunControl({
 
   return {
     autoRunControlStyle,
+    autoRunNextAction,
+    autoRunRetrospective,
     autoRunScopeMode,
     autoRunState,
     handleAutoRunClick,
+    handleAutoRunNextAction,
     miniRunPanelOpen,
     moveAutoRunControl,
     setAutoRunScopeMode,

@@ -8,6 +8,7 @@ import type {
   ReactFlowInstance
 } from "@xyflow/react";
 import type {
+  DesktopAutoRunRetrospectiveSummary,
   DesktopAutoRunState,
   DesktopGraphViewModel,
   DesktopPackageFileSyncResult,
@@ -25,6 +26,7 @@ import type {
 import type { createTranslator, Language } from "../i18n";
 import type { DesktopSearchCanvasScope } from "../hooks/useDesktopSearch";
 import type { AppNodeTypes } from "../graph/flowModel";
+import type { AutoRunNextActionDescriptor } from "../run/autoRunNextActions";
 import type { AppFlowNode, AppView, AutoRunScopeMode, DesktopUiSettings, NotificationItem } from "../types";
 import { CanvasMapView } from "./CanvasMapView";
 import { GraphView } from "./GraphView";
@@ -38,6 +40,8 @@ import { TodoView } from "./TodoView";
 type WorkspaceTabsProps = {
   activeView: AppView;
   autoRunControlStyle: CSSProperties;
+  autoRunNextAction: AutoRunNextActionDescriptor | null;
+  autoRunRetrospective: DesktopAutoRunRetrospectiveSummary | null;
   autoRunScopeMode: AutoRunScopeMode;
   autoRunState: DesktopAutoRunState | null;
   confirmTaskDraft: () => Promise<void>;
@@ -47,6 +51,7 @@ type WorkspaceTabsProps = {
   graph: DesktopGraphViewModel | null;
   executionPlan: DesktopProjectExecutionPlan | null;
   handleAutoRunClick: () => Promise<void>;
+  handleAutoRunNextAction: (action: AutoRunNextActionDescriptor) => Promise<void>;
   handleOpenBlockInspector: (ref: string, canvasId?: string | null) => Promise<void>;
   handleConnect: (connection: Connection) => Promise<void>;
   handleEdgesDelete: (deletedEdges: Edge[]) => Promise<void>;

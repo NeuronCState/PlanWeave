@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type Dispatch, type PointerEvent, type SetStateAction } from "react";
-import type { DesktopAutoRunState, DesktopProjectSummary, ValidationIssue } from "@planweave-ai/runtime";
-import { FolderOpenIcon, MoveIcon, PauseIcon, PlayIcon, RefreshCwIcon, SquareIcon } from "lucide-react";
+import type { DesktopAutoRunRetrospectiveSummary, DesktopAutoRunState, DesktopProjectSummary, ValidationIssue } from "@planweave-ai/runtime";
+import { ClipboardIcon, FolderOpenIcon, MoveIcon, PauseIcon, PlayIcon, RefreshCwIcon, SquareIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,22 +16,28 @@ import {
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { createTranslator } from "../i18n";
+import type { AutoRunNextActionDescriptor } from "./autoRunNextActions";
 import type { AutoRunScopeMode } from "../types";
 import { formatElapsed } from "../viewHelpers";
 
 type FloatingAutoRunControlProps = {
   affectedTasks: string[];
+  autoRunNextAction: AutoRunNextActionDescriptor | null;
+  autoRunRetrospective: DesktopAutoRunRetrospectiveSummary | null;
   autoRunScopeMode: AutoRunScopeMode;
   autoRunState: DesktopAutoRunState | null;
   diagnostics: ValidationIssue[];
   dirtyPromptCount: number;
   dirtyPromptRefs: string[];
   handleAutoRunClick: () => Promise<void>;
+  handleAutoRunNextAction: (action: AutoRunNextActionDescriptor) => Promise<void>;
   handleRevealPathInFinder: (path: string | null | undefined) => Promise<void>;
   miniRunPanelOpen: boolean;
   moveAutoRunControl: (event: PointerEvent<HTMLButtonElement>) => void;
   onOpenFileSyncRef: (ref: string) => void;
   refreshPackageFiles: () => Promise<void>;
+  refreshedPromptCount: number;
+  refreshConcurrency: number | null;
   selectedBlockPresent: boolean;
   selectedProject: DesktopProjectSummary | null;
   selectedTaskPanelId: string | null;
@@ -76,6 +82,89 @@ function AutoRunFailureDetails({ state, t }: { state: DesktopAutoRunState; t: Re
         <FailureDetailRow label={t("agent")} value={explanation.currentExecutor} />
         <FailureDetailRow label={t("latestOutput")} value={explanation.latestOutputSummary} />
       </div>
+    </div>
+  );
+}
+
+function AutoRunActionRow({
+  action,
+  handleAutoRunNextAction,
+  t
+}: {
+  action: AutoRunNextActionDescriptor | null;
+  handleAutoRunNextAction: (action: AutoRunNextActionDescriptor) => Promise<void>;
+  t: ReturnType<typeof createTranslator>;
+}) {
+  if (!action) {
+    return null;
+  }
+  return (
+    <div className="rounded-md border bg-muted/30 p-2 text-xs" data-testid="auto-run-action-row">
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="font-medium text-text-strong">{t("nextAction")}</div>
+          <div className="break-words text-muted-foreground">{action.message}</div>
+          {action.disabledReason ? <div className="mt-1 break-words text-text-faint">{action.disabledReason}</div> : null}
+        </div>
+        <Button
+          data-action-kind={action.nextActionKind}
+          data-testid="auto-run-next-action"
+          disabled={!action.enabled}
+          size="sm"
+          variant={action.command === "retry_ref" ? "destructive" : "outline"}
+          onClick={() => void handleAutoRunNextAction(action)}
+        >
+          {action.command === "copy_manual_command" ? <ClipboardIcon data-icon="inline-start" /> : <PlayIcon data-icon="inline-start" />}
+          {action.label}
+        </Button>
+      </div>
+      {action.manualCommand ? (
+        <div className="break-all rounded border border-border/70 bg-background px-2 py-1 font-mono text-[11px]" data-testid="auto-run-manual-command">
+          {action.manualCommand}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AutoRunRetrospectivePanel({
+  retrospective,
+  handleRevealPathInFinder,
+  t
+}: {
+  retrospective: DesktopAutoRunRetrospectiveSummary | null;
+  handleRevealPathInFinder: (path: string | null | undefined) => Promise<void>;
+  t: ReturnType<typeof createTranslator>;
+}) {
+  if (!retrospective) {
+    return null;
+  }
+  const verdicts = retrospective.reviewVerdicts.map((review) => review.verdict ?? t("none")).join(", ");
+  return (
+    <div className="rounded-md border bg-muted/20 p-2 text-xs" data-testid="auto-run-retrospective">
+      <div className="mb-2 font-medium text-text-strong">{t("retrospective")}</div>
+      <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-muted-foreground">
+        <span>{t("completedRefs")}</span>
+        <span data-testid="auto-run-completed-refs">{retrospective.completedBlockRefs.length}</span>
+        <span>{t("failedReason")}</span>
+        <span className="min-w-0 break-words">{retrospective.failedReason ?? "-"}</span>
+        <span>{t("reviewVerdict")}</span>
+        <span className="min-w-0 break-words">{verdicts || "-"}</span>
+        <span>{t("elapsedTime")}</span>
+        <span>{formatElapsed(retrospective.elapsedMs)}</span>
+        <span>{t("latestReportPath")}</span>
+        <span className="min-w-0 break-all" data-testid="auto-run-latest-report-path">{retrospective.latestReportPath ?? "-"}</span>
+        <span>{t("nextSuggestion")}</span>
+        <span className="min-w-0 break-words">{retrospective.nextAction.message}</span>
+      </div>
+      {retrospective.latestReportPath ? (
+        <div className="mt-2 flex justify-end">
+          <Button size="sm" variant="outline" onClick={() => void handleRevealPathInFinder(retrospective.latestReportPath)}>
+            <FolderOpenIcon data-icon="inline-start" />
+            {t("openReport")}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -155,17 +244,22 @@ function FileSyncDiagnosticsList({ diagnostics, emptyLabel, label }: { diagnosti
 
 export function FloatingAutoRunControl({
   affectedTasks,
+  autoRunNextAction,
+  autoRunRetrospective,
   autoRunScopeMode,
   autoRunState,
   diagnostics,
   dirtyPromptCount,
   dirtyPromptRefs,
   handleAutoRunClick,
+  handleAutoRunNextAction,
   handleRevealPathInFinder,
   miniRunPanelOpen,
   moveAutoRunControl,
   onOpenFileSyncRef,
   refreshPackageFiles,
+  refreshedPromptCount,
+  refreshConcurrency,
   selectedBlockPresent,
   selectedProject,
   selectedTaskPanelId,
@@ -244,6 +338,12 @@ export function FloatingAutoRunControl({
                 {t("recheckFiles")}
               </Button>
             </div>
+            <div className="grid grid-cols-2 gap-2 rounded-md border border-border/70 bg-muted/30 px-2 py-1.5 text-xs text-muted-foreground">
+              <span>{t("refreshedPrompts")}</span>
+              <span data-testid="file-sync-refreshed-prompt-count">{refreshedPromptCount}</span>
+              <span>{t("refreshConcurrency")}</span>
+              <span data-testid="file-sync-refresh-concurrency">{refreshConcurrency ?? "-"}</span>
+            </div>
             <FileSyncRefList
               emptyLabel={t("fileSyncNoChanges")}
               items={fileSyncDirtyRefs}
@@ -315,12 +415,18 @@ export function FloatingAutoRunControl({
                     </span>
                   </div>
                   {showFailureDetails ? <AutoRunFailureDetails state={autoRunState} t={t} /> : null}
+                  <AutoRunActionRow action={autoRunNextAction} handleAutoRunNextAction={handleAutoRunNextAction} t={t} />
+                  <AutoRunRetrospectivePanel
+                    retrospective={autoRunRetrospective}
+                    handleRevealPathInFinder={handleRevealPathInFinder}
+                    t={t}
+                  />
                   {!showFailureDetails && explanation?.latestOutputSummary ? (
                     <div className="rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
                       {t("latestOutput")}: {explanation.latestOutputSummary}
                     </div>
                   ) : null}
-                  {!showFailureDetails && explanation ? (
+                  {!showFailureDetails && explanation && !autoRunNextAction ? (
                     <div className="rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
                       {t("nextAction")}: {explanation.nextAction.message}
                     </div>

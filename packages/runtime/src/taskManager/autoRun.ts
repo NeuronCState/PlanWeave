@@ -57,9 +57,11 @@ function isExecutorAdapter(value: unknown): value is ExecutorProfile["adapter"] 
 export function createAutoRunExplanation(facts: AutoRunExplanationFacts): AutoRunExplanation {
   const { nextClaimableRefs = [], ...explanationFacts } = facts;
   const nextClaimableRef = nextClaimableRefs[0] ?? null;
+  const latestRecordRef = explanationFacts.latestRecordId?.split("::")[0] ?? null;
+  const actionableRef = explanationFacts.currentRef ?? nextClaimableRef ?? (latestRecordRef?.includes("#") ? latestRecordRef : null);
   const base = {
     command: null as string | null,
-    ref: explanationFacts.currentRef ?? nextClaimableRef,
+    ref: actionableRef,
     targetPath: null
   };
   if (nextClaimableRefs.length > 0 && explanationFacts.phase === "idle") {

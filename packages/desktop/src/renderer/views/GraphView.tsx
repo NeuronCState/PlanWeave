@@ -11,7 +11,13 @@ import {
   type OnEdgesChange,
   type OnNodesChange
 } from "@xyflow/react";
-import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopPackageFileSyncResult, DesktopProjectSummary } from "@planweave-ai/runtime";
+import type {
+  DesktopAutoRunRetrospectiveSummary,
+  DesktopAutoRunState,
+  DesktopGraphViewModel,
+  DesktopPackageFileSyncResult,
+  DesktopProjectSummary
+} from "@planweave-ai/runtime";
 import { ChevronRightIcon, NetworkIcon, Redo2Icon, Undo2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { styleGraphEdgesForInteraction, type AppNodeTypes } from "../graph/flowModel";
@@ -20,16 +26,20 @@ import type { AppView } from "../types";
 import type { createTranslator } from "../i18n";
 import { GraphEmptyState } from "./GraphEmptyState";
 import { FloatingAutoRunControl } from "../run/FloatingAutoRunControl";
+import type { AutoRunNextActionDescriptor } from "../run/autoRunNextActions";
 import type { AppFlowNode, AutoRunScopeMode } from "../types";
 
 type GraphViewProps = {
   autoRunControlStyle: CSSProperties;
+  autoRunNextAction: AutoRunNextActionDescriptor | null;
+  autoRunRetrospective: DesktopAutoRunRetrospectiveSummary | null;
   autoRunScopeMode: AutoRunScopeMode;
   autoRunState: DesktopAutoRunState | null;
   edges: Edge[];
   fileSyncResult: DesktopPackageFileSyncResult | null;
   graph: DesktopGraphViewModel | null;
   handleAutoRunClick: () => Promise<void>;
+  handleAutoRunNextAction: (action: AutoRunNextActionDescriptor) => Promise<void>;
   handleOpenBlockInspector: (ref: string, canvasId?: string | null) => Promise<void>;
   handleConnect: (connection: Connection) => Promise<void>;
   handleEdgesDelete: (deletedEdges: Edge[]) => Promise<void>;
@@ -68,12 +78,15 @@ type GraphViewProps = {
 
 export function GraphView({
   autoRunControlStyle,
+  autoRunNextAction,
+  autoRunRetrospective,
   autoRunScopeMode,
   autoRunState,
   edges,
   fileSyncResult,
   graph,
   handleAutoRunClick,
+  handleAutoRunNextAction,
   handleOpenBlockInspector,
   handleConnect,
   handleEdgesDelete,
@@ -273,17 +286,22 @@ export function GraphView({
       ) : null}
       <FloatingAutoRunControl
         autoRunScopeMode={autoRunScopeMode}
+        autoRunNextAction={autoRunNextAction}
+        autoRunRetrospective={autoRunRetrospective}
         autoRunState={autoRunState}
         affectedTasks={fileSyncResult?.affectedTasks ?? []}
         diagnostics={fileSyncResult?.diagnostics ?? []}
         dirtyPromptRefs={dirtyPromptRefs}
         dirtyPromptCount={dirtyPromptCount}
         handleAutoRunClick={handleAutoRunClick}
+        handleAutoRunNextAction={handleAutoRunNextAction}
         handleRevealPathInFinder={handleRevealPathInFinder}
         miniRunPanelOpen={miniRunPanelOpen}
         moveAutoRunControl={moveAutoRunControl}
         onOpenFileSyncRef={handleOpenFileSyncRef}
         refreshPackageFiles={refreshPackageFiles}
+        refreshedPromptCount={fileSyncResult?.refreshedPromptCount ?? 0}
+        refreshConcurrency={fileSyncResult?.refreshConcurrency ?? null}
         selectedBlockPresent={selectedBlockPresent}
         selectedProject={selectedProject}
         selectedTaskPanelId={selectedTaskPanelId}

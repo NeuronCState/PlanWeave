@@ -17,6 +17,7 @@ import {
   submitBlockResult,
   submitReviewResult
 } from "../index.js";
+import { createAutoRunExplanation } from "../taskManager/autoRun.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { canonicalProjectCanvasNode, writeProjectGraph } from "../projectGraph/index.js";
 import { consumeAutoRunClaim } from "../autoRun/contract.js";
@@ -65,6 +66,24 @@ async function createFormalManualCanvasWorkspace() {
 }
 
 describe("Auto Run contract", () => {
+  it("derives a block ref for failed nextAction from the latest record id when current ref is absent", () => {
+    const explanation = createAutoRunExplanation({
+      phase: "failed",
+      currentRef: null,
+      currentExecutor: "fake-codex",
+      latestRecordId: "T-001#B-001::RUN-001",
+      latestRecordPath: "/tmp/metadata.json",
+      latestOutputSummary: "executor failed",
+      error: "executor failed"
+    });
+
+    expect(explanation.nextAction).toMatchObject({
+      kind: "inspect_record",
+      ref: "T-001#B-001",
+      targetPath: "/tmp/metadata.json"
+    });
+  });
+
   it("routes Claim Result branches to an executor adapter without duplicating Task Manager state decisions", async () => {
     await expect(
       consumeAutoRunClaim(
@@ -495,7 +514,7 @@ describe("Auto Run contract", () => {
           kind: "inspect_record",
           message: "Inspect the latest run record, then resolve the blocker before retrying.",
           targetPath: expect.stringContaining("metadata.json"),
-          ref: null
+          ref: "T-001#B-001"
         }
       },
       latestRuns: [

@@ -81,6 +81,7 @@
   "build": {
     "appId": "dev.planweave.desktop",
     "productName": "PlanWeave",
+    "executableName": "PlanWeave",
     "directories": {
       "output": "release"
     },

@@ -415,6 +415,14 @@ export function FloatingAutoRunControl({
                     <span>
                       {t("stepCount")}: {autoRunState ? `${autoRunState.stepCount}` : "-"}
                     </span>
+                    {autoRunState?.runSessionId ? (
+                      <span className="col-span-2 min-w-0">
+                        {t("runSession")}:{" "}
+                        <span className="break-all font-mono" data-testid="auto-run-session-id">
+                          {autoRunState.runSessionId}
+                        </span>
+                      </span>
+                    ) : null}
                   </div>
                   {showFailureDetails ? <AutoRunFailureDetails state={autoRunState} t={t} /> : null}
                   <AutoRunActionRow action={autoRunNextAction} handleAutoRunNextAction={handleAutoRunNextAction} t={t} />

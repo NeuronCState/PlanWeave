@@ -118,7 +118,9 @@ describe("planweave CLI contract", () => {
     expect(commandOptionLongs("unblock")).toContain("--reason");
     expect(commandOptionLongs("unblock")).toContain("--canvas");
     expect(commandOptionLongs("reset")).toEqual(expect.arrayContaining(["--canvas", "--force", "--reason", "--json"]));
-    expect(commandOptionLongs("run")).toEqual(expect.arrayContaining(["--once", "--parallel", "--executor", "--reset", "--force", "--reason", "--step-limit", "--json"]));
+    expect(commandOptionLongs("run")).toEqual(
+      expect.arrayContaining(["--once", "--parallel", "--executor", "--scope", "--task", "--block", "--reset", "--force", "--reason", "--step-limit", "--json"])
+    );
     expect(commandOptionLongs("run")).toContain("--canvas");
     expect(commandOptionLongs("run-sessions")).toEqual(expect.arrayContaining(["--canvas", "--json"]));
     expect(commandOptionLongs("run-session")).toEqual(expect.arrayContaining(["--canvas", "--json"]));
@@ -373,6 +375,8 @@ describe("planweave CLI contract", () => {
     expect(formatCliHelp("submit")).toContain("planweave submit-review <review-block-ref> --result <review-result.json>");
     expect(formatCliHelp("submit")).toContain("planweave submit-result --canvas <canvasId> <block-ref> --report <report.md>");
     expect(formatCliHelp("autorun")).toContain("planweave run --reset --force --reason <reason> --json");
+    expect(formatCliHelp("autorun")).toContain("planweave run --scope task --task <task-id> --once --json");
+    expect(formatCliHelp("autorun")).toContain("planweave run --scope block --block <block-ref> --once --json");
     expect(formatCliHelp("autorun")).toContain("planweave reset --force --reason <reason> --json");
     expect(formatCliHelp("autorun")).toContain("planweave run-sessions --json");
     expect(formatCliHelp("autorun")).toContain("planweave run-session <session-id> --json");

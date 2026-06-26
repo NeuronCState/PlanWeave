@@ -9,6 +9,7 @@ import type {
   DesktopAutoRunEventLog,
   DesktopAutoRunEventListener,
   DesktopAutoRunOptions,
+  DesktopAutoRunPhase,
   DesktopAutoRunScope,
   DesktopAutoRunState,
   DesktopRuntimeResetOptions,
@@ -19,11 +20,14 @@ import { listPersistedAutoRunStates, nextPersistedAutoRunId, readPersistedAutoRu
 import { claimRef, claimRefs, claimScope, completedRefs, executorName, latestStatus, outputSummary, phaseAfterStep, reviewAttemptId, reviewVerdict, terminalPatch } from "./runStepState.js";
 import { invalidateDesktopProjectProjection } from "./graph/projectProjectionModel.js";
 import { appendRunSessionEvent, createRunSession, resetRuntimeState, updateRunSession } from "../runSessions/index.js";
+import type { RunSessionAutoRunSummary, RunSessionPhase } from "../runSessions/index.js";
 
 const runs = new Map<string, DesktopAutoRunState>();
 const runWorkspaces = new Map<string, ProjectWorkspace>();
 const activeLoops = new Set<string>();
 const autoRunEventListeners = new Set<DesktopAutoRunEventListener>();
+
+type DesktopRunSessionStopReason = RunSessionAutoRunSummary["stopReason"];
 
 function normalizeAutoRunOptions(options?: DesktopAutoRunOptions): Required<DesktopAutoRunOptions> {
   return {
@@ -53,10 +57,115 @@ async function setState(runId: string, patch: Partial<DesktopAutoRunState>, even
     runs.set(runId, next);
   }
   if (changedEventType) {
+    await syncRunSessionForAutoRunState(next, changedEventType, {
+      previousPhase,
+      nextPhase: next.phase,
+      ...data
+    });
     emitAutoRunChanged(next, changedEventType);
   }
   releaseRunResources(runId, next);
   return next;
+}
+
+async function workspaceForAutoRunState(state: DesktopAutoRunState): Promise<ProjectWorkspace> {
+  return runWorkspaces.get(state.runId) ?? resolveTaskCanvasWorkspace(state.projectRoot, state.canvasId);
+}
+
+function runSessionPhaseForAutoRunPhase(phase: DesktopAutoRunPhase): RunSessionPhase {
+  if (phase === "completed" || phase === "manual" || phase === "blocked" || phase === "failed" || phase === "stopped") {
+    return phase;
+  }
+  return "running";
+}
+
+function isRunSessionTerminalPhase(phase: RunSessionPhase): boolean {
+  return phase === "completed" || phase === "manual" || phase === "blocked" || phase === "failed" || phase === "stopped";
+}
+
+function finalRunSessionEventType(phase: RunSessionPhase): string | null {
+  if (phase === "completed") {
+    return "session_completed";
+  }
+  if (phase === "manual") {
+    return "session_manual";
+  }
+  if (phase === "blocked") {
+    return "session_blocked";
+  }
+  if (phase === "failed") {
+    return "session_failed";
+  }
+  if (phase === "stopped") {
+    return "session_stopped";
+  }
+  return null;
+}
+
+async function autoRunSessionSummary(workspace: ProjectWorkspace, state: DesktopAutoRunState, stopReason: DesktopRunSessionStopReason): Promise<RunSessionAutoRunSummary> {
+  const { manifest } = await loadPackage(workspace);
+  return {
+    desktopRunId: state.runId,
+    stepCount: state.stepCount,
+    parallel: manifest.execution.parallel.enabled,
+    executorOverride: null,
+    stopReason
+  };
+}
+
+function stopReasonForAutoRunEvent(eventType: string): DesktopRunSessionStopReason {
+  return eventType === "step_limit_reached" ? "step_limit" : null;
+}
+
+async function appendDesktopRunSessionEvent(state: DesktopAutoRunState, eventType: string, data: Record<string, unknown> = {}): Promise<void> {
+  if (!state.runSessionId) {
+    return;
+  }
+  const workspace = await workspaceForAutoRunState(state);
+  await appendRunSessionEvent(workspace, state.runSessionId, eventType, {
+    phase: runSessionPhaseForAutoRunPhase(state.phase),
+    desktopRunId: state.runId,
+    autoRunPhase: state.phase,
+    stepCount: state.stepCount,
+    ...data
+  });
+}
+
+async function syncRunSessionForAutoRunState(state: DesktopAutoRunState, eventType: string, data: Record<string, unknown> = {}): Promise<void> {
+  if (!state.runSessionId) {
+    return;
+  }
+  const workspace = await workspaceForAutoRunState(state);
+  const phase = runSessionPhaseForAutoRunPhase(state.phase);
+  const finishedAt = isRunSessionTerminalPhase(phase) ? state.updatedAt : undefined;
+  await updateRunSession(workspace, state.runSessionId, {
+    phase,
+    ...(finishedAt ? { finishedAt } : {}),
+    autoRun: await autoRunSessionSummary(workspace, state, stopReasonForAutoRunEvent(eventType)),
+    latestRecordId: state.latestRecordId,
+    latestRecordPath: state.latestRecordPath,
+    error: state.error
+  });
+  await appendRunSessionEvent(workspace, state.runSessionId, eventType, {
+    phase,
+    desktopRunId: state.runId,
+    autoRunPhase: state.phase,
+    stepCount: state.stepCount,
+    currentRef: state.currentRef,
+    latestRecordId: state.latestRecordId,
+    latestRecordPath: state.latestRecordPath,
+    error: state.error,
+    ...data
+  });
+  const finalEventType = finalRunSessionEventType(phase);
+  if (finalEventType) {
+    await appendRunSessionEvent(workspace, state.runSessionId, finalEventType, {
+      phase,
+      finishedAt,
+      desktopRunId: state.runId,
+      stepCount: state.stepCount
+    });
+  }
 }
 
 function withExplanation(state: Omit<DesktopAutoRunState, "explanation"> & { explanation?: DesktopAutoRunState["explanation"] }): DesktopAutoRunState {
@@ -115,6 +224,7 @@ async function runLoop(runId: string): Promise<void> {
         const workspace = runWorkspaces.get(runId) ?? (await resolveTaskCanvasWorkspace(current.projectRoot, current.canvasId));
         const { manifest } = await loadPackage(workspace);
         await appendAutoRunEvent(current, "step_start", { scope: current.scope });
+        await appendDesktopRunSessionEvent(current, "step_start", { scope: current.scope });
         const step = await runAutoRunStep({
           projectRoot: workspace,
           parallel: manifest.execution.parallel.enabled,
@@ -129,6 +239,7 @@ async function runLoop(runId: string): Promise<void> {
         if (!afterStep || afterStep.phase === "stopped") {
           if (afterStep?.phase === "stopped") {
             await appendAutoRunEvent(afterStep, "stopped_step_ignored", { stepKind: step.kind, stoppedPhase: afterStep.phase });
+            await appendDesktopRunSessionEvent(afterStep, "stopped_step_ignored", { stepKind: step.kind, stoppedPhase: afterStep.phase });
           }
           return;
         }
@@ -262,6 +373,7 @@ export async function startAutoRun(
   options?: DesktopAutoRunOptions
 ): Promise<DesktopAutoRunState> {
   const workspace = await resolveTaskCanvasWorkspace(projectRoot, canvasId);
+  const { manifest } = await loadPackage(workspace);
   const resetReviews = await resetMaxCycleReviewsForRetry({ projectRoot: workspace, scope: claimScope(scope) });
   const runId = await nextPersistedAutoRunId(workspace, {
     isReserved: (candidateRunId) => {
@@ -270,9 +382,16 @@ export async function startAutoRun(
     }
   });
   const root = autoRunRoot(workspace, runId);
+  const session = await createRunSession({
+    projectRoot: workspace,
+    kind: "run",
+    trigger: "desktop",
+    scope
+  });
   const timestamp = now();
   const state = withExplanation({
     runId,
+    runSessionId: session.sessionId,
     projectRoot,
     canvasId: canvasId ?? null,
     scope,
@@ -296,6 +415,23 @@ export async function startAutoRun(
   runWorkspaces.set(runId, workspace);
   await writePersistedAutoRunState(state);
   await appendAutoRunEvent(state, "run_started", { scope, resetMaxCycleReviewRefs: resetReviews.refs });
+  await updateRunSession(workspace, session.sessionId, {
+    phase: "running",
+    autoRun: {
+      desktopRunId: runId,
+      stepCount: 0,
+      parallel: manifest.execution.parallel.enabled,
+      executorOverride: null,
+      stopReason: null
+    },
+    error: null
+  });
+  await appendRunSessionEvent(workspace, session.sessionId, "run_started", {
+    phase: "running",
+    desktopRunId: runId,
+    scope,
+    resetMaxCycleReviewRefs: resetReviews.refs
+  });
   emitAutoRunChanged(state, "run_started");
   launchRunLoop(runId);
   return cloneAutoRunState(state);

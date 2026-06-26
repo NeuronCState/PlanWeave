@@ -31,6 +31,7 @@ const project: DesktopProjectSummary = {
 function createAutoRunState(patch: Partial<Omit<DesktopAutoRunState, "explanation">> & { explanation?: DesktopAutoRunState["explanation"] } = {}): DesktopAutoRunState {
   const state = {
     runId: "RUN-001",
+    runSessionId: "SESSION-0001",
     projectRoot: "/tmp/project",
     canvasId: "canvas-main",
     phase: "running",
@@ -179,6 +180,7 @@ describe("FloatingAutoRunControl", () => {
     expect(screen.getByTestId("auto-run-mini-status")).toHaveAttribute("data-run-id", "RUN-001");
     expect(screen.getByText("Current block: T-001#B-001")).toBeInTheDocument();
     expect(screen.getByText("Agent: codex")).toBeInTheDocument();
+    expect(screen.getByTestId("auto-run-session-id")).toHaveTextContent("SESSION-0001");
     expect(screen.getByTestId("auto-run-action-row")).toHaveTextContent("Wait.");
     expect(screen.getByTestId("auto-run-next-action")).toBeDisabled();
     expect(screen.getByTestId("auto-run-retrospective")).toHaveTextContent("Completed refs");

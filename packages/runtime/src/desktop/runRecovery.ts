@@ -156,6 +156,7 @@ export function normalizePersistedAutoRunState(value: unknown, paths: { statePat
   }
   const state: DesktopAutoRunState = {
     runId,
+    runSessionId: stringOrNull(value.runSessionId),
     projectRoot,
     canvasId: stringOrNull(value.canvasId),
     scope,

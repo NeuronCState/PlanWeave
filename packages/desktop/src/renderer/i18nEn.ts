@@ -319,6 +319,7 @@ export const enCatalog = {
     missing: "Missing",
     empty: "Empty",
     runStatus: "Run status",
+    runSession: "Run session",
     currentBlock: "Current block",
     elapsedTime: "Elapsed time",
     stepCount: "Step count",

@@ -117,6 +117,8 @@ export const planweaveHelpTopics: HelpTopic[] = [
       "executors list",
       "executors test <name>",
       "run --once --executor <name> --json",
+      "run --scope task --task <task-id> --once --json",
+      "run --scope block --block <block-ref> --once --json",
       "run --reset --force --reason <reason> --json",
       "reset --force --reason <reason> --json",
       "run-sessions --json",

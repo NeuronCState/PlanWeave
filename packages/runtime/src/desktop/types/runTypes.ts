@@ -25,6 +25,7 @@ export type DesktopRuntimeResetResult = ResetRuntimeStateResult & {
 
 export type DesktopAutoRunState = {
   runId: string;
+  runSessionId?: string | null;
   projectRoot: string;
   canvasId: string | null;
   scope: DesktopAutoRunScope;

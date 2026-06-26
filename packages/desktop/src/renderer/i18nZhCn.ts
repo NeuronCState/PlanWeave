@@ -321,6 +321,7 @@ export const zhCnCatalog = {
     missing: "缺失",
     empty: "空",
     runStatus: "运行状态",
+    runSession: "运行 Session",
     currentBlock: "当前 Block",
     elapsedTime: "已用时间",
     stepCount: "Step 数",

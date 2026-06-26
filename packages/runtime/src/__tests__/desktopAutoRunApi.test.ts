@@ -74,6 +74,7 @@ describe("desktop auto run API", () => {
     const current = await waitForRun(started.runId, (nextState) => nextState.phase !== "running");
 
     expect(current).toMatchObject({
+      runSessionId: "SESSION-0001",
       phase: "paused",
       stepCount: 1,
       currentExecutor: "fake-codex",
@@ -101,10 +102,35 @@ describe("desktop auto run API", () => {
     await expect(readFile(current.statePath, "utf8")).resolves.toContain('"phase": "paused"');
     await expect(readFile(current.eventLogPath, "utf8")).resolves.toContain('"type":"step_limit_reached"');
     await expect(getLatestAutoRunSummary(root, null)).resolves.toMatchObject({ runId: started.runId });
+    const pausedSession = await getRunSession(root, current.runSessionId!);
+    expect(pausedSession.session).toMatchObject({
+      kind: "run",
+      trigger: "desktop",
+      scope: { kind: "project" },
+      phase: "running",
+      autoRun: {
+        desktopRunId: started.runId,
+        stepCount: 1,
+        stopReason: "step_limit"
+      },
+      latestRecordId: "T-001#B-001::RUN-001"
+    });
+    expect(pausedSession.events.map((event) => event.type)).toEqual(
+      expect.arrayContaining(["session_started", "run_started", "step_start", "step_finish", "step_limit_reached"])
+    );
 
     await expect(resumeAutoRun(started.runId)).resolves.toMatchObject({ phase: "running" });
     expect(["pausing", "paused"]).toContain((await pauseAutoRun(started.runId)).phase);
     await expect(stopAutoRun(started.runId)).resolves.toMatchObject({ phase: "stopped" });
+    await expect(getRunSession(root, current.runSessionId!)).resolves.toMatchObject({
+      session: {
+        phase: "stopped",
+        autoRun: {
+          desktopRunId: started.runId
+        }
+      },
+      events: expect.arrayContaining([expect.objectContaining({ type: "session_stopped" })])
+    });
     const eventLog = await listAutoRunEvents(root, null, started.runId);
     expect(eventLog.diagnostics).toEqual([]);
     expect(eventLog.events.map((event) => event.type)).toEqual(expect.arrayContaining(["run_started", "step_limit_reached", "run_resumed", "run_stopped"]));
@@ -317,10 +343,24 @@ describe("desktop auto run API", () => {
 
     expect(completed).toMatchObject({
       runId: started.runId,
+      runSessionId: "SESSION-0001",
       phase: "completed",
       currentRef: null,
       latestRecordId: "T-001#R-001::RUN-001",
       latestOutputSummary: "no_claimable_blocks"
+    });
+    await expect(getRunSession(root, completed.runSessionId!)).resolves.toMatchObject({
+      session: {
+        kind: "run",
+        trigger: "desktop",
+        phase: "completed",
+        autoRun: {
+          desktopRunId: started.runId,
+          stepCount: 3
+        },
+        latestRecordId: "T-001#R-001::RUN-001"
+      },
+      events: expect.arrayContaining([expect.objectContaining({ type: "session_completed" })])
     });
     await expect(getAutoRunState(started.runId)).rejects.toThrow(`Auto Run '${started.runId}' does not exist.`);
     await expect(getLatestAutoRunSummary(root, null)).resolves.toMatchObject({

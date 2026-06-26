@@ -166,10 +166,15 @@ planweave run-status
 
 Auto Run 可以领取任务、调用执行器、收集运行产物、继续 review-feedback 循环，并把每次 run/reset 记录成 session。`planweave reset` 只清理 runtime state；它和初始化时重写 package source 的 `planweave init --reset-package` 不是一回事。
 
-cron 风格的定时运行建议设置步数上限，并在运行后查看 session：
+cron 风格的定时运行建议设置步数上限，并在运行后查看 session。下面的示例可以直接放进 crontab：
 
 ```bash
-planweave run --step-limit 10 --json
+0 9 * * * cd /path/to/project && planweave run --reset --canvas default --force --reason "scheduled run" --step-limit 10 --json >> ~/.planweave-cron.log 2>&1
+```
+
+运行后可以查看 session：
+
+```bash
 planweave run-sessions --json
 ```
 

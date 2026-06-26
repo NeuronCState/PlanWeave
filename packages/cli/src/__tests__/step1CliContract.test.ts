@@ -343,8 +343,8 @@ describe("STEP-1 CLI contract", () => {
       force: true
     });
 
-    const run = JSON.parse((await runCli(["run", "--once", "--executor", "manual", "--json"], env)).stdout) as {
-      session: { sessionId: string; kind: string; phase: string; latestRecordId: string | null };
+    const run = JSON.parse((await runCli(["run", "--once", "--executor", "manual", "--scope", "block", "--block", "T-001#B-001", "--json"], env)).stdout) as {
+      session: { sessionId: string; kind: string; phase: string; latestRecordId: string | null; scope: { kind: string; blockRef?: string } };
       steps: Array<{ kind: string }>;
       ok: boolean;
       terminalReason: string;
@@ -354,6 +354,7 @@ describe("STEP-1 CLI contract", () => {
         sessionId: "SESSION-0001",
         kind: "run",
         phase: "manual",
+        scope: { kind: "block", blockRef: "T-001#B-001" },
         latestRecordId: "T-001#B-001::RUN-001"
       },
       steps: [{ kind: "manual" }],
@@ -374,13 +375,32 @@ describe("STEP-1 CLI contract", () => {
     });
     expect(reset.statePath).toContain("canvases/default/state.json");
 
+    const taskRun = JSON.parse((await runCli(["run", "--once", "--executor", "manual", "--scope", "task", "--task", "T-001", "--json"], env)).stdout) as {
+      session: { sessionId: string; kind: string; phase: string; latestRecordId: string | null; scope: { kind: string; taskId?: string } };
+      steps: Array<{ kind: string }>;
+      ok: boolean;
+      terminalReason: string;
+    };
+    expect(taskRun).toMatchObject({
+      session: {
+        sessionId: "SESSION-0003",
+        kind: "run",
+        phase: "manual",
+        scope: { kind: "task", taskId: "T-001" },
+        latestRecordId: "T-001#B-001::RUN-002"
+      },
+      steps: [{ kind: "manual" }],
+      ok: true,
+      terminalReason: "manual"
+    });
+
     const sessions = JSON.parse((await runCli(["run-sessions", "--json"], env)).stdout) as {
       sessions: Array<{ sessionId: string; kind: string }>;
       diagnostics: unknown[];
     };
     expect(sessions.diagnostics).toEqual([]);
-    expect(sessions.sessions.map((session) => session.sessionId)).toEqual(["SESSION-0002", "SESSION-0001"]);
-    expect(sessions.sessions.map((session) => session.kind)).toEqual(["reset", "run"]);
+    expect(sessions.sessions.map((session) => session.sessionId)).toEqual(["SESSION-0003", "SESSION-0002", "SESSION-0001"]);
+    expect(sessions.sessions.map((session) => session.kind)).toEqual(["run", "reset", "run"]);
 
     const detail = JSON.parse((await runCli(["run-session", "SESSION-0001", "--json"], env)).stdout) as {
       session: { sessionId: string; kind: string };

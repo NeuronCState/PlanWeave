@@ -20,9 +20,14 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          "flow-vendor": ["@xyflow/react"],
-          "ui-vendor": ["radix-ui", "lucide-react"]
+        manualChunks(id) {
+          if (id.includes("@xyflow/react")) {
+            return "flow-vendor";
+          }
+          if (id.includes("radix-ui") || id.includes("lucide-react")) {
+            return "ui-vendor";
+          }
+          return undefined;
         }
       }
     }

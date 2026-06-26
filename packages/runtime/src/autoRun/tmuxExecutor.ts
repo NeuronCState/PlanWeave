@@ -48,6 +48,7 @@ let tmuxAvailable: boolean | null = null;
 const activeTmuxSessions = new Map<string, ActiveTmuxSessionRecord>();
 const runtimePathEntries = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
 const TMUX_TERMINATE_FORCE_KILL_GRACE_MS = 500;
+const TMUX_SESSION_RELEASE_POLL_COUNT = 50;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -322,6 +323,7 @@ export async function runCommandInTmux(
   const stdinPath = join(tmuxRoot, "stdin.txt");
   const donePath = join(tmuxRoot, "done.json");
   const configPath = join(tmuxRoot, "command.json");
+  const releasePath = join(tmuxRoot, "release");
   const runnerPath = join(tmuxRoot, "runner.mjs");
   const scriptPath = join(tmuxRoot, "session.sh");
   await writeFile(stdinPath, options.stdin, "utf8");
@@ -350,7 +352,16 @@ export async function runCommandInTmux(
   await writeFile(
     scriptPath,
     `#!/usr/bin/env bash
+set +e
 ${shellQuote(process.execPath)} ${shellQuote(runnerPath)}
+runner_exit=$?
+for _ in {1..${TMUX_SESSION_RELEASE_POLL_COUNT}}; do
+  if [ -f ${shellQuote(releasePath)} ]; then
+    exit "$runner_exit"
+  fi
+  sleep 0.1
+done
+exit "$runner_exit"
 `,
     "utf8"
   );
@@ -429,6 +440,7 @@ ${shellQuote(process.execPath)} ${shellQuote(runnerPath)}
     await terminateTmuxSession(options.tmux.sessionName);
     throw error;
   } finally {
+    await writeFile(releasePath, "release\n", "utf8").catch(() => undefined);
     activeTmuxSessions.delete(options.tmux.sessionName);
   }
 }

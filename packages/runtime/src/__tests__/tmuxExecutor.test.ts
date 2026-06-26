@@ -3,7 +3,13 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { createTmuxSessionInfo, isTmuxAvailable, killActiveTmuxSessions, killTmuxSessionsForRun, runCommandInTmux } from "../autoRun/tmuxExecutor.js";
+import {
+  createTmuxSessionInfo,
+  isTmuxAvailable,
+  killActiveTmuxSessions,
+  killTmuxSessionsForRun,
+  runCommandInTmux
+} from "../autoRun/tmuxExecutor.js";
 
 let tempDirs: string[] = [];
 
@@ -29,6 +35,16 @@ async function hasTmuxSession(sessionName: string): Promise<boolean> {
     child.on("error", () => resolve(false));
     child.on("close", (code) => resolve(code === 0));
   });
+}
+
+async function waitForTmuxSessionExit(sessionName: string): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (!(await hasTmuxSession(sessionName))) {
+      return;
+    }
+    await sleep(100);
+  }
+  expect(await hasTmuxSession(sessionName)).toBe(false);
 }
 
 afterEach(async () => {
@@ -87,6 +103,7 @@ describe("tmux executor", () => {
     expect(result).toMatchObject({ exitCode: 0, timedOut: false });
     await expect(readFile(join(dir, "stdout.md"), "utf8")).resolves.toBe("hello from tmux");
     await expect(readFile(join(dir, "stderr.log"), "utf8")).resolves.toBe("progress from tmux");
+    await waitForTmuxSessionExit(tmux!.sessionName);
   });
 
   it("can stop an active tmux-backed command", async () => {

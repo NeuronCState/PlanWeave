@@ -16,7 +16,6 @@ const requiredAsarEntries = [
   "/dist/preload/preload.js",
   "/node_modules/electron-updater",
   "/node_modules/builder-util-runtime",
-  "/node_modules/debug",
   "/node_modules/ms"
 ];
 const startupErrorPattern = /MODULE_NOT_FOUND|Cannot find module|Uncaught Exception/i;

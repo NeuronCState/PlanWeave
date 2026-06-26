@@ -2,9 +2,9 @@ import { execFile } from "node:child_process";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import type { TunnelClientStatus } from "../../shared/mcpTunnel.js";
-import { assertTunnelClientBinaryStartTarget, type TunnelClientBinaryStartTarget } from "./tunnelClientBinary.js";
+import { assertTunnelClientBinaryStartTarget, type TunnelClientBinaryStartTarget, type TunnelClientExecutableName } from "./tunnelClientBinary.js";
 
 const profileName = "planweave-local-http";
 const healthListenAddr = "127.0.0.1:0";
@@ -35,17 +35,28 @@ export function buildTunnelClientRunArgs(healthUrlFile: string): string[] {
   return ["run", "--profile", profileName, "--harpoon.allow-plaintext-http", "--health.listen-addr", healthListenAddr, "--health.url-file", healthUrlFile];
 }
 
+function tunnelClientCommand(binary: TunnelClientBinaryStartTarget): TunnelClientExecutableName {
+  return binary.executableName === "tunnel-client.exe" ? "tunnel-client.exe" : "tunnel-client";
+}
+
+function buildTunnelClientEnv(binary: TunnelClientBinaryStartTarget, runtimeApiKey: string, tunnelId: string): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    PATH: process.env.PATH ? `${binary.executableDir}${delimiter}${process.env.PATH}` : binary.executableDir,
+    CONTROL_PLANE_TUNNEL_ID: tunnelId,
+    CONTROL_PLANE_API_KEY: runtimeApiKey
+  };
+}
+
 function execTunnelClient(binary: TunnelClientBinaryStartTarget, args: string[], runtimeApiKey: string, tunnelId: string): Promise<void> {
   return new Promise((resolve, reject) => {
     execFile(
-      binary.path,
+      tunnelClientCommand(binary),
       args,
       {
-        env: {
-          ...process.env,
-          CONTROL_PLANE_TUNNEL_ID: tunnelId,
-          CONTROL_PLANE_API_KEY: runtimeApiKey
-        },
+        cwd: binary.executableDir,
+        env: buildTunnelClientEnv(binary, runtimeApiKey, tunnelId),
+        shell: false,
         timeout: 30_000
       },
       (error) => {
@@ -137,12 +148,10 @@ export class TunnelClientProcessManager {
       try {
         healthDir = await mkdtemp(join(tmpdir(), "planweave-tunnel-health-"));
         const healthUrlFile = join(healthDir, "url");
-        child = spawn(binary.path, buildTunnelClientRunArgs(healthUrlFile), {
-          env: {
-            ...process.env,
-            CONTROL_PLANE_TUNNEL_ID: tunnelId,
-            CONTROL_PLANE_API_KEY: runtimeApiKey
-          },
+        child = spawn(tunnelClientCommand(binary), buildTunnelClientRunArgs(healthUrlFile), {
+          cwd: binary.executableDir,
+          env: buildTunnelClientEnv(binary, runtimeApiKey, tunnelId),
+          shell: false,
           stdio: ["ignore", "ignore", "ignore"]
         });
         this.child = child;

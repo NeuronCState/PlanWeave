@@ -165,10 +165,15 @@ planweave run-status
 
 Auto Run can claim work, call an executor, collect run artifacts, continue review-feedback loops, and record each run/reset as a session. `planweave reset` clears runtime state only; it is separate from `planweave init --reset-package`, which rewrites package source files during initialization.
 
-For cron-style runs, keep execution bounded and inspect the session log afterward:
+For cron-style runs, keep execution bounded and inspect the session log afterward. This example can be used directly in crontab:
 
 ```bash
-planweave run --step-limit 10 --json
+0 9 * * * cd /path/to/project && planweave run --reset --canvas default --force --reason "scheduled run" --step-limit 10 --json >> ~/.planweave-cron.log 2>&1
+```
+
+After a run, inspect the session log:
+
+```bash
 planweave run-sessions --json
 ```
 

@@ -2,7 +2,7 @@ import { access, chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -275,6 +275,18 @@ describe("MCP tunnel process helpers", () => {
     expect(getTunnelClientBinaryStartError(status)).toBeNull();
   });
 
+  it("derives a constrained executable target from resolved tunnel-client binaries", async () => {
+    const binaryPath = await writeTunnelClientScript();
+
+    await expect(resolveTunnelClientBinaryStartTarget(binaryPath)).resolves.toMatchObject({
+      path: binaryPath,
+      available: true,
+      source: "manual",
+      executableDir: dirname(binaryPath),
+      executableName: "tunnel-client"
+    });
+  });
+
   it("reports macOS quarantine before launching a manually configured tunnel-client", async () => {
     if (process.platform !== "darwin") {
       return;
@@ -456,6 +468,17 @@ exit 1
       version: null,
       verified: false,
       error: "Configured binary must be named tunnel-client or tunnel-client.exe."
+    });
+  });
+
+  it("rejects tunnel-client directories that cannot be safely prepended to PATH", async () => {
+    const binaryPath = join(tmpdir(), `planweave${delimiter}tunnel-client`, "tunnel-client");
+
+    await expect(resolveTunnelClientBinary(binaryPath)).resolves.toMatchObject({
+      path: binaryPath,
+      available: false,
+      source: "manual",
+      error: "Tunnel client binary directory cannot contain the system PATH delimiter."
     });
   });
 

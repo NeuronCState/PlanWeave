@@ -3,7 +3,7 @@ import { constants } from "node:fs";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { basename } from "node:path";
+import { basename, delimiter, dirname } from "node:path";
 import type { TunnelClientBinaryStatus } from "../../shared/mcpTunnel.js";
 
 export const tunnelClientDownloadUrl = "https://github.com/openai/tunnel-client/releases/latest";
@@ -21,7 +21,11 @@ export type TunnelClientBinaryStartTarget = TunnelClientBinaryStatus & {
   path: string;
   available: true;
   source: "managed" | "manual";
+  executableDir: string;
+  executableName: TunnelClientExecutableName;
 };
+
+export type TunnelClientExecutableName = "tunnel-client" | "tunnel-client.exe";
 
 export function getTunnelClientBinaryStartError(binary: TunnelClientBinaryStatus): string | null {
   if (!binary.available || !binary.path) {
@@ -45,12 +49,22 @@ function createTunnelClientBinaryStartTarget(binary: TunnelClientBinaryStatus): 
   if (binary.source !== "managed" && binary.source !== "manual") {
     throw new Error("Tunnel client binary source is not available.");
   }
+  const executableName = supportedBinaryName(path);
+  if (!executableName) {
+    throw new Error("Configured binary must be named tunnel-client or tunnel-client.exe.");
+  }
+  const executableDir = dirname(path);
+  if (executableDir.includes(delimiter)) {
+    throw new Error("Tunnel client binary directory cannot contain the system PATH delimiter.");
+  }
   return {
     ...binary,
     [tunnelClientBinaryStartTargetBrand]: true,
     path,
     available: true,
-    source: binary.source
+    source: binary.source,
+    executableDir,
+    executableName
   };
 }
 
@@ -96,9 +110,16 @@ function hashFileSha256(path: string): Promise<string> {
   });
 }
 
-function isSupportedBinaryName(path: string): boolean {
+function supportedBinaryName(path: string): TunnelClientExecutableName | null {
   const name = basename(path);
-  return name === "tunnel-client" || name === "tunnel-client.exe";
+  if (name === "tunnel-client" || name === "tunnel-client.exe") {
+    return name;
+  }
+  return null;
+}
+
+function isSupportedBinaryName(path: string): boolean {
+  return supportedBinaryName(path) !== null;
 }
 
 export async function resolveTunnelClientBinary(path: string | null, verification?: TunnelClientBinaryVerification | null): Promise<TunnelClientBinaryStatus> {
@@ -118,6 +139,19 @@ export async function resolveTunnelClientBinary(path: string | null, verificatio
     };
   }
   const trimmed = path.trim();
+  if (dirname(trimmed).includes(delimiter)) {
+    return {
+      path: trimmed,
+      available: false,
+      source: verification ? "managed" : "manual",
+      assetName: verification?.assetName ?? null,
+      assetSha256,
+      sha256: null,
+      version: null,
+      verified: false,
+      error: "Tunnel client binary directory cannot contain the system PATH delimiter."
+    };
+  }
   if (!(await isExecutable(trimmed))) {
     return {
       path: trimmed,

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   DesktopGraphViewModel,
   DesktopLayout,
+  DesktopProjectSnapshot,
   DesktopProjectExecutionPlan,
   DesktopProjectSummary,
   DesktopStatistics,
@@ -31,6 +32,11 @@ export function resolveProjectCanvasId(project: DesktopProjectSummary, requested
 function errorMessage(caught: unknown): string {
   return caught instanceof Error ? caught.message : String(caught);
 }
+
+type ApplyDesktopProjectSnapshotOptions = {
+  includeLayout?: boolean;
+  includePrompt?: boolean;
+};
 
 export function useDesktopProject({
   setError,
@@ -67,6 +73,24 @@ export function useDesktopProject({
     };
   }, [graph, selectedCanvasId, selectedProject?.rootPath]);
 
+  const applyDesktopProjectSnapshot = useCallback(
+    (snapshot: DesktopProjectSnapshot, options: ApplyDesktopProjectSnapshotOptions = {}) => {
+      if (options.includePrompt) {
+        setProjectPromptMarkdown(snapshot.projectPromptMarkdown);
+        setProjectPromptPolicy(snapshot.projectPromptPolicy);
+      }
+      setGraph(snapshot.graph);
+      if (options.includeLayout) {
+        setLayout(snapshot.layout);
+      }
+      setTodoGroups(snapshot.todoGroups);
+      setExecutionPlan(snapshot.executionPlan);
+      setStatistics(snapshot.statistics);
+      return snapshot.errors;
+    },
+    []
+  );
+
   const loadProject = useCallback(
     async (project: DesktopProjectSummary, requestedCanvasId?: string | null) => {
       if (!bridge) {
@@ -95,14 +119,7 @@ export function useDesktopProject({
       const errors: string[] = [];
       try {
         const snapshot = await bridge.getDesktopProjectSnapshot(canvasRef);
-        setProjectPromptMarkdown(snapshot.projectPromptMarkdown);
-        setProjectPromptPolicy(snapshot.projectPromptPolicy);
-        setGraph(snapshot.graph);
-        setLayout(snapshot.layout);
-        setTodoGroups(snapshot.todoGroups);
-        setExecutionPlan(snapshot.executionPlan);
-        setStatistics(snapshot.statistics);
-        errors.push(...snapshot.errors);
+        errors.push(...applyDesktopProjectSnapshot(snapshot, { includeLayout: true, includePrompt: true }));
         if (snapshot.graph) {
           try {
             await bridge.refreshPackageFileChanges(canvasRef);
@@ -120,7 +137,7 @@ export function useDesktopProject({
       updateSettings({ runtimePath: project.workspaceRoot });
       setProjectLoading(false);
     },
-    [setError, updateSettings]
+    [applyDesktopProjectSnapshot, setError, updateSettings]
   );
 
   useEffect(() => {
@@ -172,38 +189,17 @@ export function useDesktopProject({
     setGraph(nextGraph);
   }, [selectedCanvasId, selectedProject]);
 
-  const refreshProjectDerivedState = useCallback(async (options: { includeLayout?: boolean } = {}) => {
+  const refreshProjectDerivedState = useCallback(async (options: ApplyDesktopProjectSnapshotOptions = {}) => {
     if (!bridge || !selectedProject) {
       return;
     }
     const canvasRef = desktopCanvasReference(selectedProject, selectedCanvasId);
-    const projectRoot = selectedProject.rootPath;
-    if (options.includeLayout) {
-      const [nextGraph, nextTodoGroups, nextExecutionPlan, nextStatistics, nextLayout] = await Promise.all([
-        bridge.getGraphViewModel(canvasRef),
-        bridge.getTodoGroups(projectRoot),
-        bridge.getProjectExecutionPlan(projectRoot),
-        bridge.getStatistics(projectRoot),
-        bridge.getDesktopLayout(canvasRef)
-      ]);
-      setGraph(nextGraph);
-      setTodoGroups(nextTodoGroups);
-      setExecutionPlan(nextExecutionPlan);
-      setStatistics(nextStatistics);
-      setLayout(nextLayout);
-      return;
+    const snapshot = await bridge.getDesktopProjectSnapshot(canvasRef);
+    const errors = applyDesktopProjectSnapshot(snapshot, options);
+    if (errors.length > 0) {
+      setError(errors.join("\n"));
     }
-    const [nextGraph, nextTodoGroups, nextExecutionPlan, nextStatistics] = await Promise.all([
-      bridge.getGraphViewModel(canvasRef),
-      bridge.getTodoGroups(projectRoot),
-      bridge.getProjectExecutionPlan(projectRoot),
-      bridge.getStatistics(projectRoot)
-    ]);
-    setGraph(nextGraph);
-    setTodoGroups(nextTodoGroups);
-    setExecutionPlan(nextExecutionPlan);
-    setStatistics(nextStatistics);
-  }, [selectedCanvasId, selectedProject]);
+  }, [applyDesktopProjectSnapshot, selectedCanvasId, selectedProject, setError]);
 
   const refreshGraphAndLayout = useCallback(async () => {
     await refreshProjectDerivedState({ includeLayout: true });

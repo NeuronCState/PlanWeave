@@ -5,9 +5,12 @@ import type {
   DesktopBlockDetail,
   DesktopGraphViewModel,
   DesktopLayout,
+  DesktopProjectExecutionPlan,
   DesktopProjectSnapshot,
   DesktopProjectSummary,
-  DesktopReviewPipeline
+  DesktopReviewPipeline,
+  DesktopStatistics,
+  DesktopTodoGroups
 } from "@planweave-ai/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDesktopBridgeMock } from "./desktopBridgeMock";
@@ -227,13 +230,74 @@ describe("desktop renderer hook interfaces", () => {
   });
 
   it("refreshes graph and layout together for same-canvas history updates", async () => {
+    const nextGraph: DesktopGraphViewModel = {
+      ...graph,
+      graphVersion: "pgv-refreshed"
+    };
     const nextLayout: DesktopLayout = {
       ...layout,
       nodes: [{ nodeId: "T-ALPHA", x: 320, y: 160 }]
     };
+    const nextTodoGroups: DesktopTodoGroups = {
+      planned: [],
+      ready: [
+        {
+          blockId: "B-001",
+          canvasId: "canvas-main",
+          canvasName: "Main canvas",
+          dependencyBlockers: [],
+          locks: [],
+          parallelSafe: true,
+          ref: "T-ALPHA#B-001",
+          reviewGate: null,
+          status: "ready",
+          taskId: "T-ALPHA",
+          title: "Implement alpha"
+        }
+      ],
+      in_progress: [],
+      completed: [],
+      needs_changes: [],
+      blocked: [],
+      diverged: [],
+      implemented: []
+    };
+    const nextExecutionPlan: DesktopProjectExecutionPlan = {
+      notes: ["Ready queue changed"],
+      phases: [
+        {
+          blockedCount: 0,
+          canvasId: "canvas-main",
+          canvasName: "Main canvas",
+          completedCount: 0,
+          inProgressCount: 0,
+          parallelReadyQueue: nextTodoGroups.ready,
+          phaseIndex: 0,
+          readyQueue: nextTodoGroups.ready,
+          sequentialReadyQueue: [],
+          taskCount: 1
+        }
+      ],
+      readyQueue: nextTodoGroups.ready
+    };
+    const nextStatistics: DesktopStatistics = {
+      averageImplementationTimeMs: null,
+      blockTotal: 1,
+      completedBlockCount: 0,
+      estimatedRemainingBlocks: 1,
+      feedbackEnvelopeCount: 0,
+      implementedRatio: 0,
+      implementedTaskCount: 0,
+      reviewPassedCount: 0,
+      reviewPassedRatio: 0,
+      reworkCount: 0,
+      taskThroughput: 0,
+      taskTotal: 1
+    };
+    const getDesktopProjectSnapshot = vi.fn().mockResolvedValue(projectSnapshot());
     const bridge = createDesktopBridgeMock({
-      listProjects: vi.fn().mockResolvedValue([project]),
-      getDesktopProjectSnapshot: vi.fn().mockResolvedValue(projectSnapshot()),
+      listProjects: vi.fn().mockResolvedValue([]),
+      getDesktopProjectSnapshot,
       refreshPackageFileChanges: vi.fn().mockResolvedValue({ diagnostics: [], dirtyPromptRefs: [] }),
       watchPackageFiles: vi.fn().mockResolvedValue(undefined),
       getGraphViewModel: vi.fn().mockResolvedValue(graph),
@@ -254,19 +318,103 @@ describe("desktop renderer hook interfaces", () => {
       })
     );
 
+    await waitFor(() => expect(result.current.projectLoading).toBe(false));
+    await act(async () => {
+      await result.current.loadProject(project, "canvas-main");
+    });
     await waitFor(() => expect(result.current.graph?.tasks.map((task) => task.taskId)).toEqual(["T-ALPHA", "T-BETA"]));
     await waitFor(() => expect(result.current.layout?.nodes).toEqual([]));
     await waitFor(() => expect(result.current.projectLoading).toBe(false));
+    getDesktopProjectSnapshot.mockClear();
+    getDesktopProjectSnapshot.mockResolvedValue(
+      projectSnapshot({
+        executionPlan: nextExecutionPlan,
+        graph: nextGraph,
+        layout: nextLayout,
+        statistics: nextStatistics,
+        todoGroups: nextTodoGroups
+      })
+    );
 
     await act(async () => {
       await result.current.refreshGraphAndLayout();
     });
 
-    expect(bridge.getGraphViewModel).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
-    expect(bridge.getTodoGroups).toHaveBeenCalledWith(project.rootPath);
-    expect(bridge.getProjectExecutionPlan).toHaveBeenCalledWith(project.rootPath);
-    expect(bridge.getStatistics).toHaveBeenCalledWith(project.rootPath);
-    expect(bridge.getDesktopLayout).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
+    expect(bridge.getDesktopProjectSnapshot).toHaveBeenCalledTimes(1);
+    expect(bridge.getDesktopProjectSnapshot).toHaveBeenLastCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
+    expect(bridge.getGraphViewModel).not.toHaveBeenCalled();
+    expect(bridge.getTodoGroups).not.toHaveBeenCalled();
+    expect(bridge.getProjectExecutionPlan).not.toHaveBeenCalled();
+    expect(bridge.getStatistics).not.toHaveBeenCalled();
+    expect(bridge.getDesktopLayout).not.toHaveBeenCalled();
+    expect(result.current.graph).toBe(nextGraph);
+    expect(result.current.layout).toBe(nextLayout);
+    expect(result.current.todoGroups).toBe(nextTodoGroups);
+    expect(result.current.executionPlan).toBe(nextExecutionPlan);
+    expect(result.current.statistics).toBe(nextStatistics);
+  });
+
+  it("refreshes derived project state without replacing layout or project prompt by default", async () => {
+    const nextGraph: DesktopGraphViewModel = {
+      ...graph,
+      graphVersion: "pgv-derived-refresh"
+    };
+    const nextLayout: DesktopLayout = {
+      ...layout,
+      nodes: [{ nodeId: "T-BETA", x: 640, y: 220 }]
+    };
+    const getDesktopProjectSnapshot = vi.fn().mockResolvedValue(
+      projectSnapshot({
+        projectPromptMarkdown: "Initial prompt"
+      })
+    );
+    const bridge = createDesktopBridgeMock({
+      listProjects: vi.fn().mockResolvedValue([]),
+      getDesktopProjectSnapshot,
+      refreshPackageFileChanges: vi.fn().mockResolvedValue({ diagnostics: [], dirtyPromptRefs: [] }),
+      watchPackageFiles: vi.fn().mockResolvedValue(undefined),
+      getGraphViewModel: vi.fn().mockResolvedValue(graph),
+      getDesktopLayout: vi.fn().mockResolvedValue(nextLayout)
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
+
+    const { result } = renderHook(() =>
+      useDesktopProject({
+        setError: vi.fn(),
+        t: createTranslator("en"),
+        updateSettings: vi.fn()
+      })
+    );
+
+    await waitFor(() => expect(result.current.projectLoading).toBe(false));
+    await act(async () => {
+      await result.current.loadProject(project, "canvas-main");
+    });
+    expect(result.current.layout).toBe(layout);
+    expect(result.current.projectPromptMarkdown).toBe("Initial prompt");
+
+    getDesktopProjectSnapshot.mockClear();
+    getDesktopProjectSnapshot.mockResolvedValue(
+      projectSnapshot({
+        graph: nextGraph,
+        layout: nextLayout,
+        projectPromptMarkdown: "Changed prompt"
+      })
+    );
+
+    await act(async () => {
+      await result.current.refreshProjectDerivedState();
+    });
+
+    expect(bridge.getDesktopProjectSnapshot).toHaveBeenCalledTimes(1);
+    expect(bridge.getDesktopProjectSnapshot).toHaveBeenLastCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
+    expect(bridge.getGraphViewModel).not.toHaveBeenCalled();
+    expect(bridge.getDesktopLayout).not.toHaveBeenCalled();
+    expect(result.current.graph).toBe(nextGraph);
+    expect(result.current.layout).toBe(layout);
+    expect(result.current.projectPromptMarkdown).toBe("Initial prompt");
   });
 
   it("keeps startup in a loading state until the default project snapshot is ready", async () => {

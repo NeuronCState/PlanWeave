@@ -10,25 +10,34 @@ import { manifestTestBuilder } from "./manifestTestBuilder.js";
 
 function automaticManifest(reviewVerdict: "passed" | "needs_changes" = "passed") {
   return manifestTestBuilder()
-    .withExecutor("fake-codex", {
+    .withExecutor("fake-implementation", {
       adapter: "codex-exec",
       command: process.execPath,
       args: [
         "-e",
         [
-          "let input='';",
-          "process.stdin.on('data', c => input += c);",
           "process.stdin.on('end', () => {",
-          "  if (input.includes('# T-001#R-001')) {",
-          `    console.log(JSON.stringify({ reviewBlockRef: 'T-001#R-001', taskId: 'T-001', verdict: '${reviewVerdict}', content: 'ok' }));`,
-          "    return;",
-          "  }",
           "  console.log('implementation complete');",
           "});"
         ].join("")
       ]
     })
-    .withDefaultExecutor("fake-codex")
+    .withExecutor("fake-review", {
+      adapter: "codex-exec",
+      command: process.execPath,
+      args: [
+        "-e",
+        [
+          "process.stdin.resume();",
+          "process.stdin.on('end', () => {",
+          `  console.log(JSON.stringify({ reviewBlockRef: 'T-001#R-001', taskId: 'T-001', verdict: '${reviewVerdict}', content: 'ok' }));`,
+          "});"
+        ].join("")
+      ]
+    })
+    .withDefaultExecutor("fake-implementation")
+    .withBlock("T-001", "B-001", (block) => ({ ...block, executor: "fake-implementation" }))
+    .withBlock("T-001", "R-001", (block) => ({ ...block, executor: "fake-review" }))
     .build();
 }
 

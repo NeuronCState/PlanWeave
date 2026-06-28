@@ -14,7 +14,8 @@ const allowedFiles = new Set([
   "packages/desktop/src/renderer/hooks/useAppViewHistory.ts",
   "packages/desktop/src/renderer/hooks/useDesktopSettingsEffects.ts",
   "packages/desktop/src/renderer/hooks/useElementBounds.ts",
-  "packages/desktop/src/renderer/hooks/useFocusManagement.ts"
+  "packages/desktop/src/renderer/hooks/useFocusManagement.ts",
+  "packages/desktop/src/renderer/hooks/useResizableSidebarLayout.ts"
 ]);
 
 const bannedPatterns = [

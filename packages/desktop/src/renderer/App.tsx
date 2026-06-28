@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useState, type Dispatch, type PointerEvent as ReactPointerEvent, type SetStateAction } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { type Edge, type ReactFlowInstance, useEdgesState, useNodesState } from "@xyflow/react";
 import type { DesktopPackageFileChangeEvent, DesktopPackageFileSyncResult, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { bridge } from "./bridge";
 import { edgeTypes, nodeTypes } from "./graph/flowModel";
 import { createTranslator } from "./i18n";
 import { ProjectSidebar } from "./sidebar/ProjectSidebar";
-import { desktopSidebarWidthBounds, loadDesktopSettings, mergeDesktopSettings, orderProjectsByPinnedIds } from "./settings";
+import { loadDesktopSettings, mergeDesktopSettings, orderProjectsByPinnedIds } from "./settings";
 import type { AppFlowNode, AppView, DesktopUiSettings } from "./types";
 import { WorkspaceTabs } from "./views/WorkspaceTabs";
 import { useReviewPipeline } from "./hooks/useReviewPipeline";
@@ -30,15 +30,12 @@ import { useDesktopProjectActions } from "./hooks/useDesktopProjectActions";
 import { useGraphFlowModel } from "./hooks/useGraphFlowModel";
 import { useGraphHistoryActions } from "./hooks/useGraphHistoryActions";
 import { useAppNotifications } from "./hooks/useAppNotifications";
+import { useResizableSidebarLayout } from "./hooks/useResizableSidebarLayout";
 import { CollapsedSidebarControls, RightPaletteSidebar } from "./AppSidebars";
 import { AppSettingsRoute } from "./AppSettingsRoute";
 import { buildAppSettingsRouteProps } from "./AppSettingsRouteProps";
 import { AppOverlays } from "./components/AppOverlays";
 import { writeAgentScopePromptToClipboard } from "./agentPrompt";
-
-function clampSidebarWidth(width: number, bounds: { min: number; max: number }): number {
-  return Math.min(bounds.max, Math.max(bounds.min, Math.round(width)));
-}
 
 type LayoutSettingsPatch = {
   leftSidebar?: Partial<DesktopUiSettings["layout"]["leftSidebar"]>;
@@ -51,10 +48,6 @@ export function App() {
   const language = settings.language;
   const t = useMemo(() => createTranslator(language), [language]);
   const [activeView, setActiveView] = useAppViewHistory("graph");
-  const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(() => settings.layout.leftSidebar.collapsed);
-  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(() => settings.layout.rightSidebar.collapsed);
-  const [leftSidebarWidth, setLeftSidebarWidth] = useState(() => clampSidebarWidth(settings.layout.leftSidebar.width, desktopSidebarWidthBounds.left));
-  const [rightSidebarWidth, setRightSidebarWidth] = useState(() => clampSidebarWidth(settings.layout.rightSidebar.width, desktopSidebarWidthBounds.right));
   const [, setBlockInspectorOpen] = useState(false);
   const { agentDetectionRefreshing, agentDetections, executorOptions, refreshAgentDetections } = useDetectedAgents();
   const { refreshRuntimeTools, runtimeTools } = useRuntimeTools();
@@ -93,58 +86,20 @@ export function App() {
     );
   }, []);
 
-  const setLeftSidebarCollapsedPreference: Dispatch<SetStateAction<boolean>> = useCallback((action) => {
-    setLeftSidebarCollapsed((current) => {
-      const collapsed = typeof action === "function" ? action(current) : action;
-      updateLayoutSettings({ leftSidebar: { collapsed } });
-      return collapsed;
-    });
-  }, [updateLayoutSettings]);
-
-  const setRightSidebarCollapsedPreference: Dispatch<SetStateAction<boolean>> = useCallback((action) => {
-    setRightSidebarCollapsed((current) => {
-      const collapsed = typeof action === "function" ? action(current) : action;
-      updateLayoutSettings({ rightSidebar: { collapsed } });
-      return collapsed;
-    });
-  }, [updateLayoutSettings]);
-
   useDesktopSettingsEffects(settings);
 
-  const startSidebarResize = useCallback(
-    (event: ReactPointerEvent, side: "left" | "right") => {
-      event.preventDefault();
-      const startX = event.clientX;
-      const startWidth = side === "left" ? leftSidebarWidth : rightSidebarWidth;
-      const bounds = side === "left" ? desktopSidebarWidthBounds.left : desktopSidebarWidthBounds.right;
-      const updateWidth = side === "left" ? setLeftSidebarWidth : setRightSidebarWidth;
-      const previousCursor = window.document.body.style.cursor;
-      const previousUserSelect = window.document.body.style.userSelect;
-      let finalWidth = clampSidebarWidth(startWidth, bounds);
-
-      window.document.body.style.cursor = "col-resize";
-      window.document.body.style.userSelect = "none";
-
-      const handlePointerMove = (moveEvent: PointerEvent) => {
-        const delta = moveEvent.clientX - startX;
-        finalWidth = clampSidebarWidth(side === "left" ? startWidth + delta : startWidth - delta, bounds);
-        updateWidth(finalWidth);
-      };
-      const stopResize = () => {
-        window.removeEventListener("pointermove", handlePointerMove);
-        window.removeEventListener("pointerup", stopResize);
-        window.removeEventListener("pointercancel", stopResize);
-        window.document.body.style.cursor = previousCursor;
-        window.document.body.style.userSelect = previousUserSelect;
-        updateLayoutSettings(side === "left" ? { leftSidebar: { width: finalWidth } } : { rightSidebar: { width: finalWidth } });
-      };
-
-      window.addEventListener("pointermove", handlePointerMove);
-      window.addEventListener("pointerup", stopResize);
-      window.addEventListener("pointercancel", stopResize);
-    },
-    [leftSidebarWidth, rightSidebarWidth, updateLayoutSettings]
-  );
+  const {
+    leftSidebarCollapsed,
+    leftSidebarWidth,
+    rightSidebarCollapsed,
+    rightSidebarWidth,
+    setLeftSidebarCollapsedPreference,
+    setRightSidebarCollapsedPreference,
+    startSidebarResize
+  } = useResizableSidebarLayout({
+    initialLayout: settings.layout,
+    onLayoutPatch: updateLayoutSettings
+  });
 
   const desktopProject = useDesktopProject({
     setError,

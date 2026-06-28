@@ -76,7 +76,7 @@ PlanWeave includes a local HTTP MCP server for using PlanWeave from MCP clients 
 For ChatGPT in the browser, use PlanWeave Desktop's MCP settings. You can use ChatGPT Pro as the planning partner: describe the project goal, ask it to draft the task graph, then let PlanWeave save the result as a canvas.
 
 1. Open **Settings -> MCP Tunnel** in the desktop app.
-2. Download or select the OpenAI `tunnel-client`.
+2. Download or select the OpenAI [`tunnel-client`](https://github.com/openai/tunnel-client).
 3. Enter your Tunnel ID and Runtime API key, then start the secure tunnel.
 4. Add PlanWeave in ChatGPT using the Tunnel connection mode.
 

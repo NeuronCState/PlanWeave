@@ -77,7 +77,7 @@ PlanWeave 内置本机 HTTP MCP server，可以让 ChatGPT 等 MCP client 直接
 如果要在浏览器里的 ChatGPT 使用 PlanWeave，推荐通过桌面端设置。你可以使用 ChatGPT Pro 来制定计划：描述项目目标，让它生成任务图，再由 PlanWeave 写入任务画布。
 
 1. 在桌面应用打开 **Settings -> MCP Tunnel**。
-2. 下载或选择 OpenAI `tunnel-client`。
+2. 下载或选择 OpenAI [`tunnel-client`](https://github.com/openai/tunnel-client)。
 3. 填入 Tunnel ID 和 Runtime API key，然后启动 secure tunnel。
 4. 在 ChatGPT 中用 Tunnel 连接方式添加 PlanWeave。
 

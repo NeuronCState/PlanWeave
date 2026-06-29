@@ -12,6 +12,11 @@ function nullableString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
+function normalizeResetReason(reason: string | undefined): string | null {
+  const trimmed = reason?.trim();
+  return trimmed ? trimmed : null;
+}
+
 function runtimeBlocks(state: RuntimeState): Record<string, BlockState> {
   return state.blocks && typeof state.blocks === "object" ? state.blocks : {};
 }
@@ -43,6 +48,7 @@ export async function resetRuntimeState(options: ResetRuntimeStateOptions): Prom
   const summary: RunSessionResetSummary = {
     performed: true,
     statePath: workspace.stateFile,
+    reason: normalizeResetReason(options.reason),
     previousCurrentRefs: stringArray(previousState.currentRefs),
     previousCurrentFeedbackId: nullableString(previousState.currentFeedbackId),
     previousCurrentReviewBlockRef: nullableString(previousState.currentReviewBlockRef),
@@ -54,6 +60,15 @@ export async function resetRuntimeState(options: ResetRuntimeStateOptions): Prom
     summary.previousCurrentFeedbackId !== null ||
     summary.previousCurrentReviewBlockRef !== null ||
     summary.previousInProgressRefs.length > 0;
+
+  if (sessionId) {
+    await appendRunSessionEvent(workspace, sessionId, "reset_started", {
+      phase: "resetting",
+      force: summary.forced,
+      reason: summary.reason
+    });
+    await updateRunSession(workspace, sessionId, { phase: "resetting" });
+  }
 
   if (hasActiveWork && !summary.forced) {
     throw new Error(activeWorkMessage(summary));
@@ -71,6 +86,7 @@ export async function resetRuntimeState(options: ResetRuntimeStateOptions): Prom
 
   return {
     statePath: workspace.stateFile,
+    reason: summary.reason,
     forced: summary.forced,
     previousCurrentRefs: summary.previousCurrentRefs,
     previousCurrentFeedbackId: summary.previousCurrentFeedbackId,

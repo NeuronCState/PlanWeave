@@ -149,10 +149,11 @@ describe("desktop auto run API", () => {
 
     const result = await resetDesktopRuntimeState(root, null, {
       force: true,
-      reason: "test reset"
+      reason: "  test reset  "
     });
 
     expect(result).toMatchObject({
+      reason: "test reset",
       forced: true,
       previousCurrentRefs: ["T-001#B-001"],
       previousInProgressRefs: ["T-001#B-001"],
@@ -161,7 +162,7 @@ describe("desktop auto run API", () => {
         kind: "reset",
         trigger: "desktop",
         phase: "completed",
-        reset: expect.objectContaining({ performed: true, forced: true })
+        reset: expect.objectContaining({ performed: true, forced: true, reason: "test reset" })
       }
     });
     expect((await readState(init.workspace.stateFile)).blocks["T-001#B-001"]).toMatchObject({ status: "ready", lastRunId: null });
@@ -169,6 +170,12 @@ describe("desktop auto run API", () => {
 
     const detail = await getRunSession(root, result.session.sessionId);
     expect(detail.events.map((event) => event.type)).toEqual(["session_started", "reset_started", "reset_completed", "session_completed"]);
+    expect(detail.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "reset_started", reason: "test reset" }),
+        expect.objectContaining({ type: "reset_completed", reset: expect.objectContaining({ reason: "test reset" }) })
+      ])
+    );
     expect(detail.events.at(-1)).toMatchObject({
       type: "session_completed",
       stoppedAutoRunIds: [started.runId]

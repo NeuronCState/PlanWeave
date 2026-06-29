@@ -41,6 +41,7 @@ describe("resetRuntimeState", () => {
 
     expect(result).toEqual({
       statePath: init.workspace.stateFile,
+      reason: null,
       forced: true,
       previousCurrentRefs: ["T-001#B-001"],
       previousCurrentFeedbackId: null,
@@ -89,16 +90,34 @@ describe("resetRuntimeState", () => {
     const { root } = await createTestWorkspace();
     const session = await createRunSession({ projectRoot: root, kind: "reset" });
 
-    const result = await resetRuntimeState({ projectRoot: root, session });
+    const result = await resetRuntimeState({ projectRoot: root, reason: "  rerun acceptance  ", session });
     const detail = await getRunSession(root, session.sessionId);
 
     expect(result.sessionId).toBe(session.sessionId);
+    expect(result.reason).toBe("rerun acceptance");
     expect(detail.session).toMatchObject({
       sessionId: session.sessionId,
       phase: "resetting",
-      reset: expect.objectContaining({ performed: true, forced: false })
+      reset: expect.objectContaining({ performed: true, forced: false, reason: "rerun acceptance" })
     });
-    expect(detail.events.map((event) => event.type)).toEqual(["session_started", "reset_completed"]);
+    expect(detail.events.map((event) => event.type)).toEqual(["session_started", "reset_started", "reset_completed"]);
+    expect(detail.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "reset_started", reason: "rerun acceptance" }),
+        expect.objectContaining({ type: "reset_completed", reset: expect.objectContaining({ reason: "rerun acceptance" }) })
+      ])
+    );
+    expect(detail.events.at(-1)).toMatchObject({
+      reset: expect.objectContaining({ reason: "rerun acceptance" })
+    });
+  });
+
+  it("normalizes blank reset reasons to null", async () => {
+    const { root } = await createTestWorkspace();
+
+    const result = await resetRuntimeState({ projectRoot: root, reason: " \t\n" });
+
+    expect(result.reason).toBeNull();
   });
 
   it("rejects invalid session ids before writing reset state", async () => {

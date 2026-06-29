@@ -362,16 +362,18 @@ describe("STEP-1 CLI contract", () => {
       terminalReason: "manual"
     });
 
-    const reset = JSON.parse((await runCli(["reset", "--force", "--reason", "rerun acceptance", "--json"], env)).stdout) as {
+    const reset = JSON.parse((await runCli(["reset", "--force", "--reason", "  rerun acceptance  ", "--json"], env)).stdout) as {
       sessionId: string;
       statePath: string;
+      reason: string | null;
       forced: boolean;
-      session: { sessionId: string; kind: string; phase: string };
+      session: { sessionId: string; kind: string; phase: string; reset: { reason: string | null } };
     };
     expect(reset).toMatchObject({
       sessionId: "SESSION-0002",
+      reason: "rerun acceptance",
       forced: true,
-      session: { sessionId: "SESSION-0002", kind: "reset", phase: "completed" }
+      session: { sessionId: "SESSION-0002", kind: "reset", phase: "completed", reset: { reason: "rerun acceptance" } }
     });
     expect(reset.statePath).toContain("canvases/default/state.json");
 

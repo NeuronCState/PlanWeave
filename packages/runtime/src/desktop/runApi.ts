@@ -482,11 +482,6 @@ export async function resetDesktopRuntimeState(
   let stoppedAutoRunIds: string[] = [];
 
   try {
-    await appendRunSessionEvent(workspace, session.sessionId, "reset_started", {
-      phase: "resetting",
-      force: options.force === true,
-      reason: options.reason ?? null
-    });
     const activeRunIds = activeResetTargetAutoRunIds(projectRoot, normalizedCanvasId);
     if (activeRunIds.length > 0) {
       throw new Error(`Cannot reset runtime state while Auto Run is active (${activeRunIds.join(", ")}). Stop Auto Run and wait for the current step to settle first.`);
@@ -497,6 +492,7 @@ export async function resetDesktopRuntimeState(
     const reset = await resetRuntimeState({
       projectRoot: workspace,
       force: options.force,
+      reason: options.reason,
       session
     });
     invalidateDesktopProjectProjection(projectRoot);

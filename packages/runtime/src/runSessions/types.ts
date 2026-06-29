@@ -9,6 +9,7 @@ export type RunSessionScope = { kind: "project" } | { kind: "task"; taskId: stri
 export type RunSessionResetSummary = {
   performed: boolean;
   statePath: string;
+  reason: string | null;
   previousCurrentRefs: string[];
   previousCurrentFeedbackId: string | null;
   previousCurrentReviewBlockRef: string | null;
@@ -83,12 +84,14 @@ export type RunSessionDetail = {
 export type ResetRuntimeStateOptions = {
   projectRoot: PackageWorkspaceRef;
   force?: boolean;
+  reason?: string;
   sessionId?: string;
   session?: RunSessionState;
 };
 
 export type ResetRuntimeStateResult = {
   statePath: string;
+  reason: string | null;
   forced: boolean;
   previousCurrentRefs: string[];
   previousCurrentFeedbackId: string | null;

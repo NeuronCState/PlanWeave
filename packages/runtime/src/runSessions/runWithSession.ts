@@ -247,15 +247,10 @@ export async function runWithSession(options: RunWithSessionOptions): Promise<Ru
 
   try {
     if (options.reset === true) {
-      await appendRunSessionEvent(options.projectRoot, session.sessionId, "reset_started", {
-        phase: "resetting",
-        force: options.force === true,
-        reason: options.reason ?? null
-      });
-      await updateRunSession(options.projectRoot, session.sessionId, { phase: "resetting" });
       await resetRuntimeState({
         projectRoot: options.projectRoot,
         force: options.force,
+        reason: options.reason,
         session
       });
       status = await getAutoRunStatus({ projectRoot: options.projectRoot });

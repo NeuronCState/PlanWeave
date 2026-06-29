@@ -11,6 +11,7 @@ import type {
   RunSessionDiagnostic,
   RunSessionEvent,
   RunSessionPhase,
+  RunSessionResetSummary,
   RunSessionState,
   UpdateRunSessionPatch
 } from "./types.js";
@@ -116,7 +117,9 @@ function isNullableString(value: unknown): boolean {
   return value === null || typeof value === "string";
 }
 
-function isResetSummary(value: unknown): boolean {
+type StoredRunSessionResetSummary = Omit<RunSessionResetSummary, "reason"> & { reason?: string | null };
+
+function isResetSummary(value: unknown): value is StoredRunSessionResetSummary | null {
   if (value === null) {
     return true;
   }
@@ -124,6 +127,7 @@ function isResetSummary(value: unknown): boolean {
     isRecord(value) &&
     value.performed === true &&
     typeof value.statePath === "string" &&
+    (value.reason === undefined || isNullableString(value.reason)) &&
     Array.isArray(value.previousCurrentRefs) &&
     value.previousCurrentRefs.every((ref) => typeof ref === "string") &&
     isNullableString(value.previousCurrentFeedbackId) &&
@@ -132,6 +136,10 @@ function isResetSummary(value: unknown): boolean {
     value.previousInProgressRefs.every((ref) => typeof ref === "string") &&
     typeof value.forced === "boolean"
   );
+}
+
+function normalizeResetSummary(value: StoredRunSessionResetSummary | null): RunSessionResetSummary | null {
+  return value === null ? null : { ...value, reason: value.reason ?? null };
 }
 
 function isAutoRunSummary(value: unknown): boolean {
@@ -182,7 +190,10 @@ function validateSessionState(value: unknown, sessionId: string, path: string): 
   if (!isNullableString(value.finishedAt)) {
     diagnostics.push(invalidSessionDiagnostic(sessionId, path, "Run session summary has an invalid finishedAt."));
   }
-  if (!isResetSummary(value.reset)) {
+  const storedResetSummary = value.reset;
+  const resetSummaryValid = isResetSummary(storedResetSummary);
+  const resetSummary = resetSummaryValid ? normalizeResetSummary(storedResetSummary) : null;
+  if (!resetSummaryValid) {
     diagnostics.push(invalidSessionDiagnostic(sessionId, path, "Run session summary has an invalid reset summary."));
   }
   if (!isAutoRunSummary(value.autoRun)) {
@@ -194,7 +205,8 @@ function validateSessionState(value: unknown, sessionId: string, path: string): 
   if (diagnostics.length > 0) {
     return { session: null, diagnostics };
   }
-  return { session: value as RunSessionState, diagnostics: [] };
+  const session = value as RunSessionState;
+  return { session: { ...session, reset: resetSummary }, diagnostics: [] };
 }
 
 async function readSessionState(workspace: ProjectWorkspace, sessionId: string): Promise<{ session: RunSessionState | null; diagnostics: RunSessionDiagnostic[] }> {

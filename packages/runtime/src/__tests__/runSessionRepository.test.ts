@@ -97,6 +97,54 @@ describe("run session repository", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("normalizes legacy reset summaries without a reason", async () => {
+    const { root, init } = await createTestWorkspace();
+    const sessionRoot = join(init.workspace.resultsDir, "run-sessions", "SESSION-0001");
+    await mkdir(sessionRoot, { recursive: true });
+    await writeFile(
+      join(sessionRoot, "session.json"),
+      `${JSON.stringify(
+        {
+          sessionId: "SESSION-0001",
+          kind: "reset",
+          trigger: "manual",
+          projectRoot: root,
+          canvasId: "default",
+          scope: { kind: "project" },
+          phase: "completed",
+          startedAt: "2026-06-25T00:00:00.000Z",
+          updatedAt: "2026-06-25T00:01:00.000Z",
+          finishedAt: "2026-06-25T00:01:00.000Z",
+          reset: {
+            performed: true,
+            statePath: init.workspace.stateFile,
+            previousCurrentRefs: [],
+            previousCurrentFeedbackId: null,
+            previousCurrentReviewBlockRef: null,
+            previousInProgressRefs: [],
+            forced: false
+          },
+          autoRun: null,
+          latestRecordId: null,
+          latestRecordPath: null,
+          error: null
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+
+    const listed = await listRunSessions(root);
+    const detail = await getRunSession(root, "SESSION-0001");
+
+    expect(listed.diagnostics).toEqual([]);
+    expect(listed.sessions).toHaveLength(1);
+    expect(listed.sessions[0].reset?.reason).toBeNull();
+    expect(detail.diagnostics).toEqual([]);
+    expect(detail.session.reset?.reason).toBeNull();
+  });
+
   it("skips corrupt sessions with diagnostics when listing", async () => {
     const { root, init } = await createTestWorkspace();
     await createRunSession({ projectRoot: root, kind: "run" });

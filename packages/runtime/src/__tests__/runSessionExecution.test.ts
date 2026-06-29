@@ -53,7 +53,7 @@ describe("runWithSession", () => {
       sessionId: "SESSION-0001",
       kind: "run",
       phase: "completed",
-      reset: expect.objectContaining({ performed: true, forced: false }),
+      reset: expect.objectContaining({ performed: true, forced: false, reason: null }),
       autoRun: expect.objectContaining({ stepCount: 3, parallel: false, executorOverride: null, stopReason: null }),
       latestRecordId: "T-001#R-001::RUN-001",
       error: null
@@ -92,12 +92,12 @@ describe("runWithSession", () => {
     const { root, init } = await createTestWorkspace(automaticManifest());
 
     await runWithSession({ projectRoot: root, reset: true, stepLimit: 10 });
-    const second = await runWithSession({ projectRoot: root, reset: true, force: true, reason: "rerun acceptance", stepLimit: 10 });
+    const second = await runWithSession({ projectRoot: root, reset: true, force: true, reason: "  rerun acceptance  ", stepLimit: 10 });
 
     expect(second.session).toMatchObject({
       sessionId: "SESSION-0002",
       phase: "completed",
-      reset: expect.objectContaining({ performed: true, forced: true }),
+      reset: expect.objectContaining({ performed: true, forced: true, reason: "rerun acceptance" }),
       latestRecordId: "T-001#R-001::RUN-002"
     });
     await expect(access(join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-001", "metadata.json"))).resolves.toBeUndefined();
@@ -107,6 +107,7 @@ describe("runWithSession", () => {
     expect(detail.events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ type: "reset_started", reason: "rerun acceptance", force: true }),
+        expect.objectContaining({ type: "reset_completed", reset: expect.objectContaining({ reason: "rerun acceptance" }) }),
         expect.objectContaining({ type: "step_finish", stepKind: "submitted", claimRefs: ["T-001#B-001"], recordId: "T-001#B-001::RUN-002" })
       ])
     );

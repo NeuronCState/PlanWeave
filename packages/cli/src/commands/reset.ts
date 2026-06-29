@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import { appendRunSessionEvent, createRunSession, resetRuntimeState, updateRunSession, type ResetRuntimeStateResult, type RunSessionState } from "@planweave-ai/runtime";
 import { addCanvasOption, resolveCliPackageWorkspace, type CanvasCommandOptions } from "../cliWorkspace.js";
+import { formatResetResult } from "./formatters/runFormatters.js";
 
 type ResetCommandOptions = {
   force?: boolean;
@@ -23,14 +24,10 @@ export function registerResetCommand(program: Command): void {
       const projectRoot = await resolveCliPackageWorkspace(options);
       const session = await createRunSession({ projectRoot, kind: "reset", phase: "resetting" });
       try {
-        await appendRunSessionEvent(projectRoot, session.sessionId, "reset_started", {
-          phase: "resetting",
-          force: options.force === true,
-          reason: options.reason ?? null
-        });
         const reset = await resetRuntimeState({
           projectRoot,
           force: options.force,
+          reason: options.reason,
           session
         });
         const finishedAt = new Date().toISOString();
@@ -64,14 +61,4 @@ export function registerResetCommand(program: Command): void {
         throw error;
       }
     });
-}
-
-function formatResetResult(result: ResetCommandResult): string {
-  return [
-    `session: ${result.session.sessionId}`,
-    `state path: ${result.statePath}`,
-    `forced: ${result.forced ? "yes" : "no"}`,
-    `previous current refs: ${result.previousCurrentRefs.join(", ") || "none"}`,
-    `previous in-progress refs: ${result.previousInProgressRefs.join(", ") || "none"}`
-  ].join("\n");
 }

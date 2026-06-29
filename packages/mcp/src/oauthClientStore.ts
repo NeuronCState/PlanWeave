@@ -1,5 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { readFile } from "node:fs/promises";
+import { writePrivateJsonFile } from "./privateJsonFile.js";
 
 export type RegisteredClient = {
   clientId: string;
@@ -65,9 +65,7 @@ export function createFileOAuthClientStore(path: string): OAuthClientStore {
       version: 1,
       clients: [...clients.values()].sort((left, right) => left.clientId.localeCompare(right.clientId))
     };
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(`${path}.tmp`, `${JSON.stringify(file, null, 2)}\n`, "utf8");
-    await rename(`${path}.tmp`, path);
+    await writePrivateJsonFile(path, file);
   }
 
   return {

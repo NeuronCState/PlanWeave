@@ -1,5 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { readFile } from "node:fs/promises";
+import { writePrivateJsonFile } from "./privateJsonFile.js";
 
 export type StoredAccessToken = {
   tokenHash: string;
@@ -76,9 +76,7 @@ export function createFileOAuthTokenStore(path: string): OAuthTokenStore {
       version: 1,
       tokens: [...tokens.values()].sort((left, right) => left.tokenHash.localeCompare(right.tokenHash))
     };
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(`${path}.tmp`, `${JSON.stringify(file, null, 2)}\n`, "utf8");
-    await rename(`${path}.tmp`, path);
+    await writePrivateJsonFile(path, file);
   }
 
   return {

@@ -28,6 +28,10 @@ import type { DesktopSearchCanvasScope } from "../hooks/useDesktopSearch";
 import type { AppEdgeTypes, AppNodeTypes } from "../graph/flowModel";
 import type { AutoRunNextActionDescriptor } from "../run/autoRunNextActions";
 import type { AppFlowNode, AppView, AutoRunScopeMode, DesktopSettingsUpdate, DesktopUiSettings, NotificationItem } from "../types";
+import { createAutoRunGraphViewProps } from "../controllers/AutoRunController";
+import { createGraphWorkspaceViewProps, createTodoViewProps } from "../controllers/GraphWorkspaceController";
+import { createSearchViewProps } from "../controllers/SearchController";
+import { createWorkspaceTabsViewProps } from "../controllers/WorkspaceTabsController";
 import { CanvasMapView } from "./CanvasMapView";
 import { GraphView } from "./GraphView";
 import { NewTaskView } from "./NewTaskView";
@@ -37,7 +41,7 @@ import { SearchView } from "./SearchView";
 import { StatisticsView } from "./StatisticsView";
 import { TodoView } from "./TodoView";
 
-type WorkspaceTabsProps = {
+export type WorkspaceTabsViewProps = {
   activeView: AppView;
   autoRunControlRef: Ref<HTMLDivElement>;
   autoRunControlStyle: CSSProperties;
@@ -133,29 +137,167 @@ type WorkspaceTabsProps = {
   addReviewStep: () => void;
 };
 
+export type WorkspaceTabsShellProps = Pick<
+  WorkspaceTabsViewProps,
+  | "activeView"
+  | "handleOpenProject"
+  | "handleRevealPathInFinder"
+  | "language"
+  | "loadProject"
+  | "projectLoading"
+  | "selectedCanvasId"
+  | "selectedProject"
+  | "selectedTaskPanelId"
+  | "setActiveView"
+  | "setError"
+  | "settings"
+  | "t"
+  | "updateSettings"
+>;
+
+export type WorkspaceTabsGraphWorkspaceProps = Pick<
+  WorkspaceTabsViewProps,
+  | "edges"
+  | "edgeTypes"
+  | "executionPlan"
+  | "graph"
+  | "handleConnect"
+  | "handleEdgesDelete"
+  | "handleGraphDragOver"
+  | "handleGraphDrop"
+  | "handleOpenBlockInspector"
+  | "handleOpenRunRecord"
+  | "handleReconnectEdge"
+  | "handleRedoGraph"
+  | "handleUndoGraph"
+  | "nodeTypes"
+  | "nodes"
+  | "onAgentPromptCopied"
+  | "onEdgesChange"
+  | "onNodeDragStop"
+  | "onNodesChange"
+  | "onTaskPanelSelect"
+  | "selectedBlockPresent"
+  | "setFlowInstance"
+  | "visibleTaskIds"
+  | "visibleTasks"
+>;
+
+export type WorkspaceTabsAutoRunProps = Pick<
+  WorkspaceTabsViewProps,
+  | "autoRunControlRef"
+  | "autoRunControlStyle"
+  | "autoRunNextAction"
+  | "autoRunRetrospective"
+  | "autoRunScopeMode"
+  | "autoRunState"
+  | "handleAutoRunClick"
+  | "handleAutoRunNextAction"
+  | "miniRunPanelOpen"
+  | "moveAutoRunControl"
+  | "resetRuntimeStateClick"
+  | "setAutoRunScopeMode"
+  | "setMiniRunPanelOpen"
+  | "startAutoRunControlDrag"
+  | "stopAutoRunClick"
+  | "stopAutoRunControlDrag"
+>;
+
+export type WorkspaceTabsFileSyncProps = Pick<WorkspaceTabsViewProps, "fileSyncResult" | "refreshPackageFiles">;
+
+export type WorkspaceTabsSearchProps = Pick<
+  WorkspaceTabsViewProps,
+  | "handleSearchResultOpen"
+  | "searchCanvasScope"
+  | "searchQuery"
+  | "searchResultKinds"
+  | "searchResults"
+  | "selectedSearchResultKinds"
+  | "setSearchCanvasScope"
+  | "setSearchQuery"
+  | "setSearchResultKindEnabled"
+>;
+
+export type WorkspaceTabsReviewProps = Pick<
+  WorkspaceTabsViewProps,
+  | "addReviewStep"
+  | "moveReviewStep"
+  | "removeReviewStep"
+  | "reviewDefaultCyclesDraft"
+  | "reviewDraft"
+  | "reviewPipeline"
+  | "reviewTaskId"
+  | "saveReviewPipeline"
+  | "setReviewDefaultCyclesDraft"
+  | "setReviewTaskId"
+  | "updateReviewStep"
+>;
+
+export type WorkspaceTabsNewTaskProps = Pick<
+  WorkspaceTabsViewProps,
+  | "confirmTaskDraft"
+  | "generateTaskDraft"
+  | "newTaskMode"
+  | "newTaskTargetId"
+  | "newTaskText"
+  | "setNewTaskMode"
+  | "setNewTaskTargetId"
+  | "setNewTaskText"
+  | "setTaskDraft"
+  | "taskDraft"
+>;
+
+export type WorkspaceTabsNotificationsProps = Pick<
+  WorkspaceTabsViewProps,
+  | "notificationItems"
+  | "onApplyLocalPromptConflicts"
+  | "onKeepLocalPromptConflicts"
+  | "onMarkNotificationRead"
+  | "onReloadPromptConflicts"
+>;
+
+export type WorkspaceTabsPlanningProps = Pick<WorkspaceTabsViewProps, "statistics" | "todoGroups">;
+
+export type WorkspaceTabsProps = {
+  shell: WorkspaceTabsShellProps;
+  graphWorkspace: WorkspaceTabsGraphWorkspaceProps;
+  autoRun: WorkspaceTabsAutoRunProps;
+  fileSync: WorkspaceTabsFileSyncProps;
+  search: WorkspaceTabsSearchProps;
+  review: WorkspaceTabsReviewProps;
+  newTask: WorkspaceTabsNewTaskProps;
+  notifications: WorkspaceTabsNotificationsProps;
+  planning: WorkspaceTabsPlanningProps;
+};
+
 export function WorkspaceTabs(props: WorkspaceTabsProps) {
+  const viewProps = createWorkspaceTabsViewProps(props);
+  const graphWorkspaceViewProps = createGraphWorkspaceViewProps(props);
+  const graphAutoRunViewProps = createAutoRunGraphViewProps(props);
+  const searchViewProps = createSearchViewProps(props);
+  const todoViewProps = createTodoViewProps(props);
   const {
     activeView
-  } = props;
+  } = viewProps;
   const content = (() => {
     switch (activeView) {
       case "new-task":
-        return <NewTaskView {...props} />;
+        return <NewTaskView {...viewProps} />;
       case "review-pipeline":
-        return <ReviewPipelineView {...props} />;
+        return <ReviewPipelineView {...viewProps} />;
       case "todo":
-        return <TodoView {...props} handleBlockSelect={props.handleOpenBlockInspector} />;
+        return <TodoView {...todoViewProps} />;
       case "statistics":
-        return <StatisticsView {...props} />;
+        return <StatisticsView {...viewProps} />;
       case "search":
-        return <SearchView {...props} />;
+        return <SearchView {...searchViewProps} />;
       case "notifications":
-        return <NotificationsView {...props} onOpenGraph={() => props.setActiveView("graph")} />;
+        return <NotificationsView {...viewProps} onOpenGraph={() => viewProps.setActiveView("graph")} />;
       case "canvas-map":
-        return <CanvasMapView {...props} />;
+        return <CanvasMapView {...viewProps} />;
       case "graph":
       default:
-        return <GraphView {...props} />;
+        return <GraphView {...graphWorkspaceViewProps} {...graphAutoRunViewProps} />;
     }
   })();
 

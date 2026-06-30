@@ -37,6 +37,9 @@ import { CollapsedSidebarControls, RightPaletteSidebar } from "./AppSidebars";
 import { AppSettingsRoute } from "./AppSettingsRoute";
 import { buildAppSettingsRouteProps } from "./AppSettingsRouteProps";
 import { AppOverlays } from "./components/AppOverlays";
+import { createAutoRunController, createFileSyncController } from "./controllers/AutoRunController";
+import { createGraphWorkspaceController } from "./controllers/GraphWorkspaceController";
+import { createSearchController } from "./controllers/SearchController";
 import { writeAgentScopePromptToClipboard } from "./agentPrompt";
 
 const emptyExecutorOptions: string[] = [];
@@ -478,6 +481,118 @@ export function App() {
     updateProjectPromptPolicy,
     updateSettings
   });
+  const workspaceShell = {
+    activeView,
+    handleOpenProject,
+    handleRevealPathInFinder,
+    language,
+    loadProject: openProjectInSession,
+    projectLoading,
+    selectedCanvasId,
+    selectedProject,
+    selectedTaskPanelId,
+    setActiveView,
+    setError,
+    settings,
+    t,
+    updateSettings
+  };
+  const graphWorkspace = createGraphWorkspaceController({
+    edges,
+    edgeTypes,
+    executionPlan,
+    graph,
+    handleConnect,
+    handleEdgesDelete,
+    handleGraphDragOver,
+    handleGraphDrop,
+    handleOpenBlockInspector,
+    handleOpenRunRecord,
+    handleReconnectEdge,
+    handleRedoGraph,
+    handleUndoGraph,
+    nodeTypes,
+    nodes,
+    onEdgesChange,
+    onNodeDragStop: handleNodeDragStop,
+    onNodesChange: lerpedNodeDrag.onNodesChange,
+    onTaskPanelSelect: handleTaskPanelSelect,
+    selectedBlock,
+    setSuccessMessage,
+    setFlowInstance,
+    t,
+    visibleTaskIds,
+    visibleTasks
+  });
+  const autoRun = createAutoRunController({
+    autoRunControlRef,
+    autoRunControlStyle,
+    autoRunNextAction,
+    autoRunRetrospective,
+    autoRunScopeMode,
+    autoRunState,
+    handleAutoRunClick,
+    handleAutoRunNextAction,
+    miniRunPanelOpen,
+    moveAutoRunControl,
+    resetRuntimeStateClick,
+    setAutoRunScopeMode,
+    setMiniRunPanelOpen,
+    startAutoRunControlDrag,
+    stopAutoRunClick,
+    stopAutoRunControlDrag
+  });
+  const fileSync = createFileSyncController({
+    fileSyncResult,
+    refreshPackageFiles
+  });
+  const search = createSearchController({
+    handleSearchResultOpen,
+    searchCanvasScope,
+    searchQuery,
+    searchResultKinds,
+    searchResults,
+    selectedSearchResultKinds,
+    setSearchCanvasScope,
+    setSearchQuery,
+    setSearchResultKindEnabled
+  });
+  const review = {
+    addReviewStep,
+    moveReviewStep,
+    removeReviewStep,
+    reviewDefaultCyclesDraft,
+    reviewDraft,
+    reviewPipeline,
+    reviewTaskId,
+    saveReviewPipeline,
+    setReviewDefaultCyclesDraft,
+    setReviewTaskId,
+    updateReviewStep
+  };
+  const newTask = {
+    confirmTaskDraft,
+    generateTaskDraft,
+    newTaskMode,
+    newTaskTargetId,
+    newTaskText,
+    setNewTaskMode,
+    setNewTaskTargetId,
+    setNewTaskText,
+    setTaskDraft,
+    taskDraft
+  };
+  const notifications = {
+    notificationItems,
+    onApplyLocalPromptConflicts: applyLocalPromptConflicts,
+    onKeepLocalPromptConflicts: keepLocalPromptConflicts,
+    onMarkNotificationRead: handleMarkNotificationRead,
+    onReloadPromptConflicts: reloadPromptConflicts
+  };
+  const planning = {
+    statistics,
+    todoGroups
+  };
 
   if (activeView === "settings") {
     return (
@@ -526,99 +641,15 @@ export function App() {
           t={t}
         />
         <WorkspaceTabs
-          activeView={activeView}
-          addReviewStep={addReviewStep}
-          autoRunControlRef={autoRunControlRef}
-          autoRunControlStyle={autoRunControlStyle}
-          autoRunNextAction={autoRunNextAction}
-          autoRunRetrospective={autoRunRetrospective}
-          autoRunScopeMode={autoRunScopeMode}
-          autoRunState={autoRunState}
-          confirmTaskDraft={confirmTaskDraft}
-          edges={edges}
-          edgeTypes={edgeTypes}
-          executionPlan={executionPlan}
-          fileSyncResult={fileSyncResult}
-          generateTaskDraft={generateTaskDraft}
-          graph={graph}
-          handleAutoRunClick={handleAutoRunClick}
-          handleAutoRunNextAction={handleAutoRunNextAction}
-          handleOpenBlockInspector={handleOpenBlockInspector}
-          handleConnect={handleConnect}
-          handleEdgesDelete={handleEdgesDelete}
-          handleReconnectEdge={handleReconnectEdge}
-          handleGraphDragOver={handleGraphDragOver}
-          handleGraphDrop={handleGraphDrop}
-          handleOpenProject={handleOpenProject}
-          handleOpenRunRecord={handleOpenRunRecord}
-          handleRedoGraph={handleRedoGraph}
-          handleRevealPathInFinder={handleRevealPathInFinder}
-          handleSearchResultOpen={handleSearchResultOpen}
-          handleUndoGraph={handleUndoGraph}
-          language={language}
-          loadProject={openProjectInSession}
-          miniRunPanelOpen={miniRunPanelOpen}
-          moveAutoRunControl={moveAutoRunControl}
-          moveReviewStep={moveReviewStep}
-          newTaskMode={newTaskMode}
-          newTaskTargetId={newTaskTargetId}
-          newTaskText={newTaskText}
-          nodeTypes={nodeTypes}
-          nodes={nodes}
-          notificationItems={notificationItems}
-          onApplyLocalPromptConflicts={applyLocalPromptConflicts}
-          onKeepLocalPromptConflicts={keepLocalPromptConflicts}
-          projectLoading={projectLoading}
-          onMarkNotificationRead={handleMarkNotificationRead}
-          onReloadPromptConflicts={reloadPromptConflicts}
-          onEdgesChange={onEdgesChange}
-          onNodeDragStop={handleNodeDragStop}
-          onNodesChange={lerpedNodeDrag.onNodesChange}
-          onTaskPanelSelect={handleTaskPanelSelect}
-          refreshPackageFiles={refreshPackageFiles}
-          resetRuntimeStateClick={resetRuntimeStateClick}
-          removeReviewStep={removeReviewStep}
-          reviewDefaultCyclesDraft={reviewDefaultCyclesDraft}
-          reviewDraft={reviewDraft}
-          reviewPipeline={reviewPipeline}
-          reviewTaskId={reviewTaskId}
-          saveReviewPipeline={saveReviewPipeline}
-          searchCanvasScope={searchCanvasScope}
-          searchQuery={searchQuery}
-          searchResultKinds={searchResultKinds}
-          searchResults={searchResults}
-          selectedBlockPresent={Boolean(selectedBlock)}
-          selectedCanvasId={selectedCanvasId}
-          selectedProject={selectedProject}
-          selectedSearchResultKinds={selectedSearchResultKinds}
-          selectedTaskPanelId={selectedTaskPanelId}
-          setActiveView={setActiveView}
-          setError={setError}
-          onAgentPromptCopied={() => setSuccessMessage(t("agentPromptCopied"))}
-          setAutoRunScopeMode={setAutoRunScopeMode}
-          setSearchCanvasScope={setSearchCanvasScope}
-          setFlowInstance={setFlowInstance}
-          setMiniRunPanelOpen={setMiniRunPanelOpen}
-          setNewTaskMode={setNewTaskMode}
-          setNewTaskTargetId={setNewTaskTargetId}
-          setNewTaskText={setNewTaskText}
-          setTaskDraft={setTaskDraft}
-          setReviewDefaultCyclesDraft={setReviewDefaultCyclesDraft}
-          setReviewTaskId={setReviewTaskId}
-          setSearchQuery={setSearchQuery}
-          setSearchResultKindEnabled={setSearchResultKindEnabled}
-          settings={settings}
-          startAutoRunControlDrag={startAutoRunControlDrag}
-          statistics={statistics}
-          stopAutoRunClick={stopAutoRunClick}
-          stopAutoRunControlDrag={stopAutoRunControlDrag}
-          t={t}
-          taskDraft={taskDraft}
-          todoGroups={todoGroups}
-          updateReviewStep={updateReviewStep}
-          updateSettings={updateSettings}
-          visibleTaskIds={visibleTaskIds}
-          visibleTasks={visibleTasks}
+          shell={workspaceShell}
+          graphWorkspace={graphWorkspace}
+          autoRun={autoRun}
+          fileSync={fileSync}
+          search={search}
+          review={review}
+          newTask={newTask}
+          notifications={notifications}
+          planning={planning}
         />
         {activeView === "canvas-map" ? null : (
           <RightPaletteSidebar

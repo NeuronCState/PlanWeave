@@ -15,7 +15,7 @@ import { downloadOfficialTunnelClient } from "./tunnelClientDownloader.js";
 import { resolveTunnelClientBinary, resolveTunnelClientBinaryStartTarget, tunnelClientDownloadUrl } from "./tunnelClientBinary.js";
 import type { TunnelClientBinaryVerification } from "./tunnelClientBinary.js";
 import { TunnelClientProcessManager } from "./tunnelClientProcess.js";
-import { readTunnelClientConfig, writeTunnelClientConfig } from "./tunnelClientStore.js";
+import { mcpTunnelConfigStorePaths, readTunnelClientConfig, writeTunnelClientConfig } from "./tunnelClientStore.js";
 
 const localMcp = new LocalMcpServerManager();
 const tunnelClient = new TunnelClientProcessManager({ onStatusChange: () => void publishStatus() });
@@ -94,12 +94,12 @@ async function loadTunnelClientConfig(): Promise<void> {
   if (tunnelClientConfigLoaded) {
     return;
   }
-  tunnelClientConfigLoaded = true;
-  const config = await readTunnelClientConfig(userDataDir());
+  const config = await readTunnelClientConfig(mcpTunnelConfigStorePaths(userDataDir()));
   tunnelId = config.tunnelId;
   encryptedRuntimeApiKey = config.encryptedRuntimeApiKey;
   runtimeApiKey = decryptRuntimeApiKey(encryptedRuntimeApiKey);
   tunnelAutoStart = config.autoStart;
+  tunnelClientConfigLoaded = true;
   if (envTunnelClientPath) {
     tunnelClientVerification = null;
     return;
@@ -116,13 +116,16 @@ async function loadTunnelClientConfig(): Promise<void> {
 }
 
 async function persistTunnelClientConfig(): Promise<void> {
-  await writeTunnelClientConfig(userDataDir(), {
-    tunnelClientPath,
-    verification: tunnelClientVerification,
-    tunnelId,
-    encryptedRuntimeApiKey,
-    autoStart: tunnelAutoStart
-  });
+  await writeTunnelClientConfig(
+    {
+      tunnelClientPath,
+      verification: tunnelClientVerification,
+      tunnelId,
+      encryptedRuntimeApiKey,
+      autoStart: tunnelAutoStart
+    },
+    mcpTunnelConfigStorePaths(userDataDir())
+  );
 }
 
 async function getStatus(): Promise<McpTunnelStatus> {
@@ -185,7 +188,7 @@ export async function downloadTunnelClient(): Promise<McpTunnelStatus> {
   };
   await publishStatus();
   try {
-    const result = await downloadOfficialTunnelClient(userDataDir());
+    const result = await downloadOfficialTunnelClient();
     tunnelClientPath = result.binaryPath;
     tunnelClientVerification = result.verification;
     downloadStatus = {

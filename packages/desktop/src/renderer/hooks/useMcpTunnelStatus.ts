@@ -60,11 +60,18 @@ export function useMcpTunnelStatus({ setError }: { setError: (message: string | 
       return;
     }
     let cancelled = false;
-    void api.getMcpTunnelStatus().then((nextStatus) => {
-      if (!cancelled) {
-        setStatus(nextStatus);
-      }
-    });
+    void api
+      .getMcpTunnelStatus()
+      .then((nextStatus) => {
+        if (!cancelled) {
+          setStatus(nextStatus);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setError(error instanceof Error ? error.message : String(error));
+        }
+      });
     const unsubscribe = api.onMcpTunnelChanged((nextStatus) => {
       setStatus(nextStatus);
     });

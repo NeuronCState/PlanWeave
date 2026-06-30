@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { desktopHomePaths } from "../planweaveHomePaths.js";
 import type { TunnelClientBinaryVerification } from "./tunnelClientBinary.js";
 
 export type TunnelClientConfig = {
@@ -12,12 +13,46 @@ export type TunnelClientConfig = {
 
 const configFileName = "config.json";
 
-export function mcpTunnelDataDir(userDataDir: string): string {
+export type TunnelClientConfigStorePaths = {
+  configPath: string;
+  legacyConfigPath?: string | null;
+};
+
+function defaultTunnelClientConfig(): TunnelClientConfig {
+  return {
+    tunnelClientPath: null,
+    verification: null,
+    tunnelId: null,
+    encryptedRuntimeApiKey: null,
+    autoStart: false
+  };
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
+
+export function mcpTunnelConfigPath(): string {
+  return desktopHomePaths().mcpTunnelConfigFile;
+}
+
+export function mcpTunnelDownloadsDir(): string {
+  return desktopHomePaths().mcpTunnelDownloadsDir;
+}
+
+export function mcpTunnelLegacyDataDir(userDataDir: string): string {
   return join(userDataDir, "mcp-tunnel");
 }
 
-export function mcpTunnelConfigPath(userDataDir: string): string {
-  return join(mcpTunnelDataDir(userDataDir), configFileName);
+export function mcpTunnelLegacyConfigPath(userDataDir: string): string {
+  return join(mcpTunnelLegacyDataDir(userDataDir), configFileName);
+}
+
+export function mcpTunnelConfigStorePaths(userDataDir?: string | null): TunnelClientConfigStorePaths {
+  return {
+    configPath: mcpTunnelConfigPath(),
+    legacyConfigPath: userDataDir ? mcpTunnelLegacyConfigPath(userDataDir) : null
+  };
 }
 
 function readString(value: unknown): string | null {
@@ -38,30 +73,57 @@ function readVerification(value: unknown): TunnelClientBinaryVerification | null
   return { assetName, assetSha256, binarySha256 };
 }
 
-export async function readTunnelClientConfig(userDataDir: string): Promise<TunnelClientConfig> {
+function normalizeTunnelClientConfig(parsed: unknown): TunnelClientConfig {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return defaultTunnelClientConfig();
+  }
+  const record = parsed as Record<string, unknown>;
+  return {
+    tunnelClientPath: readString(record.tunnelClientPath),
+    verification: readVerification(record.verification),
+    tunnelId: readString(record.tunnelId),
+    encryptedRuntimeApiKey: readString(record.encryptedRuntimeApiKey),
+    autoStart: record.autoStart === true
+  };
+}
+
+async function readConfigFile(path: string): Promise<TunnelClientConfig | null> {
+  let raw: string;
   try {
-    const parsed = JSON.parse(await readFile(mcpTunnelConfigPath(userDataDir), "utf8")) as Record<string, unknown>;
-    return {
-      tunnelClientPath: readString(parsed.tunnelClientPath),
-      verification: readVerification(parsed.verification),
-      tunnelId: readString(parsed.tunnelId),
-      encryptedRuntimeApiKey: readString(parsed.encryptedRuntimeApiKey),
-      autoStart: parsed.autoStart === true
-    };
-  } catch {
-    return {
-      tunnelClientPath: null,
-      verification: null,
-      tunnelId: null,
-      encryptedRuntimeApiKey: null,
-      autoStart: false
-    };
+    raw = await readFile(path, "utf8");
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return null;
+    }
+    throw new Error(`Failed to read MCP tunnel config at ${path}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  try {
+    return normalizeTunnelClientConfig(JSON.parse(raw));
+  } catch (error) {
+    throw new Error(`Invalid MCP tunnel config JSON at ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-export async function writeTunnelClientConfig(userDataDir: string, config: TunnelClientConfig): Promise<void> {
-  const path = mcpTunnelConfigPath(userDataDir);
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(`${path}.tmp`, `${JSON.stringify(config, null, 2)}\n`);
-  await rename(`${path}.tmp`, path);
+export async function readTunnelClientConfig(paths: TunnelClientConfigStorePaths = mcpTunnelConfigStorePaths()): Promise<TunnelClientConfig> {
+  const config = await readConfigFile(paths.configPath);
+  if (config) {
+    return config;
+  }
+
+  if (paths.legacyConfigPath) {
+    const legacyConfig = await readConfigFile(paths.legacyConfigPath);
+    if (legacyConfig) {
+      await writeTunnelClientConfig(legacyConfig, paths);
+      return legacyConfig;
+    }
+  }
+
+  return defaultTunnelClientConfig();
+}
+
+export async function writeTunnelClientConfig(config: TunnelClientConfig, paths: Pick<TunnelClientConfigStorePaths, "configPath"> = mcpTunnelConfigStorePaths()): Promise<void> {
+  await mkdir(dirname(paths.configPath), { recursive: true });
+  await writeFile(`${paths.configPath}.tmp`, `${JSON.stringify(config, null, 2)}\n`);
+  await rename(`${paths.configPath}.tmp`, paths.configPath);
 }

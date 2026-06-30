@@ -511,6 +511,47 @@ describe("desktop renderer settings interactions", () => {
     expect(window.localStorage.setItem).not.toHaveBeenCalledWith(expect.any(String), expect.stringContaining("Runtime API key"));
   });
 
+  it("reports MCP tunnel status load failures instead of leaving the settings UI idle", async () => {
+    stubLayoutApis();
+    const setError = vi.fn();
+    Object.defineProperty(window, "planweaveMcpTunnel", {
+      configurable: true,
+      value: {
+        getMcpTunnelStatus: vi.fn().mockRejectedValue(new Error("Invalid MCP tunnel config JSON at /tmp/config.json")),
+        onMcpTunnelChanged: vi.fn(() => () => undefined),
+        downloadTunnelClient: vi.fn(),
+        setTunnelClientPath: vi.fn(),
+        setTunnelAutoStart: vi.fn(),
+        startLocalMcp: vi.fn(),
+        stopLocalMcp: vi.fn(),
+        startTunnel: vi.fn(),
+        stopTunnel: vi.fn()
+      }
+    });
+
+    render(
+      <SettingsView
+        agentDetectionRefreshing={false}
+        agents={[]}
+        graph={null}
+        language="en"
+        refreshAgentDetections={vi.fn().mockResolvedValue(undefined)}
+        refreshRuntimeTools={vi.fn().mockResolvedValue(undefined)}
+        runtimeTools={{ tmux: { available: true, command: "tmux" } }}
+        projects={[]}
+        setActiveView={vi.fn()}
+        setError={setError}
+        settings={settings}
+        t={createTranslator("en")}
+        updateSettings={vi.fn()}
+      />
+    );
+
+    await userEvent.click(screen.getByTestId("settings-nav-mcp"));
+
+    await waitFor(() => expect(setError).toHaveBeenCalledWith("Invalid MCP tunnel config JSON at /tmp/config.json"));
+  });
+
   it("disables MCP tunnel auto-start when the runtime API key is session-only", async () => {
     stubLayoutApis();
     Object.defineProperty(window, "planweaveMcpTunnel", {

@@ -1,4 +1,4 @@
-import { access, chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -12,7 +12,17 @@ import {
   type TunnelClientBinaryStartTarget
 } from "../main/mcpTunnel/tunnelClientBinary";
 import { downloadOfficialTunnelClient, parseSha256Sums, selectTunnelClientReleaseAssets, tunnelClientPlatformAsset } from "../main/mcpTunnel/tunnelClientDownloader";
-import { mcpTunnelConfigPath, readTunnelClientConfig, writeTunnelClientConfig } from "../main/mcpTunnel/tunnelClientStore";
+import { mcpTunnelConfigPath, mcpTunnelConfigStorePaths, mcpTunnelLegacyConfigPath, readTunnelClientConfig, writeTunnelClientConfig } from "../main/mcpTunnel/tunnelClientStore";
+
+const tempRoots: string[] = [];
+const originalPlanweaveHome = process.env.PLANWEAVE_HOME;
+
+async function useTempPlanweaveHome(): Promise<string> {
+  const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
+  tempRoots.push(home);
+  process.env.PLANWEAVE_HOME = home;
+  return home;
+}
 
 const electronMock = vi.hoisted(() => ({
   app: {
@@ -127,13 +137,19 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-afterEach(() => {
+afterEach(async () => {
+  if (originalPlanweaveHome === undefined) {
+    delete process.env.PLANWEAVE_HOME;
+  } else {
+    process.env.PLANWEAVE_HOME = originalPlanweaveHome;
+  }
   vi.doUnmock("../main/mcpTunnel/localMcpProcess");
   vi.doUnmock("../main/mcpTunnel/tunnelClientProcess");
   vi.doUnmock("../main/mcpTunnel/tunnelClientBinary");
   vi.doUnmock("../main/mcpTunnel/tunnelClientDownloader");
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 describe("MCP tunnel process helpers", () => {
@@ -531,7 +547,7 @@ exit 1
   });
 
   it("downloads the official platform zip, verifies its checksum, and stores the extracted binary", async () => {
-    const userDataDir = await mkdtemp(join(tmpdir(), "planweave-user-data-"));
+    const planweaveHome = await useTempPlanweaveHome();
     const platformAsset = tunnelClientPlatformAsset();
     const assetName = `tunnel-client-test-${platformAsset.assetSuffix}`;
     const binaryBytes = new TextEncoder().encode("binary-from-official-zip");
@@ -560,9 +576,10 @@ exit 1
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await downloadOfficialTunnelClient(userDataDir);
+    const result = await downloadOfficialTunnelClient();
 
     await expect(readFile(result.binaryPath)).resolves.toEqual(Buffer.from(binaryBytes));
+    expect(result.binaryPath).toContain(join(planweaveHome, "desktop", "mcp-tunnel", "downloads", "tunnel-client"));
     expect(result.verification).toEqual({
       assetName,
       assetSha256: zipHash,
@@ -571,18 +588,19 @@ exit 1
   });
 
   it("reports a release page fallback when GitHub API rate limits release metadata", async () => {
-    const userDataDir = await mkdtemp(join(tmpdir(), "planweave-user-data-"));
+    await useTempPlanweaveHome();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("API rate limit exceeded", { status: 403 }))
     );
 
-    await expect(downloadOfficialTunnelClient(userDataDir)).rejects.toThrow(
+    await expect(downloadOfficialTunnelClient()).rejects.toThrow(
       "GitHub API rate limit blocked tunnel-client metadata. Open https://github.com/openai/tunnel-client/releases/latest and try again later."
     );
   });
 
   it("persists tunnel-client path and managed verification metadata", async () => {
+    const planweaveHome = await useTempPlanweaveHome();
     const userDataDir = await mkdtemp(join(tmpdir(), "planweave-user-data-"));
     const config = {
       tunnelClientPath: "/tmp/tunnel-client",
@@ -596,9 +614,86 @@ exit 1
       autoStart: true
     };
 
-    await writeTunnelClientConfig(userDataDir, config);
+    await writeTunnelClientConfig(config);
 
-    await expect(readTunnelClientConfig(userDataDir)).resolves.toEqual(config);
+    await expect(readTunnelClientConfig()).resolves.toEqual(config);
+    await expect(exists(mcpTunnelConfigPath())).resolves.toBe(true);
+    await expect(exists(mcpTunnelLegacyConfigPath(userDataDir))).resolves.toBe(false);
+    expect(mcpTunnelConfigPath()).toBe(join(planweaveHome, "desktop", "mcp-tunnel", "config.json"));
+  });
+
+  it("migrates legacy userData tunnel config to PlanWeave Home while keeping the legacy file", async () => {
+    const planweaveHome = await useTempPlanweaveHome();
+    const userDataDir = await mkdtemp(join(tmpdir(), "planweave-user-data-"));
+    const legacyPath = mcpTunnelLegacyConfigPath(userDataDir);
+    const legacyConfig = {
+      tunnelClientPath: "/tmp/legacy-tunnel-client",
+      verification: {
+        assetName: "tunnel-client-test-darwin-arm64.zip",
+        assetSha256: "1".repeat(64),
+        binarySha256: "2".repeat(64)
+      },
+      tunnelId: "tunnel_0123456789abcdef0123456789abcdef",
+      encryptedRuntimeApiKey: "encrypted-runtime-key",
+      autoStart: true
+    };
+    await mkdir(dirname(legacyPath), { recursive: true });
+    await writeFile(legacyPath, `${JSON.stringify(legacyConfig, null, 2)}\n`);
+
+    await expect(readTunnelClientConfig(mcpTunnelConfigStorePaths(userDataDir))).resolves.toEqual(legacyConfig);
+
+    await expect(readTunnelClientConfig()).resolves.toEqual(legacyConfig);
+    await expect(exists(legacyPath)).resolves.toBe(true);
+    await expect(readFile(mcpTunnelConfigPath(), "utf8")).resolves.toContain("/tmp/legacy-tunnel-client");
+    expect(mcpTunnelConfigPath()).toBe(join(planweaveHome, "desktop", "mcp-tunnel", "config.json"));
+  });
+
+  it("prefers the PlanWeave Home tunnel config over a legacy userData config", async () => {
+    await useTempPlanweaveHome();
+    const userDataDir = await mkdtemp(join(tmpdir(), "planweave-user-data-"));
+    const currentConfig = {
+      tunnelClientPath: "/tmp/current-tunnel-client",
+      verification: null,
+      tunnelId: "tunnel_current",
+      encryptedRuntimeApiKey: "current-encrypted-runtime-key",
+      autoStart: false
+    };
+    await writeTunnelClientConfig(currentConfig);
+    await mkdir(dirname(mcpTunnelLegacyConfigPath(userDataDir)), { recursive: true });
+    await writeFile(mcpTunnelLegacyConfigPath(userDataDir), "{");
+
+    await expect(readTunnelClientConfig(mcpTunnelConfigStorePaths(userDataDir))).resolves.toEqual(currentConfig);
+  });
+
+  it("does not silently swallow invalid tunnel config JSON", async () => {
+    await useTempPlanweaveHome();
+    await mkdir(dirname(mcpTunnelConfigPath()), { recursive: true });
+    await writeFile(mcpTunnelConfigPath(), "{");
+
+    await expect(readTunnelClientConfig()).rejects.toThrow("Invalid MCP tunnel config JSON");
+  });
+
+  it("keeps PLANWEAVE_HOME isolated for tunnel config reads", async () => {
+    const firstHome = await useTempPlanweaveHome();
+    await writeTunnelClientConfig({
+      tunnelClientPath: "/tmp/first-tunnel-client",
+      verification: null,
+      tunnelId: "tunnel_first",
+      encryptedRuntimeApiKey: "first-encrypted-runtime-key",
+      autoStart: false
+    });
+    const secondHome = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    tempRoots.push(secondHome);
+    process.env.PLANWEAVE_HOME = secondHome;
+
+    await expect(readTunnelClientConfig()).resolves.toEqual({
+      tunnelClientPath: null,
+      verification: null,
+      tunnelId: null,
+      encryptedRuntimeApiKey: null,
+      autoStart: false
+    });
+    await expect(readFile(join(firstHome, "desktop", "mcp-tunnel", "config.json"), "utf8")).resolves.toContain("/tmp/first-tunnel-client");
   });
 
   it("redacts runtime API keys and tunnel IDs from tunnel-client init failures", async () => {
@@ -625,6 +720,7 @@ exit 1
 
   it("uses a session-only runtime API key when safeStorage is unavailable", async () => {
     vi.resetModules();
+    const planweaveHome = await useTempPlanweaveHome();
     const userDataDir = await mkdtemp(join(tmpdir(), "planweave-user-data-"));
     const tunnelStart = vi.fn(async (options: { input: { tunnelId: string; runtimeApiKey: string } }) => ({
       phase: "running",
@@ -638,7 +734,7 @@ exit 1
 
     electronMock.app.getPath.mockReturnValue(userDataDir);
     electronMock.safeStorage.isEncryptionAvailable.mockReturnValue(false);
-    await writeTunnelClientConfig(userDataDir, {
+    await writeTunnelClientConfig({
       tunnelClientPath: null,
       verification: null,
       tunnelId: "tunnel_0123456789abcdef0123456789abcdef",
@@ -653,8 +749,8 @@ exit 1
           host: "127.0.0.1",
           port: 8787,
           pid: process.pid,
-          planweaveHome: userDataDir,
-          planweaveHomeFromEnv: false,
+          planweaveHome,
+          planweaveHomeFromEnv: true,
           healthy: true,
           error: null
         }));
@@ -717,13 +813,13 @@ exit 1
         }
       })
     );
-    await expect(readTunnelClientConfig(userDataDir)).resolves.toMatchObject({
+    await expect(readTunnelClientConfig()).resolves.toMatchObject({
       tunnelId: "tunnel_0123456789abcdef0123456789abcdef",
       encryptedRuntimeApiKey: null,
       autoStart: false
     });
-    await expect(readFile(mcpTunnelConfigPath(userDataDir), "utf8")).resolves.not.toContain("secret-runtime-key");
-    await expect(readFile(mcpTunnelConfigPath(userDataDir), "utf8")).resolves.not.toContain("old-encrypted-runtime-key");
+    await expect(readFile(mcpTunnelConfigPath(), "utf8")).resolves.not.toContain("secret-runtime-key");
+    await expect(readFile(mcpTunnelConfigPath(), "utf8")).resolves.not.toContain("old-encrypted-runtime-key");
     expect(firstStatus.config).toMatchObject({
       hasRuntimeApiKey: true,
       runtimeApiKeyPersistence: "session-only",
@@ -752,13 +848,14 @@ exit 1
 
   it("treats an in-memory persisted runtime API key as session-only when safeStorage becomes unavailable", async () => {
     vi.resetModules();
+    const planweaveHome = await useTempPlanweaveHome();
     const userDataDir = await mkdtemp(join(tmpdir(), "planweave-user-data-"));
     const tunnelStart = vi.fn();
 
     electronMock.app.getPath.mockReturnValue(userDataDir);
     electronMock.safeStorage.isEncryptionAvailable.mockReturnValue(true);
     electronMock.safeStorage.decryptString.mockImplementation((value: Buffer) => value.toString("utf8"));
-    await writeTunnelClientConfig(userDataDir, {
+    await writeTunnelClientConfig({
       tunnelClientPath: null,
       verification: null,
       tunnelId: "tunnel_0123456789abcdef0123456789abcdef",
@@ -773,8 +870,8 @@ exit 1
           host: "127.0.0.1",
           port: 8787,
           pid: process.pid,
-          planweaveHome: userDataDir,
-          planweaveHomeFromEnv: false,
+          planweaveHome,
+          planweaveHomeFromEnv: true,
           healthy: true,
           error: null
         }));
@@ -841,13 +938,14 @@ exit 1
     await autoStartMcpTunnel();
 
     expect(tunnelStart).not.toHaveBeenCalled();
-    await expect(readTunnelClientConfig(userDataDir)).resolves.toMatchObject({
+    await expect(readTunnelClientConfig()).resolves.toMatchObject({
       autoStart: false
     });
   });
 
   it("keeps persisting runtime API keys when safeStorage is available", async () => {
     vi.resetModules();
+    const planweaveHome = await useTempPlanweaveHome();
     const userDataDir = await mkdtemp(join(tmpdir(), "planweave-user-data-"));
     const tunnelStart = vi.fn(async (options: { input: { tunnelId: string; runtimeApiKey: string } }) => ({
       phase: "running",
@@ -870,8 +968,8 @@ exit 1
           host: "127.0.0.1",
           port: 8787,
           pid: process.pid,
-          planweaveHome: userDataDir,
-          planweaveHomeFromEnv: false,
+          planweaveHome,
+          planweaveHomeFromEnv: true,
           healthy: true,
           error: null
         }));
@@ -925,7 +1023,7 @@ exit 1
       tunnelId: "tunnel_0123456789abcdef0123456789abcdef",
       runtimeApiKey: "secret-runtime-key"
     });
-    const config = await readTunnelClientConfig(userDataDir);
+    const config = await readTunnelClientConfig();
 
     expect(config.encryptedRuntimeApiKey).toBe(Buffer.from("encrypted:secret-runtime-key", "utf8").toString("base64"));
     await expect(setTunnelAutoStart(true)).resolves.toMatchObject({
@@ -941,6 +1039,19 @@ exit 1
         runtimeApiKeyPersistence: "persisted"
       }
     });
+  });
+
+  it("surfaces invalid tunnel config JSON through the MCP tunnel status handler", async () => {
+    vi.resetModules();
+    await useTempPlanweaveHome();
+    const userDataDir = await mkdtemp(join(tmpdir(), "planweave-user-data-"));
+    electronMock.app.getPath.mockReturnValue(userDataDir);
+    await mkdir(dirname(mcpTunnelConfigPath()), { recursive: true });
+    await writeFile(mcpTunnelConfigPath(), "{");
+
+    const { getMcpTunnelStatus } = await import("../main/mcpTunnel/mcpTunnelHandlers");
+
+    await expect(getMcpTunnelStatus()).rejects.toThrow("Invalid MCP tunnel config JSON");
   });
 
   it("registers cleanup for MCP tunnel processes before app quit", async () => {

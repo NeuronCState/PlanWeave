@@ -19,13 +19,15 @@ import { appendAutoRunEvent, autoRunRoot, cloneAutoRunState, createAutoRunEvent,
 import { listPersistedAutoRunStates, nextPersistedAutoRunId, readPersistedAutoRunEventLog, writePersistedAutoRunState } from "./runStateRepository.js";
 import { claimRef, claimRefs, claimScope, completedRefs, executorName, latestStatus, outputSummary, phaseAfterStep, reviewAttemptId, reviewVerdict, terminalPatch } from "./runStepState.js";
 import { invalidateDesktopProjectProjection } from "./graph/projectProjectionModel.js";
-import { appendRunSessionEvent, createRunSession, resetRuntimeState, updateRunSession } from "../runSessions/index.js";
+import { appendRunSessionEvent, createRunSession, getRunSession, resetRuntimeState, updateRunSession } from "../runSessions/index.js";
 import type { RunSessionAutoRunSummary, RunSessionPhase } from "../runSessions/index.js";
 
 const runs = new Map<string, DesktopAutoRunState>();
 const runWorkspaces = new Map<string, ProjectWorkspace>();
+const stopOperations = new Map<string, Promise<DesktopAutoRunState>>();
 const activeLoops = new Set<string>();
 const autoRunEventListeners = new Set<DesktopAutoRunEventListener>();
+const finalRunSessionEventTypes = new Set(["session_completed", "session_manual", "session_blocked", "session_failed", "session_stopped"]);
 
 type DesktopRunSessionStopReason = RunSessionAutoRunSummary["stopReason"];
 
@@ -80,15 +82,12 @@ function runSessionPhaseForAutoRunPhase(phase: DesktopAutoRunPhase): RunSessionP
 }
 
 function isRunSessionTerminalPhase(phase: RunSessionPhase): boolean {
-  return phase === "completed" || phase === "manual" || phase === "blocked" || phase === "failed" || phase === "stopped";
+  return phase === "completed" || phase === "blocked" || phase === "failed" || phase === "stopped";
 }
 
 function finalRunSessionEventType(phase: RunSessionPhase): string | null {
   if (phase === "completed") {
     return "session_completed";
-  }
-  if (phase === "manual") {
-    return "session_manual";
   }
   if (phase === "blocked") {
     return "session_blocked";
@@ -159,12 +158,15 @@ async function syncRunSessionForAutoRunState(state: DesktopAutoRunState, eventTy
   });
   const finalEventType = finalRunSessionEventType(phase);
   if (finalEventType) {
-    await appendRunSessionEvent(workspace, state.runSessionId, finalEventType, {
-      phase,
-      finishedAt,
-      desktopRunId: state.runId,
-      stepCount: state.stepCount
-    });
+    const detail = await getRunSession(workspace, state.runSessionId);
+    if (!detail.events.some((event) => finalRunSessionEventTypes.has(event.type))) {
+      await appendRunSessionEvent(workspace, state.runSessionId, finalEventType, {
+        phase,
+        finishedAt,
+        desktopRunId: state.runId,
+        stepCount: state.stepCount
+      });
+    }
   }
 }
 
@@ -462,13 +464,36 @@ export async function resumeAutoRun(runId: string): Promise<DesktopAutoRunState>
 }
 
 export async function stopAutoRun(runId: string): Promise<DesktopAutoRunState> {
+  const pendingStop = stopOperations.get(runId);
+  if (pendingStop) {
+    return cloneAutoRunState(await pendingStop);
+  }
   const current = runs.get(runId);
   if (!current) {
     throw new Error(`Auto Run '${runId}' does not exist.`);
   }
-  const killed = current.phase === "running" || current.phase === "pausing" ? await killTmuxSessionsForRun(runId) : [];
-  const stopped = await setState(runId, { phase: "stopped" }, "run_stopped", { killedTmuxSessions: killed });
-  return cloneAutoRunState(stopped);
+  if (current.phase === "stopped") {
+    return cloneAutoRunState(current);
+  }
+  const stopOperation = (async () => {
+    const latest = runs.get(runId);
+    if (!latest) {
+      throw new Error(`Auto Run '${runId}' does not exist.`);
+    }
+    if (latest.phase === "stopped") {
+      return latest;
+    }
+    const killed = latest.phase === "running" || latest.phase === "pausing" ? await killTmuxSessionsForRun(runId) : [];
+    return setState(runId, { phase: "stopped" }, "run_stopped", { killedTmuxSessions: killed });
+  })();
+  stopOperations.set(runId, stopOperation);
+  try {
+    return cloneAutoRunState(await stopOperation);
+  } finally {
+    if (stopOperations.get(runId) === stopOperation) {
+      stopOperations.delete(runId);
+    }
+  }
 }
 
 export async function resetDesktopRuntimeState(

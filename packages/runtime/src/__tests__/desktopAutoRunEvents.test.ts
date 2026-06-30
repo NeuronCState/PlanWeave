@@ -25,6 +25,15 @@ async function waitForRun(runId: string, predicate: (state: Awaited<ReturnType<t
   return state;
 }
 
+async function waitForRunEvent(events: DesktopAutoRunEvent[], runId: string, eventType: string): Promise<DesktopAutoRunEvent[]> {
+  let runEvents = events.filter((event) => event.runId === runId);
+  for (let attempt = 0; attempt < 500 && !runEvents.some((event) => event.eventType === eventType); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    runEvents = events.filter((event) => event.runId === runId);
+  }
+  return runEvents;
+}
+
 describe("desktop auto run events", () => {
   it("emits cloned events after start and phase changes", async () => {
     const { root } = await createTestWorkspace(basicManifest());
@@ -48,7 +57,7 @@ describe("desktop auto run events", () => {
       expect(started.phase).toBe("running");
 
       const current = await waitForRun(started.runId, (nextState) => nextState.phase === "paused");
-      const runEvents = events.filter((event) => event.runId === started.runId);
+      const runEvents = await waitForRunEvent(events, started.runId, "step_limit_reached");
 
       expect(current).toMatchObject({
         phase: "paused",

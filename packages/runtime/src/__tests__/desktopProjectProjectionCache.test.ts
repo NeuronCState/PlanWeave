@@ -1,6 +1,7 @@
-import { writeFile } from "node:fs/promises";
+import * as fsPromises from "node:fs/promises";
+import { utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTaskCanvas, getDesktopProjectSnapshot, resolveTaskCanvasWorkspace, searchProjectWithDiagnostics } from "../desktop/index.js";
 import {
   invalidateDesktopProjectProjection,
@@ -13,7 +14,16 @@ import { claimBlock } from "../taskManager/claimScheduler.js";
 import type { ValidationIssue } from "../types.js";
 import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
 
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    readFile: vi.fn(actual.readFile)
+  };
+});
+
 afterEach(() => {
+  vi.clearAllMocks();
   invalidateDesktopProjectProjection();
   delete process.env.PLANWEAVE_DESKTOP_PROJECTION_SLOW_DIAGNOSTICS_MS;
   delete process.env.PLANWEAVE_HOME;
@@ -21,6 +31,21 @@ afterEach(() => {
 
 function canvasSnapshotFailureDiagnostics(diagnostics: ValidationIssue[], canvasId: string): ValidationIssue[] {
   return diagnostics.filter((diagnostic) => diagnostic.code === "desktop_canvas_execution_snapshot_failed" && diagnostic.path === canvasId);
+}
+
+function resultReadPaths(resultsDir: string): string[] {
+  const readFileMock = vi.mocked(fsPromises.readFile);
+  return readFileMock.mock.calls
+    .map(([path]) => typeof path === "string" ? path : null)
+    .filter((path): path is string => path !== null && path.startsWith(resultsDir));
+}
+
+function promptReadPaths(packageDir: string): string[] {
+  const promptDir = join(packageDir, "nodes");
+  const readFileMock = vi.mocked(fsPromises.readFile);
+  return readFileMock.mock.calls
+    .map(([path]) => typeof path === "string" ? path : null)
+    .filter((path): path is string => path !== null && path.startsWith(promptDir));
 }
 
 describe("desktop project projection cache", () => {
@@ -48,15 +73,13 @@ describe("desktop project projection cache", () => {
     const incrementalSearchIndex = await readDesktopProjectSearchIndex(root);
     const incrementalStatistics = await readDesktopProjectStatisticsProjection(root);
     const slowSearchPaths = incrementalSearchIndex.diagnostics
-      .filter((diagnostic) => diagnostic.code === "desktop_projection_slow_part")
-      .filter((diagnostic) => diagnostic.message.includes("search index construction"))
+      .filter((diagnostic) => diagnostic.code === "desktop_search_index_slow_part")
+      .filter((diagnostic) => diagnostic.message.includes("summary search index construction"))
       .map((diagnostic) => diagnostic.path);
 
     expect(slowSearchPaths).toContain("default");
     expect(slowSearchPaths).not.toContain(secondCanvas.canvasId);
-    expect(searchDesktopSearchIndex(incrementalSearchIndex, "changed canvas cache needle", { kinds: ["prompt"] })).toEqual([
-      expect.objectContaining({ canvasId: "default", ref: "T-001", targetRef: "T-001" })
-    ]);
+    expect(searchDesktopSearchIndex(incrementalSearchIndex, "changed canvas cache needle", { kinds: ["prompt"] })).toEqual([]);
 
     delete process.env.PLANWEAVE_DESKTOP_PROJECTION_SLOW_DIAGNOSTICS_MS;
     invalidateDesktopProjectProjection(root);
@@ -68,6 +91,101 @@ describe("desktop project projection cache", () => {
     );
     expect(incrementalSearchIndex.documents).toEqual(rebuiltSearchIndex.documents);
     expect(incrementalStatistics.statistics).toEqual(rebuiltStatistics.statistics);
+  });
+
+  it("keeps summary search reusable while body search hydrates on demand and invalidates with prompt or result fingerprints", async () => {
+    const { root, init } = await createTestWorkspace();
+    const taskPromptPath = join(init.workspace.packageDir, "nodes", "T-001", "prompt.md");
+    const runDir = join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-BODY-CACHE");
+    const reportPath = join(runDir, "report.md");
+    await fsPromises.mkdir(runDir, { recursive: true });
+    await writeFile(taskPromptPath, "# Task prompt\n\nprojection prompt body needle\n", "utf8");
+    await writeFile(reportPath, "projection result body needle\n", "utf8");
+
+    vi.mocked(fsPromises.readFile).mockClear();
+    const summaryIndex = await readDesktopProjectSearchIndex(root);
+
+    expect(promptReadPaths(init.workspace.packageDir)).toEqual([]);
+    expect(resultReadPaths(init.workspace.resultsDir)).not.toContain(reportPath);
+    expect(summaryIndex.diagnostics.map((diagnostic) => diagnostic.code)).not.toContain("desktop_search_summary_index_built");
+    expect(searchDesktopSearchIndex(summaryIndex, "projection prompt body needle", { kinds: ["prompt"] })).toEqual([]);
+    expect(searchDesktopSearchIndex(summaryIndex, "projection result body needle", { kinds: ["run_record"] })).toEqual([]);
+
+    vi.mocked(fsPromises.readFile).mockClear();
+    const summarySearch = await searchProjectWithDiagnostics(root, "projection prompt body needle", { kinds: ["prompt"], includeBodies: false });
+    expect(summarySearch.results).toEqual([]);
+    expect(promptReadPaths(init.workspace.packageDir)).toEqual([]);
+
+    vi.mocked(fsPromises.readFile).mockClear();
+    const hydratedIndex = await readDesktopProjectSearchIndex(root, { includeBodies: true });
+
+    expect(searchDesktopSearchIndex(hydratedIndex, "projection prompt body needle", { kinds: ["prompt"] })).toEqual([
+      expect.objectContaining({ canvasId: "default", ref: "T-001", targetRef: "T-001" })
+    ]);
+    expect(searchDesktopSearchIndex(hydratedIndex, "projection result body needle", { kinds: ["run_record"] })).toEqual([
+      expect.objectContaining({ canvasId: "default", ref: "T-001/blocks/B-001/runs/RUN-BODY-CACHE/report.md" })
+    ]);
+    expect(hydratedIndex.diagnostics.map((diagnostic) => diagnostic.code)).not.toContain("desktop_search_body_index_built");
+    expect(resultReadPaths(init.workspace.resultsDir)).toContain(reportPath);
+
+    vi.mocked(fsPromises.readFile).mockClear();
+    await readDesktopProjectSearchIndex(root, { includeBodies: true });
+    expect(resultReadPaths(init.workspace.resultsDir)).toEqual([]);
+
+    await writeFile(reportPath, "projection result body needle updated\n", "utf8");
+    await utimes(reportPath, new Date(5_000), new Date(5_000));
+
+    vi.mocked(fsPromises.readFile).mockClear();
+    const changedResultsIndex = await readDesktopProjectSearchIndex(root, { includeBodies: true });
+    expect(searchDesktopSearchIndex(changedResultsIndex, "projection result body needle updated", { kinds: ["run_record"] })).toEqual([
+      expect.objectContaining({ canvasId: "default", ref: "T-001/blocks/B-001/runs/RUN-BODY-CACHE/report.md" })
+    ]);
+    expect(resultReadPaths(init.workspace.resultsDir)).toContain(reportPath);
+
+    await writeFile(taskPromptPath, "# Task prompt\n\nprojection prompt body needle updated\n", "utf8");
+    await utimes(taskPromptPath, new Date(6_000), new Date(6_000));
+
+    const changedPromptIndex = await readDesktopProjectSearchIndex(root, { includeBodies: true });
+    expect(searchDesktopSearchIndex(changedPromptIndex, "projection prompt body needle updated", { kinds: ["prompt"] })).toEqual([
+      expect.objectContaining({ canvasId: "default", ref: "T-001", targetRef: "T-001" })
+    ]);
+  });
+
+  it("invalidates body search when prompt or result content changes with the same size and mtime", async () => {
+    const { root, init } = await createTestWorkspace();
+    const taskPromptPath = join(init.workspace.packageDir, "nodes", "T-001", "prompt.md");
+    const runDir = join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-SAME-STAT");
+    const reportPath = join(runDir, "report.md");
+    const fixedTime = new Date(8_000);
+    await fsPromises.mkdir(runDir, { recursive: true });
+    await writeFile(taskPromptPath, "same-size prompt body needle aaa\n", "utf8");
+    await writeFile(reportPath, "same-size result body needle aaa\n", "utf8");
+    await utimes(taskPromptPath, fixedTime, fixedTime);
+    await utimes(reportPath, fixedTime, fixedTime);
+
+    const firstIndex = await readDesktopProjectSearchIndex(root, { includeBodies: true });
+    expect(searchDesktopSearchIndex(firstIndex, "same-size prompt body needle aaa", { kinds: ["prompt"] })).toEqual([
+      expect.objectContaining({ canvasId: "default", ref: "T-001", targetRef: "T-001" })
+    ]);
+    expect(searchDesktopSearchIndex(firstIndex, "same-size result body needle aaa", { kinds: ["run_record"] })).toEqual([
+      expect.objectContaining({ canvasId: "default", ref: "T-001/blocks/B-001/runs/RUN-SAME-STAT/report.md" })
+    ]);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await writeFile(taskPromptPath, "same-size prompt body needle bbb\n", "utf8");
+    await writeFile(reportPath, "same-size result body needle bbb\n", "utf8");
+    await utimes(taskPromptPath, fixedTime, fixedTime);
+    await utimes(reportPath, fixedTime, fixedTime);
+
+    const changedIndex = await readDesktopProjectSearchIndex(root, { includeBodies: true });
+    expect(searchDesktopSearchIndex(changedIndex, "same-size prompt body needle bbb", { kinds: ["prompt"] })).toEqual([
+      expect.objectContaining({ canvasId: "default", ref: "T-001", targetRef: "T-001" })
+    ]);
+    expect(searchDesktopSearchIndex(changedIndex, "same-size result body needle bbb", { kinds: ["run_record"] })).toEqual([
+      expect.objectContaining({ canvasId: "default", ref: "T-001/blocks/B-001/runs/RUN-SAME-STAT/report.md" })
+    ]);
+    expect(searchDesktopSearchIndex(changedIndex, "same-size prompt body needle aaa", { kinds: ["prompt"] })).toEqual([]);
+    expect(searchDesktopSearchIndex(changedIndex, "same-size result body needle aaa", { kinds: ["run_record"] })).toEqual([]);
   });
 
   it("refreshes cached project snapshots after manifest and state file changes", async () => {

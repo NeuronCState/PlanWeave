@@ -8,7 +8,7 @@ import {
   runtimeSnapshotFromGraphState,
   type ProjectCanvasAggregationContext
 } from "./projectCanvasAggregation.js";
-import { loadPlanGraphPackage } from "../../plangraph/packageRepository.js";
+import { loadPlanGraphPackageMetadata } from "../../plangraph/packageRepository.js";
 import {
   buildProjectExecutionPlanProjection,
   buildTodoGroupsFromContext as projectTodoGroupsFromContext,
@@ -46,7 +46,7 @@ export async function buildCanvasExecutionSnapshot(
   let canvasRuntime: RuntimeContext;
   let status: ExecutionStatus;
   try {
-    const loadedPlanGraph = await loadPlanGraphPackage(canvas.workspace);
+    const loadedPlanGraph = await loadPlanGraphPackageMetadata(canvas.workspace);
     canvasRuntime = runtime ?? await loadRuntime({ projectRoot: canvas.workspace });
     status = await buildExecutionStatus(canvasRuntime, {
       claimGuard: createProjectGraphClaimGuardFromAggregation(canvasRuntime, aggregation)

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createDesktopSearchDocument,
+  mergeSearchIndexBodies,
   searchDesktopSearchIndex,
   type DesktopSearchDocument,
   type DesktopSearchDocumentInput,
@@ -280,5 +281,61 @@ describe("desktop search index model", () => {
 
     expect(results.find((result) => result.ref === "body-and-title")?.excerpt).toBe("Body needle source");
     expect(results.find((result) => result.ref === "title-only")?.excerpt).toBe("Title-only needle source");
+  });
+
+  it("keeps body-only prompt and result matches out of summary-only indexes until body hydration is merged", () => {
+    const summary = searchIndex([
+      searchDocument({
+        kind: "prompt",
+        tier: "summary",
+        ref: "T-001",
+        targetRef: "T-001",
+        title: "Prompt title hydration needle",
+        body: ""
+      }),
+      searchDocument({
+        kind: "run_record",
+        tier: "summary",
+        ref: "T-001/blocks/B-001/runs/RUN-001/report.md",
+        title: "T-001/blocks/B-001/runs/RUN-001/report.md",
+        body: ""
+      })
+    ]);
+    const hydrated = mergeSearchIndexBodies(summary, searchIndex([
+      searchDocument({
+        kind: "prompt",
+        tier: "body",
+        ref: "T-001",
+        targetRef: "T-001",
+        title: "Prompt title hydration needle",
+        body: "Prompt hydrated body needle"
+      }),
+      searchDocument({
+        kind: "run_record",
+        tier: "body",
+        ref: "T-001/blocks/B-001/runs/RUN-001/report.md",
+        title: "T-001/blocks/B-001/runs/RUN-001/report.md",
+        body: "Result hydrated body needle"
+      })
+    ]));
+
+    expect(searchDesktopSearchIndex(summary, "hydrated body needle", { kinds: ["prompt", "run_record"] })).toEqual([]);
+    const results = searchDesktopSearchIndex(hydrated, "hydrated body needle", { kinds: ["prompt", "run_record"] });
+
+    expect(results.map((result) => result.kind)).toEqual(["prompt", "run_record"]);
+    expect(results[0]).toMatchObject({
+      ref: "T-001",
+      match: {
+        field: "body",
+        excerpt: "Prompt hydrated body needle"
+      }
+    });
+    expect(results[1]).toMatchObject({
+      ref: "T-001/blocks/B-001/runs/RUN-001/report.md",
+      match: {
+        field: "body",
+        excerpt: "Result hydrated body needle"
+      }
+    });
   });
 });

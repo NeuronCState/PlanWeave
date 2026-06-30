@@ -310,8 +310,13 @@ async function validatePromptReference(packageDir: string, prompt: string, error
   }
 }
 
-export async function compilePackageGraph(manifest: PlanPackageManifest, packageDir: string): Promise<CompiledExecutionGraph> {
+export async function compilePackageGraph(
+  manifest: PlanPackageManifest,
+  packageDir: string,
+  options: { validatePromptContents?: boolean } = {}
+): Promise<CompiledExecutionGraph> {
   const graph = compileTaskGraph(manifest);
+  const validatePromptContents = options.validatePromptContents ?? true;
   const referencedPrompts = new Set<string>();
 
   for (const taskId of graph.taskNodesInManifestOrder) {
@@ -331,6 +336,9 @@ export async function compilePackageGraph(manifest: PlanPackageManifest, package
     const promptPath = relative(packageDir, file);
     if (!referencedPrompts.has(promptPath)) {
       graph.diagnostics.warnings.push(issue("stale_prompt_reference", `Prompt '${promptPath}' is not referenced.`, promptPath));
+      continue;
+    }
+    if (!validatePromptContents) {
       continue;
     }
     try {

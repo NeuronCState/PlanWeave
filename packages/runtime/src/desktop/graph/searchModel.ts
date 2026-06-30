@@ -9,6 +9,18 @@ export type DesktopSearchProjection = {
   diagnostics: ValidationIssue[];
 };
 
+const bodySearchKinds = new Set(["prompt", "run_record", "review_attempt"]);
+
+function searchNeedsBodyIndex(filters: DesktopSearchFilters): boolean {
+  if (typeof filters.includeBodies === "boolean") {
+    return filters.includeBodies;
+  }
+  if (!filters.kinds?.length) {
+    return true;
+  }
+  return filters.kinds.some((kind) => bodySearchKinds.has(kind));
+}
+
 export async function searchProjectWithDiagnostics(
   projectRoot: string,
   query: string,
@@ -21,7 +33,7 @@ export async function searchProjectWithDiagnostics(
     throw new Error(`Task canvas '${filters.canvasId}' does not exist.`);
   }
 
-  const index = await readDesktopProjectSearchIndex(projectRoot);
+  const index = await readDesktopProjectSearchIndex(projectRoot, { includeBodies: searchNeedsBodyIndex(filters) });
   appendDesktopDiagnostics(diagnostics, index.diagnostics);
   return {
     results: searchDesktopSearchIndex(index, query, filters),

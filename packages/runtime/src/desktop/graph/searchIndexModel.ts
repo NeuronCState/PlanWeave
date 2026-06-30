@@ -7,8 +7,11 @@ import type { CanvasExecutionSnapshot, ProjectTodoContext } from "./todoModel.js
 import type { ResultsFileIndex } from "./resultsFileIndex.js";
 import type { ProjectCanvasAggregationContext } from "./projectCanvasAggregation.js";
 
+export type DesktopSearchDocumentTier = "summary" | "body";
+
 export type DesktopSearchDocument = {
   kind: DesktopSearchResultKind;
+  tier: DesktopSearchDocumentTier;
   canvasId: string;
   canvasName: string;
   ref: string;
@@ -21,7 +24,9 @@ export type DesktopSearchDocument = {
   recordId?: string;
 };
 
-export type DesktopSearchDocumentInput = Omit<DesktopSearchDocument, "normalizedTitle" | "normalizedBody">;
+export type DesktopSearchDocumentInput = Omit<DesktopSearchDocument, "normalizedTitle" | "normalizedBody" | "tier"> & {
+  tier?: DesktopSearchDocumentTier;
+};
 
 export type DesktopSearchIndex = {
   documents: DesktopSearchDocument[];
@@ -96,6 +101,7 @@ function promptPreviewLength(markdown: string): number {
 export function createDesktopSearchDocument(document: DesktopSearchDocumentInput): DesktopSearchDocument {
   return {
     ...document,
+    tier: document.tier ?? "summary",
     normalizedTitle: normalizeSearchText(document.title),
     normalizedBody: normalizeSearchText(document.body)
   };
@@ -230,7 +236,110 @@ function searchResultFromDocument(document: DesktopSearchDocument, normalizedQue
   };
 }
 
+function resultKindFromPath(path: string): DesktopSearchResultKind {
+  return path.includes("/reviews/") ? "review_attempt" : "run_record";
+}
+
+function resultTargetRef(kind: DesktopSearchResultKind, relativePath: string, recordId: string | undefined): string | undefined {
+  return kind === "review_attempt"
+    ? reviewBlockRefFromResultPath(relativePath) ?? undefined
+    : recordId?.split("::")[0];
+}
+
+function resultSearchDocument(input: {
+  canvasMeta: { canvasId: string; canvasName: string };
+  entry: ResultsFileIndex["entries"][number];
+  tier: DesktopSearchDocumentTier;
+}): DesktopSearchDocument {
+  const kind = resultKindFromPath(input.entry.relativePath);
+  const recordId = kind === "run_record" ? runRecordIdFromResultPath(input.entry.relativePath) ?? undefined : undefined;
+  return createDesktopSearchDocument({
+    kind,
+    tier: input.tier,
+    ...input.canvasMeta,
+    ref: input.entry.relativePath,
+    targetRef: resultTargetRef(kind, input.entry.relativePath, recordId),
+    title: input.entry.relativePath,
+    body: input.tier === "body" ? input.entry.body : "",
+    path: input.entry.relativePath,
+    recordId
+  });
+}
+
 export async function buildSearchIndexForCanvas(input: CanvasSearchDocumentsInput): Promise<DesktopSearchIndex> {
+  const diagnostics: ValidationIssue[] = [];
+  const documents: DesktopSearchDocument[] = [];
+  const canvas = input.aggregation.canvasesById.get(input.canvasId);
+  const snapshot = input.snapshot;
+  if (!canvas) {
+    return { documents, diagnostics };
+  }
+  if (hasSearchBlockingPackageDiagnostics(canvas.canvas.diagnostics)) {
+    appendDesktopDiagnostics(diagnostics, canvas.canvas.diagnostics);
+    return { documents, diagnostics };
+  }
+  if (!snapshot || snapshot.error || !snapshot.runtime) {
+    return { documents, diagnostics };
+  }
+  const canvasMeta = { canvasId: input.canvasId, canvasName: canvas.canvasName };
+  for (const taskId of snapshot.runtime.graph.taskNodesInManifestOrder) {
+    const task = getTask(snapshot.runtime.graph, taskId);
+    documents.push(createDesktopSearchDocument({
+      kind: "task",
+      ...canvasMeta,
+      ref: taskId,
+      title: task.title,
+      body: task.title
+    }));
+    documents.push(createDesktopSearchDocument({
+      kind: "prompt",
+      ...canvasMeta,
+      ref: taskId,
+      targetRef: taskId,
+      title: task.title,
+      body: ""
+    }));
+    for (const block of task.blocks) {
+      const ref = blockRef(taskId, block.id);
+      documents.push(createDesktopSearchDocument({
+        kind: "block",
+        ...canvasMeta,
+        ref,
+        title: block.title,
+        body: block.title
+      }));
+      documents.push(createDesktopSearchDocument({
+        kind: "prompt",
+        ...canvasMeta,
+        ref,
+        targetRef: ref,
+        title: block.title,
+        body: ""
+      }));
+    }
+  }
+  for (const [feedbackId, feedback] of Object.entries(snapshot.runtime.state.feedback)) {
+    documents.push(createDesktopSearchDocument({
+      kind: "feedback",
+      ...canvasMeta,
+      ref: feedbackId,
+      targetRef: feedback.sourceReviewBlockRef,
+      title: `${feedbackId} · ${feedback.sourceReviewBlockRef}`,
+      body: feedback.content
+    }));
+  }
+  if (!input.resultIndex) {
+    return { documents, diagnostics };
+  }
+  appendDesktopDiagnostics(diagnostics, input.resultIndex.diagnostics);
+  for (const entry of input.resultIndex.entries) {
+    documents.push(resultSearchDocument({ canvasMeta, entry, tier: "summary" }));
+  }
+
+  return { documents, diagnostics };
+}
+
+export async function buildSearchBodyIndexForCanvas(input: CanvasSearchDocumentsInput): Promise<DesktopSearchIndex> {
   const diagnostics: ValidationIssue[] = [];
   const documents: DesktopSearchDocument[] = [];
   const canvas = input.aggregation.canvasesById.get(input.canvasId);
@@ -250,14 +359,8 @@ export async function buildSearchIndexForCanvas(input: CanvasSearchDocumentsInpu
     const task = getTask(snapshot.runtime.graph, taskId);
     const taskPrompt = (await readOptionalFile(await resolvePackagePath(snapshot.runtime.workspace.packageDir, task.prompt), task.prompt)).markdown;
     documents.push(createDesktopSearchDocument({
-      kind: "task",
-      ...canvasMeta,
-      ref: taskId,
-      title: task.title,
-      body: task.title
-    }));
-    documents.push(createDesktopSearchDocument({
       kind: "prompt",
+      tier: "body",
       ...canvasMeta,
       ref: taskId,
       targetRef: taskId,
@@ -268,14 +371,8 @@ export async function buildSearchIndexForCanvas(input: CanvasSearchDocumentsInpu
       const ref = blockRef(taskId, block.id);
       const blockPrompt = (await readOptionalFile(await resolvePackagePath(snapshot.runtime.workspace.packageDir, block.prompt), block.prompt)).markdown;
       documents.push(createDesktopSearchDocument({
-        kind: "block",
-        ...canvasMeta,
-        ref,
-        title: block.title,
-        body: block.title
-      }));
-      documents.push(createDesktopSearchDocument({
         kind: "prompt",
+        tier: "body",
         ...canvasMeta,
         ref,
         targetRef: ref,
@@ -284,40 +381,37 @@ export async function buildSearchIndexForCanvas(input: CanvasSearchDocumentsInpu
       }));
     }
   }
-  for (const [feedbackId, feedback] of Object.entries(snapshot.runtime.state.feedback)) {
-    documents.push(createDesktopSearchDocument({
-      kind: "feedback",
-      ...canvasMeta,
-      ref: feedbackId,
-      targetRef: feedback.sourceReviewBlockRef,
-      title: `${feedbackId} · ${feedback.sourceReviewBlockRef}`,
-      body: feedback.content
-    }));
-  }
-  if (!input.resultIndex) {
-    return { documents, diagnostics };
-  }
-  appendDesktopDiagnostics(diagnostics, input.resultIndex.diagnostics);
-  for (const entry of input.resultIndex.entries) {
-    if (!entry.body) {
-      continue;
+  if (input.resultIndex) {
+    appendDesktopDiagnostics(diagnostics, input.resultIndex.diagnostics);
+    for (const entry of input.resultIndex.entries) {
+      if (entry.bodyLoaded && entry.body) {
+        documents.push(resultSearchDocument({ canvasMeta, entry, tier: "body" }));
+      }
     }
-    const kind = entry.relativePath.includes("/reviews/") ? "review_attempt" : "run_record";
-    const recordId = kind === "run_record" ? runRecordIdFromResultPath(entry.relativePath) ?? undefined : undefined;
-    documents.push(createDesktopSearchDocument({
-      kind,
-      ...canvasMeta,
-      ref: entry.relativePath,
-      targetRef: kind === "review_attempt"
-        ? reviewBlockRefFromResultPath(entry.relativePath) ?? undefined
-        : recordId?.split("::")[0],
-      title: entry.relativePath,
-      body: entry.body,
-      path: entry.relativePath,
-      recordId
-    }));
   }
+  return { documents, diagnostics };
+}
 
+function searchDocumentKey(document: DesktopSearchDocument): string {
+  return [document.kind, document.canvasId, document.ref, document.targetRef ?? "", document.path ?? "", document.recordId ?? ""].join("\u001f");
+}
+
+export function mergeSearchIndexBodies(summaryIndex: DesktopSearchIndex, bodyIndex: DesktopSearchIndex): DesktopSearchIndex {
+  const diagnostics: ValidationIssue[] = [];
+  appendDesktopDiagnostics(diagnostics, summaryIndex.diagnostics);
+  appendDesktopDiagnostics(diagnostics, bodyIndex.diagnostics);
+  const bodyDocumentsByKey = new Map(bodyIndex.documents.map((document) => [searchDocumentKey(document), document]));
+  const summaryKeys = new Set<string>();
+  const documents = summaryIndex.documents.map((document) => {
+    const key = searchDocumentKey(document);
+    summaryKeys.add(key);
+    return bodyDocumentsByKey.get(key) ?? document;
+  });
+  for (const document of bodyIndex.documents) {
+    if (!summaryKeys.has(searchDocumentKey(document))) {
+      documents.push(document);
+    }
+  }
   return { documents, diagnostics };
 }
 

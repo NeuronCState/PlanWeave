@@ -57,6 +57,7 @@ export {
   detectPackageFileChanges,
   refreshChangedPackagePrompts
 } from "./package/fileChanges.js";
+export type { PackageFileSyncResult, PromptRefreshStats } from "./package/fileChanges.js";
 export {
   createExecutionGraphSession,
   drainGraphReadQueue,

@@ -1,3 +1,5 @@
+import { utimes, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildAgentClaimMarkdown,
@@ -8,6 +10,7 @@ import {
   createSqlitePlanGraphStore,
   loadPlanGraphPackage
 } from "../plangraph/index.js";
+import { loadPlanGraphPackageMetadata } from "../plangraph/packageRepository.js";
 import { loadProjectTodoContext } from "../desktop/graph/todoModel.js";
 import { buildResultsFileIndex } from "../desktop/graph/resultsFileIndex.js";
 import { buildExecutionStatus } from "../taskManager/executionStatus.js";
@@ -120,6 +123,23 @@ describe("PlanGraph projections", () => {
     await store.indexChangedPaths(["nodes/T-001/prompt.md"]);
 
     await expect(store.getProjectionVersion("todo", `todo:${graph.graphVersion}`)).resolves.toBeNull();
+  });
+
+  it("changes metadata graphVersion for same-size restored-mtime prompt edits", async () => {
+    const { root, init } = await createTestWorkspace();
+    const promptPath = join(init.workspace.packageDir, "nodes", "T-001", "prompt.md");
+    const fixedTime = new Date(10_000);
+
+    await writeFile(promptPath, "metadata prompt body alpha\n", "utf8");
+    await utimes(promptPath, fixedTime, fixedTime);
+    const before = await loadPlanGraphPackageMetadata(root);
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await writeFile(promptPath, "metadata prompt body bravo\n", "utf8");
+    await utimes(promptPath, fixedTime, fixedTime);
+    const after = await loadPlanGraphPackageMetadata(root);
+
+    expect(after.graph.graphVersion).not.toBe(before.graph.graphVersion);
   });
 
   it("builds agent claim markdown and includes it in rendered prompts", async () => {

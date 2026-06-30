@@ -11,7 +11,7 @@ function issue(code: string, message: string, path?: string): ValidationIssue {
 export async function canvasDiagnostics(workspace: ProjectWorkspace): Promise<ValidationIssue[]> {
   try {
     const manifest = manifestSchema.parse(await readJsonFile<unknown>(workspace.manifestFile)) as PlanPackageManifest;
-    const graph = await compilePackageGraph(manifest, workspace.packageDir);
+    const graph = await compilePackageGraph(manifest, workspace.packageDir, { validatePromptContents: false });
     return [...graph.diagnostics.errors, ...graph.diagnostics.warnings];
   } catch (error) {
     if (error instanceof ZodError) {

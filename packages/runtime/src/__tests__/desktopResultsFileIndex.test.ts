@@ -4,11 +4,15 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { searchProject, searchProjectWithDiagnostics } from "../desktop/index.js";
 import {
+  buildResultsFileIndexFromFingerprintSnapshot,
+  hydrateResultsFileIndexBodies,
   maxIndexedResultFileCount,
   maxIndexedResultTotalBodyBytes,
   selectIndexedResultFingerprints,
+  snapshotResultsFileFingerprints,
   type ResultFileFingerprint
 } from "../desktop/graph/resultsFileIndex.js";
+import { writeJsonFile } from "../json.js";
 import { createTestWorkspace } from "./promptTestHelpers.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -32,7 +36,7 @@ function resultReadPaths(resultsDir: string): string[] {
 }
 
 function fingerprint(path: string, mtimeMs: number, size: number): ResultFileFingerprint {
-  return { path, mtimeMs, size };
+  return { path, ctimeMs: mtimeMs, mtimeMs, size };
 }
 
 function sizedBody(needle: string, size: number): string {
@@ -116,6 +120,44 @@ describe("desktop results file index", () => {
         message: expect.stringContaining("total=210, indexed=60, skipped=150, limit=100")
       })
     ]);
+  });
+
+  it("builds metadata-only result indexes without reading ordinary result bodies and hydrates bodies through cache", async () => {
+    const { init } = await createTestWorkspace();
+    const runDir = join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-METADATA");
+    const reportPath = join(runDir, "report.md");
+    const metadataPath = join(runDir, "metadata.json");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(reportPath, "metadata-only stage must not read body needle\n", "utf8");
+    await writeJsonFile(metadataPath, {
+      startedAt: "2026-06-30T00:00:00.000Z",
+      finishedAt: "2026-06-30T00:00:01.000Z"
+    });
+
+    const snapshot = await snapshotResultsFileFingerprints(init.workspace);
+    vi.mocked(fsPromises.readFile).mockClear();
+    const index = await buildResultsFileIndexFromFingerprintSnapshot(init.workspace, snapshot);
+    const metadataEntry = index.entries.find((entry) => entry.relativePath.endsWith("metadata.json"));
+    const reportEntry = index.entries.find((entry) => entry.relativePath.endsWith("report.md"));
+
+    expect(resultReadPaths(init.workspace.resultsDir)).toEqual([metadataPath]);
+    expect(metadataEntry?.metadata).toMatchObject({ startedAt: "2026-06-30T00:00:00.000Z" });
+    expect(reportEntry).toMatchObject({
+      body: "",
+      bodyLoaded: false
+    });
+
+    vi.mocked(fsPromises.readFile).mockClear();
+    const hydrated = await hydrateResultsFileIndexBodies(index);
+    expect(hydrated.entries.find((entry) => entry.relativePath.endsWith("report.md"))).toMatchObject({
+      body: "metadata-only stage must not read body needle\n",
+      bodyLoaded: true
+    });
+    expect(resultReadPaths(init.workspace.resultsDir)).toEqual(expect.arrayContaining([reportPath]));
+
+    vi.mocked(fsPromises.readFile).mockClear();
+    await hydrateResultsFileIndexBodies(index);
+    expect(resultReadPaths(init.workspace.resultsDir)).toEqual([]);
   });
 
   it("searches indexed new result files and reports skipped old result files when the byte limit is exceeded", async () => {

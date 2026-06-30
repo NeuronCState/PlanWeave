@@ -295,6 +295,7 @@ export type DesktopSearchResultKind = "task" | "block" | "prompt" | "run_record"
 export type DesktopSearchFilters = {
   kinds?: DesktopSearchResultKind[];
   canvasId?: string | null;
+  includeBodies?: boolean;
   limit?: number;
 };
 

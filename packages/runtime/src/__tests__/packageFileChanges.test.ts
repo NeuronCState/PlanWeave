@@ -29,11 +29,17 @@ import {
   refreshChangedPackagePrompts,
   refreshChangedPackagePromptsForPaths
 } from "../package/fileChanges.js";
+import type { PromptRefreshStats } from "../package/fileChanges.js";
 import { affectedTasksForPackageFileChange } from "../graph/editGraph.js";
 import { createExecutionGraphSession, createExecutionGraphSessionFromSnapshot, drainGraphReadQueue, enqueueGraphEditOperations } from "../graph/session.js";
 import { writeJsonFile } from "../json.js";
 import { createTaskCanvas, selectTaskCanvas } from "../desktop/index.js";
 import { basicManifest, createTestWorkspace } from "./promptTestHelpers.js";
+
+function expectRefreshStats(stats: PromptRefreshStats, expected: Omit<PromptRefreshStats, "elapsedMs">): void {
+  expect(stats).toMatchObject(expected);
+  expect(stats.elapsedMs).toBeGreaterThanOrEqual(0);
+}
 
 describe("package file changes", () => {
   beforeEach(() => {
@@ -55,6 +61,14 @@ describe("package file changes", () => {
     expect(detected.impact.fullRefresh).toBe(true);
     expect(detected.impact.affectedTasks).toEqual(["T-001"]);
     expect(refreshed.refreshed.map((prompt) => prompt.ref)).toEqual(["T-001#B-001", "T-001#R-001"]);
+    expectRefreshStats(refreshed.refreshStats, {
+      requested: 2,
+      refreshed: 2,
+      concurrency: null,
+      changedPathCount: 1,
+      refreshedRefs: 2,
+      mode: "full"
+    });
   });
 
   it("refreshes a changed block prompt path incrementally", async () => {
@@ -73,7 +87,14 @@ describe("package file changes", () => {
       diagnostics: []
     });
     expect(refreshed.refreshed.map((prompt) => prompt.ref)).toEqual(["T-001#B-001"]);
-    expect(refreshed.refreshStats).toEqual({ requested: 1, refreshed: 1, concurrency: 4 });
+    expectRefreshStats(refreshed.refreshStats, {
+      requested: 1,
+      refreshed: 1,
+      concurrency: 4,
+      changedPathCount: 1,
+      refreshedRefs: 1,
+      mode: "incremental"
+    });
   });
 
   it("refreshes a changed task prompt path incrementally", async () => {
@@ -92,7 +113,14 @@ describe("package file changes", () => {
       diagnostics: []
     });
     expect(refreshed.refreshed.map((prompt) => prompt.ref)).toEqual(["T-001#B-001", "T-001#R-001"]);
-    expect(refreshed.refreshStats).toEqual({ requested: 2, refreshed: 2, concurrency: 4 });
+    expectRefreshStats(refreshed.refreshStats, {
+      requested: 2,
+      refreshed: 2,
+      concurrency: 4,
+      changedPathCount: 1,
+      refreshedRefs: 2,
+      mode: "incremental"
+    });
   });
 
   it("limits incremental prompt refresh concurrency and preserves ref order", async () => {
@@ -122,7 +150,14 @@ describe("package file changes", () => {
     expect(refreshPromptMockState.maxActive).toBeLessThanOrEqual(4);
     expect(refreshPromptMockState.calls).toEqual(expectedRefs);
     expect(refreshed.refreshed.map((prompt) => prompt.ref)).toEqual(expectedRefs);
-    expect(refreshed.refreshStats).toEqual({ requested: 6, refreshed: 6, concurrency: 4 });
+    expectRefreshStats(refreshed.refreshStats, {
+      requested: 6,
+      refreshed: 6,
+      concurrency: 4,
+      changedPathCount: 1,
+      refreshedRefs: 6,
+      mode: "incremental"
+    });
   });
 
   it("normalizes custom prompt refresh concurrency to at least one", async () => {
@@ -133,7 +168,14 @@ describe("package file changes", () => {
     const refreshed = await refreshChangedPackagePromptsForPaths(root, before, ["nodes/T-001/prompt.md"], { refreshConcurrency: 0 });
 
     expect(refreshPromptMockState.maxActive).toBe(1);
-    expect(refreshed.refreshStats).toEqual({ requested: 2, refreshed: 2, concurrency: 1 });
+    expectRefreshStats(refreshed.refreshStats, {
+      requested: 2,
+      refreshed: 2,
+      concurrency: 1,
+      changedPathCount: 1,
+      refreshedRefs: 2,
+      mode: "incremental"
+    });
   });
 
   it("falls back to a full refresh when an incremental prompt refresh fails", async () => {
@@ -146,7 +188,14 @@ describe("package file changes", () => {
 
     expect(refreshed.incremental).toBe(false);
     expect(refreshed.refreshed.map((prompt) => prompt.ref)).toEqual(["T-001#B-001", "T-001#R-001"]);
-    expect(refreshed.refreshStats).toEqual({ requested: 2, refreshed: 2, concurrency: null });
+    expectRefreshStats(refreshed.refreshStats, {
+      requested: 2,
+      refreshed: 2,
+      concurrency: null,
+      changedPathCount: 1,
+      refreshedRefs: 2,
+      mode: "full"
+    });
     expect(refreshed.impact.diagnostics.map((diagnostic) => diagnostic.code)).toContain("package_change_incremental_refresh_failed");
   });
 
@@ -157,6 +206,10 @@ describe("package file changes", () => {
     await expect(refreshChangedPackagePromptsForPaths(root, before, ["package/manifest.json"])).resolves.toMatchObject({
       incremental: false,
       changedPackagePaths: ["manifest.json"],
+      refreshStats: expect.objectContaining({
+        changedPathCount: 1,
+        mode: "full"
+      }),
       impact: {
         ok: true,
         diagnostics: [expect.objectContaining({ code: "package_change_manifest_requires_full_refresh" })]
@@ -165,6 +218,10 @@ describe("package file changes", () => {
     await expect(refreshChangedPackagePromptsForPaths(root, before, ["package/nodes/T-001"])).resolves.toMatchObject({
       incremental: false,
       changedPackagePaths: ["nodes/T-001"],
+      refreshStats: expect.objectContaining({
+        changedPathCount: 1,
+        mode: "full"
+      }),
       impact: {
         ok: true,
         diagnostics: [expect.objectContaining({ code: "package_change_coarse_path_requires_full_refresh" })]
@@ -181,6 +238,10 @@ describe("package file changes", () => {
     await expect(refreshChangedPackagePromptsForPaths(root, before, [])).resolves.toMatchObject({
       incremental: false,
       changedPackagePaths: ["manifest.json"],
+      refreshStats: expect.objectContaining({
+        changedPathCount: 1,
+        mode: "full"
+      }),
       impact: {
         ok: true,
         diagnostics: [expect.objectContaining({ code: "package_change_paths_empty" })]

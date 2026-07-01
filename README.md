@@ -35,7 +35,8 @@ Your project is represented as a graph of task nodes and block documents. Each f
 
 - **Files are nodes, documents are blocks**: the graph is not a decoration on top of chat. It is the project model.
 - **Graph-friendly by default**: task flow, dependencies, review loops, and execution status are visible and editable.
-- **Global context for agents**: agents can see the wider task graph, not only the current prompt fragment.
+- **Scoped graph context**: agents receive the current block plus relevant task graph context, and can inspect more when needed.
+- **Focused responsibilities**: each claim hands one focused block to one agent, keeping context clean and avoiding unrelated plans, stale discussion, and wasted tokens.
 - **Per-node and per-block agent routing**: use Codex for one block, Claude Code, OpenCode, or Pi for another, and local review scripts where deterministic checks are enough.
 - **MCP authoring for ChatGPT**: connect ChatGPT to PlanWeave through the local MCP server, a headless systemd tunnel, or the desktop secure tunnel, then ask it to create canvases, tasks, blocks, review pipelines, and dependencies.
 - **Full auto-run workflow**: PlanWeave can claim blocks, run agents, collect reports, handle review feedback, and continue the task flow.
@@ -73,7 +74,7 @@ planweave --help
 
 PlanWeave includes a local HTTP MCP server for using PlanWeave from MCP clients such as ChatGPT. The MCP tools are not just read-only status helpers: they can also author plans by initializing projects, creating canvases, adding tasks and blocks, wiring dependencies, editing prompts, configuring review pipelines, and validating the local project.
 
-For ChatGPT in the browser, use the CLI MCP tunnel on a VPS or PlanWeave Desktop's MCP settings on a local machine. You can use ChatGPT Pro as the planning partner: describe the project goal, ask it to draft the task graph, then let PlanWeave save the result as a canvas.
+For ChatGPT in the browser, use the CLI MCP tunnel on a VPS or PlanWeave Desktop's MCP settings on a local machine. You can use ChatGPT Web as the planning partner: describe the project goal, ask it to draft the task graph, then let PlanWeave save the result as a canvas.
 
 Recommended headless setup for a VPS uses systemd. The MCP server stays on loopback, and the OpenAI `tunnel-client` keeps an outbound connection open; PlanWeave does not run its own daemon or pidfile manager.
 
@@ -122,14 +123,7 @@ Source-level MCP server setup is documented in [Development](DEVELOPMENT.md).
 
 ## Agent Execution
 
-PlanWeave supports executor profiles, so different blocks can run through different agents or local commands. A typical graph can mix:
-
-- Codex execution for implementation work.
-- Claude Code execution for non-interactive terminal agent runs.
-- OpenCode execution for blocks that should run in an OpenCode session.
-- Pi execution for non-interactive terminal agent runs.
-- Local review commands for deterministic validation.
-- Review-feedback loops that continue automatically when feedback is enabled.
+PlanWeave supports executor profiles, so different blocks can run through different agents or local commands. Current executors include Codex, Claude Code, OpenCode, Pi, local review commands, and review-feedback loops.
 
 Each block run writes durable output under the PlanWeave workspace, including prompt, stdout, stderr, report, metadata, and monitor commands when available.
 
@@ -247,6 +241,10 @@ When scheduling is unclear, prefer `planweave explain <ref>`, `planweave why-not
 ## Experimental Desktop App
 
 The desktop app is an experimental build. It is useful for trying the visual task canvas, configuring MCP tunnel access for ChatGPT, and reviewing generated plans before execution, but the CLI remains the recommended interface for serious work.
+
+<p align="center">
+  <img src="readme/assets/planweave-desktop-canvas.png" width="860" alt="PlanWeave desktop canvas showing an agent task graph with implementation and review blocks." />
+</p>
 
 Install a packaged build from GitHub Releases. Current desktop installers are unsigned. macOS may show an unidentified developer warning, and Windows may show an unknown publisher or SmartScreen warning. For early testing on macOS, open the app with **Right Click -> Open** and confirm the prompt.
 

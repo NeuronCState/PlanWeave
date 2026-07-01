@@ -27,20 +27,16 @@ import {
   runtimeSchemaDocuments,
   searchProjectWithDiagnostics,
   updateBlockDependencies,
-  updateBlockExecutor,
+  updateBlockFields,
   updateBlockPlanning,
-  updateBlockPrompt,
-  updateBlockTitle,
   updateCanvasExecutionPolicy,
   updateProjectPrompt,
   updateReviewPipeline,
   updateTaskAcceptance,
-  updateTaskExecutor,
-  updateTaskPrompt,
-  updateTaskTitle,
+  updateTaskFields,
   validatePackage
 } from "@planweave-ai/runtime";
-import type { DesktopSearchResult, DesktopTodoItem, GraphEditResult } from "@planweave-ai/runtime";
+import type { DesktopSearchResult, DesktopTodoItem } from "@planweave-ai/runtime";
 import { sanitizeLocalPaths, sanitizeValidationIssues } from "./toolHelpers.js";
 import { exportCanvasPackage, importPackageFiles } from "./toolPackageFiles.js";
 import type { ReadyBlock, RuntimeGateway, SanitizedExecutionStatus } from "./toolTypes.js";
@@ -117,21 +113,8 @@ export const runtimeGateway: RuntimeGateway = {
     return addTaskNode(await resolveCanvasWorkspace(projectId, canvasId), input);
   },
   async updateTask(projectId, canvasId, taskId, input) {
-    let result: GraphEditResult | null = null;
     const workspace = await resolveCanvasWorkspace(projectId, canvasId);
-    if (input.title !== undefined) {
-      result = await updateTaskTitle(workspace, taskId, input.title);
-    }
-    if (input.promptMarkdown !== undefined) {
-      result = await updateTaskPrompt(workspace, taskId, input.promptMarkdown);
-    }
-    if (Object.prototype.hasOwnProperty.call(input, "executor")) {
-      result = await updateTaskExecutor(workspace, taskId, input.executor ?? null);
-    }
-    if (!result) {
-      throw new Error("At least one of title, promptMarkdown, or executor must be provided.");
-    }
-    return result;
+    return updateTaskFields(workspace, taskId, input);
   },
   async updateTaskAcceptance(projectId, canvasId, taskId, acceptance) {
     return updateTaskAcceptance(await resolveCanvasWorkspace(projectId, canvasId), taskId, acceptance);
@@ -143,21 +126,8 @@ export const runtimeGateway: RuntimeGateway = {
     return addBlock(await resolveCanvasWorkspace(projectId, canvasId), input);
   },
   async updateBlock(projectId, canvasId, blockRef, input) {
-    let result: GraphEditResult | null = null;
     const workspace = await resolveCanvasWorkspace(projectId, canvasId);
-    if (input.title !== undefined) {
-      result = await updateBlockTitle(workspace, blockRef, input.title);
-    }
-    if (input.promptMarkdown !== undefined) {
-      result = await updateBlockPrompt(workspace, blockRef, input.promptMarkdown);
-    }
-    if (Object.prototype.hasOwnProperty.call(input, "executor")) {
-      result = await updateBlockExecutor(workspace, blockRef, input.executor ?? null);
-    }
-    if (!result) {
-      throw new Error("At least one of title, promptMarkdown, or executor must be provided.");
-    }
-    return result;
+    return updateBlockFields(workspace, blockRef, input);
   },
   async updateCanvasExecutionPolicy(projectId, canvasId, input) {
     return updateCanvasExecutionPolicy(await resolveCanvasWorkspace(projectId, canvasId), input);

@@ -2,6 +2,7 @@ import { access, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { undoDesktopPlanGraphCommand } from "@planweave-ai/runtime";
 import { runtimeGateway } from "../toolRuntime.js";
 
 const packageFiles = [
@@ -59,6 +60,72 @@ describe("MCP runtime gateway", () => {
           files: packageFiles
         }
       ]
+    });
+  });
+
+  it("updates task fields through one runtime graph command", async () => {
+    const home = await mkdtemp(join(tmpdir(), "planweave-mcp-home-"));
+    process.env.PLANWEAVE_HOME = home;
+    const project = await runtimeGateway.initProject("Gateway Task Fields");
+
+    await expect(
+      runtimeGateway.createTask(project.projectId, undefined, {
+        title: "MCP task fields",
+        promptMarkdown: "# Original task prompt\n"
+      })
+    ).resolves.toMatchObject({ ok: true });
+
+    const result = await runtimeGateway.updateTask(project.projectId, undefined, "T-MCP-TASK-FIELDS", {
+      title: "Updated MCP task fields",
+      promptMarkdown: "# Updated task prompt\n",
+      executor: "codex-auto"
+    });
+
+    expect(result).toMatchObject({ ok: true, affectedTasks: ["T-MCP-TASK-FIELDS"], diagnostics: [] });
+    await expect(runtimeGateway.getTaskDetail(project.projectId, "T-MCP-TASK-FIELDS")).resolves.toMatchObject({
+      title: "Updated MCP task fields",
+      executor: "codex-auto",
+      promptMarkdown: "# Updated task prompt\n"
+    });
+
+    await expect(undoDesktopPlanGraphCommand(project.rootPath)).resolves.toMatchObject({ ok: true });
+    await expect(runtimeGateway.getTaskDetail(project.projectId, "T-MCP-TASK-FIELDS")).resolves.toMatchObject({
+      title: "MCP task fields",
+      executor: null,
+      promptMarkdown: "# Original task prompt\n"
+    });
+  });
+
+  it("updates block fields through one runtime graph command", async () => {
+    const home = await mkdtemp(join(tmpdir(), "planweave-mcp-home-"));
+    process.env.PLANWEAVE_HOME = home;
+    const project = await runtimeGateway.initProject("Gateway Block Fields");
+
+    await expect(
+      runtimeGateway.createTask(project.projectId, undefined, {
+        title: "MCP block fields",
+        promptMarkdown: "# Original task prompt\n"
+      })
+    ).resolves.toMatchObject({ ok: true });
+
+    const result = await runtimeGateway.updateBlock(project.projectId, undefined, "T-MCP-BLOCK-FIELDS#B-001", {
+      title: "Updated MCP block fields",
+      promptMarkdown: "# Updated block prompt\n",
+      executor: "manual"
+    });
+
+    expect(result).toMatchObject({ ok: true, affectedTasks: ["T-MCP-BLOCK-FIELDS"], diagnostics: [] });
+    await expect(runtimeGateway.getBlockDetail(project.projectId, "T-MCP-BLOCK-FIELDS#B-001")).resolves.toMatchObject({
+      title: "Updated MCP block fields",
+      executor: "manual",
+      promptMarkdown: "# Updated block prompt\n"
+    });
+
+    await expect(undoDesktopPlanGraphCommand(project.rootPath)).resolves.toMatchObject({ ok: true });
+    await expect(runtimeGateway.getBlockDetail(project.projectId, "T-MCP-BLOCK-FIELDS#B-001")).resolves.toMatchObject({
+      title: "Implement work",
+      executor: null,
+      promptMarkdown: expect.stringContaining("# Implement work")
     });
   });
 });

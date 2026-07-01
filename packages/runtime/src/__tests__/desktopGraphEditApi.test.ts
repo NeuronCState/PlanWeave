@@ -17,11 +17,13 @@ import {
   undoDesktopPlanGraphCommand,
   updateBlockDependencies,
   updateBlockExecutor,
+  updateBlockFields,
   updateBlockPlanning,
   updateBlockTitle,
   updateCanvasExecutionPolicy,
   updateTaskAcceptance,
   updateTaskExecutor,
+  updateTaskFields,
   updateTaskTitle,
   createTaskCanvas,
   resolveTaskCanvasWorkspace,
@@ -124,6 +126,111 @@ describe("desktop graph edit API", () => {
     }
     expect(updatedTask.blocks.find((block) => block.id === "B-001")).not.toHaveProperty("executor");
     expect(manifest.edges).not.toContainEqual({ from: "T-001", to: "T-002", type: "depends_on" });
+  });
+
+  it("updates task fields atomically through one desktop graph command", async () => {
+    const { root, init } = await createTestWorkspace();
+
+    const result = await updateTaskFields(root, "T-001", {
+      title: "Updated task fields",
+      promptMarkdown: "# Updated task prompt\n",
+      executor: "codex-auto"
+    });
+
+    expect(result).toMatchObject({ ok: true, affectedTasks: ["T-001"], diagnostics: [] });
+    let manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    let task = manifest.nodes.find((node) => node.type === "task" && node.id === "T-001");
+    if (task?.type !== "task") {
+      throw new Error("Fixture task missing.");
+    }
+    expect(task).toMatchObject({ title: "Updated task fields", executor: "codex-auto" });
+    expect(task.blocks.find((block) => block.id === "B-001")).not.toHaveProperty("executor");
+    expect(await readFile(join(init.workspace.packageDir, task.prompt), "utf8")).toBe("# Updated task prompt\n");
+
+    await expect(undoDesktopPlanGraphCommand(root)).resolves.toMatchObject({ ok: true });
+    manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    task = manifest.nodes.find((node) => node.type === "task" && node.id === "T-001");
+    if (task?.type !== "task") {
+      throw new Error("Fixture task missing.");
+    }
+    expect(task.title).toBe("Implement test task");
+    expect(task).not.toHaveProperty("executor");
+    expect(await readFile(join(init.workspace.packageDir, task.prompt), "utf8")).toBe("# T-001 task prompt\n");
+    await expect(undoDesktopPlanGraphCommand(root)).resolves.toMatchObject({
+      ok: false,
+      diagnostics: [expect.objectContaining({ code: "history_empty" })]
+    });
+  });
+
+  it("updates block fields atomically through one desktop graph command", async () => {
+    const { root, init } = await createTestWorkspace();
+
+    const result = await updateBlockFields(root, "T-001#B-001", {
+      title: "Updated block fields",
+      promptMarkdown: "# Updated block prompt\n",
+      executor: "manual"
+    });
+
+    expect(result).toMatchObject({ ok: true, affectedTasks: ["T-001"], diagnostics: [] });
+    let manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    let task = manifest.nodes.find((node) => node.type === "task" && node.id === "T-001");
+    if (task?.type !== "task") {
+      throw new Error("Fixture task missing.");
+    }
+    let block = task.blocks.find((candidate) => candidate.id === "B-001");
+    expect(block).toMatchObject({ title: "Updated block fields", executor: "manual" });
+    expect(await readFile(join(init.workspace.packageDir, block?.prompt ?? ""), "utf8")).toBe("# Updated block prompt\n");
+
+    await expect(undoDesktopPlanGraphCommand(root)).resolves.toMatchObject({ ok: true });
+    manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    task = manifest.nodes.find((node) => node.type === "task" && node.id === "T-001");
+    if (task?.type !== "task") {
+      throw new Error("Fixture task missing.");
+    }
+    block = task.blocks.find((candidate) => candidate.id === "B-001");
+    expect(block?.title).toBe("Implement task");
+    expect(block).not.toHaveProperty("executor");
+    expect(await readFile(join(init.workspace.packageDir, block?.prompt ?? ""), "utf8")).toBe("# T-001#B-001 implementation prompt\n");
+    await expect(undoDesktopPlanGraphCommand(root)).resolves.toMatchObject({
+      ok: false,
+      diagnostics: [expect.objectContaining({ code: "history_empty" })]
+    });
+  });
+
+  it("does not write task prompt or manifest fields when task field validation fails", async () => {
+    const { root, init } = await createTestWorkspace();
+    const manifestBefore = await readFile(init.workspace.manifestFile, "utf8");
+    const promptPath = join(init.workspace.packageDir, "nodes", "T-001", "prompt.md");
+    const promptBefore = await readFile(promptPath, "utf8");
+
+    await expect(
+      updateTaskFields(root, "T-001", {
+        title: "   ",
+        promptMarkdown: "# Must not be written\n",
+        executor: "codex-auto"
+      })
+    ).rejects.toThrow("Title must not be empty.");
+
+    await expect(readFile(init.workspace.manifestFile, "utf8")).resolves.toBe(manifestBefore);
+    await expect(readFile(promptPath, "utf8")).resolves.toBe(promptBefore);
+  });
+
+  it("does not write block prompt or manifest fields when block field validation fails", async () => {
+    const { root, init } = await createTestWorkspace();
+    const manifestBefore = await readFile(init.workspace.manifestFile, "utf8");
+    const promptPath = join(init.workspace.packageDir, "nodes", "T-001", "blocks", "B-001.prompt.md");
+    const promptBefore = await readFile(promptPath, "utf8");
+
+    await expect(
+      updateBlockFields(root, "T-001#B-001", {
+        title: "   ",
+        promptMarkdown: "# Must not be written\n",
+        executor: "manual"
+      })
+    ).rejects.toThrow("Title must not be empty.");
+
+    await expect(readFile(init.workspace.manifestFile, "utf8")).resolves.toBe(manifestBefore);
+    await expect(readFile(promptPath, "utf8")).resolves.toBe(promptBefore);
   });
 
   it("validates graph edits without writing the manifest", async () => {

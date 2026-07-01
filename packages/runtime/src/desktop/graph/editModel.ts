@@ -9,6 +9,7 @@ import {
   executePlanGraphCommand,
   redoPlanGraphCommand,
   undoPlanGraphCommand,
+  type PlanGraphCommand,
   type BlockComponentSnapshot,
   type PlanGraphCommandResult,
   type TaskComponentSnapshot
@@ -27,6 +28,12 @@ import { getDesktopLayout, saveDesktopLayoutDirect } from "../layoutApi.js";
 import { getTask } from "./graphHelpers.js";
 import { invalidateDesktopProjectProjection } from "./projectProjectionModel.js";
 
+type UpdateTaskFieldsCommand = Extract<PlanGraphCommand, { type: "updateTaskFields" }>;
+type UpdateBlockFieldsCommand = Extract<PlanGraphCommand, { type: "updateBlockFields" }>;
+
+export type DesktopTaskFieldEditInput = Omit<UpdateTaskFieldsCommand["fields"], "basePromptHash">;
+export type DesktopBlockFieldEditInput = Omit<UpdateBlockFieldsCommand["fields"], "basePromptHash">;
+
 function normalizeOptionalText(value: string | null): string | undefined {
   return value?.trim() || undefined;
 }
@@ -41,6 +48,10 @@ function requireNonEmptyTitle(title: string): string {
 
 function promptFileMarkdown(markdown: string): string {
   return markdown.endsWith("\n") ? markdown : `${markdown}\n`;
+}
+
+function hasFieldEditValue(fields: DesktopTaskFieldEditInput | DesktopBlockFieldEditInput): boolean {
+  return Object.values(fields).some((value) => value !== undefined);
 }
 
 function slugPart(value: string): string {
@@ -295,8 +306,30 @@ export async function validateGraphEdit(projectRoot: PackageWorkspaceRef, input:
   return graphEditResult(mutation.nextManifest, mutation.affectedTasks);
 }
 
+export async function updateTaskFields(
+  projectRoot: PackageWorkspaceRef,
+  taskId: string,
+  fields: DesktopTaskFieldEditInput,
+  options: DesktopPromptSaveOptions = {}
+): Promise<GraphEditResult> {
+  if (!hasFieldEditValue(fields)) {
+    throw new Error("At least one task field must be provided.");
+  }
+  const commandFields: UpdateTaskFieldsCommand["fields"] = {
+    ...fields,
+    title: fields.title === undefined ? undefined : requireNonEmptyTitle(fields.title),
+    basePromptHash: fields.promptMarkdown === undefined ? undefined : options.basePromptHash
+  };
+  return executeDesktopPlanGraphCommand(projectRoot, {
+    type: "updateTaskFields",
+    taskId,
+    baseGraphVersion: options.baseGraphVersion,
+    fields: commandFields
+  });
+}
+
 export async function updateTaskTitle(projectRoot: PackageWorkspaceRef, taskId: string, title: string): Promise<GraphEditResult> {
-  return executeDesktopPlanGraphCommand(projectRoot, { type: "updateTaskFields", taskId, fields: { title: requireNonEmptyTitle(title) } });
+  return updateTaskFields(projectRoot, taskId, { title });
 }
 
 export async function updateTaskPrompt(
@@ -305,16 +338,33 @@ export async function updateTaskPrompt(
   markdown: string,
   options: DesktopPromptSaveOptions = {}
 ): Promise<GraphEditResult> {
+  return updateTaskFields(projectRoot, taskId, { promptMarkdown: markdown }, options);
+}
+
+export async function updateBlockFields(
+  projectRoot: PackageWorkspaceRef,
+  ref: string,
+  fields: DesktopBlockFieldEditInput,
+  options: DesktopPromptSaveOptions = {}
+): Promise<GraphEditResult> {
+  if (!hasFieldEditValue(fields)) {
+    throw new Error("At least one block field must be provided.");
+  }
+  const commandFields: UpdateBlockFieldsCommand["fields"] = {
+    ...fields,
+    title: fields.title === undefined ? undefined : requireNonEmptyTitle(fields.title),
+    basePromptHash: fields.promptMarkdown === undefined ? undefined : options.basePromptHash
+  };
   return executeDesktopPlanGraphCommand(projectRoot, {
-    type: "updateTaskFields",
-    taskId,
+    type: "updateBlockFields",
+    blockRef: ref,
     baseGraphVersion: options.baseGraphVersion,
-    fields: { promptMarkdown: markdown, basePromptHash: options.basePromptHash }
+    fields: commandFields
   });
 }
 
 export async function updateBlockTitle(projectRoot: PackageWorkspaceRef, ref: string, title: string): Promise<GraphEditResult> {
-  return executeDesktopPlanGraphCommand(projectRoot, { type: "updateBlockFields", blockRef: ref, fields: { title: requireNonEmptyTitle(title) } });
+  return updateBlockFields(projectRoot, ref, { title });
 }
 
 export async function updateBlockPrompt(
@@ -323,28 +373,23 @@ export async function updateBlockPrompt(
   markdown: string,
   options: DesktopPromptSaveOptions = {}
 ): Promise<GraphEditResult> {
-  return executeDesktopPlanGraphCommand(projectRoot, {
-    type: "updateBlockFields",
-    blockRef: ref,
-    baseGraphVersion: options.baseGraphVersion,
-    fields: { promptMarkdown: markdown, basePromptHash: options.basePromptHash }
-  });
+  return updateBlockFields(projectRoot, ref, { promptMarkdown: markdown }, options);
 }
 
 export async function updateTaskExecutor(projectRoot: PackageWorkspaceRef, taskId: string, executorName: string | null): Promise<GraphEditResult> {
-  return executeDesktopPlanGraphCommand(projectRoot, { type: "updateTaskFields", taskId, fields: { executor: executorName } });
+  return updateTaskFields(projectRoot, taskId, { executor: executorName });
 }
 
 export async function updateTaskAcceptance(projectRoot: PackageWorkspaceRef, taskId: string, acceptance: string[]): Promise<GraphEditResult> {
-  return executeDesktopPlanGraphCommand(projectRoot, { type: "updateTaskFields", taskId, fields: { acceptance } });
+  return updateTaskFields(projectRoot, taskId, { acceptance });
 }
 
 export async function updateBlockExecutor(projectRoot: PackageWorkspaceRef, ref: string, executorName: string | null): Promise<GraphEditResult> {
-  return executeDesktopPlanGraphCommand(projectRoot, { type: "updateBlockFields", blockRef: ref, fields: { executor: executorName } });
+  return updateBlockFields(projectRoot, ref, { executor: executorName });
 }
 
 export async function updateBlockDependencies(projectRoot: PackageWorkspaceRef, ref: string, dependsOn: string[]): Promise<GraphEditResult> {
-  return executeDesktopPlanGraphCommand(projectRoot, { type: "updateBlockFields", blockRef: ref, fields: { dependsOn } });
+  return updateBlockFields(projectRoot, ref, { dependsOn });
 }
 
 export async function updateBlockPlanning(
@@ -358,7 +403,7 @@ export async function updateBlockPlanning(
     reviewHook?: ReviewHookDefinition | null;
   }
 ): Promise<GraphEditResult> {
-  return executeDesktopPlanGraphCommand(projectRoot, { type: "updateBlockFields", blockRef: ref, fields: input });
+  return updateBlockFields(projectRoot, ref, input);
 }
 
 export async function updateCanvasExecutionPolicy(

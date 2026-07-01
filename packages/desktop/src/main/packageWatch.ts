@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { ipcMain } from "electron";
 import { existsSync, watch, type Dirent, type FSWatcher } from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { resolveTaskCanvasWorkspace } from "@planweave-ai/runtime";
 import type { DesktopCanvasReference, DesktopPackageFileChangeEvent } from "@planweave-ai/runtime";
 import type { WebContents } from "electron";
@@ -37,6 +37,13 @@ type PackageWatch = {
   closed: boolean;
 };
 
+type PackageWatchRoot = {
+  rootPath: string;
+  relativeRoot: string;
+  coarsePath: string;
+  preserveOverlaps?: boolean;
+};
+
 const packageWatches = new Map<string, PackageWatch>();
 const pendingPackageWatchStarts = new Map<string, Promise<PackageWatch>>();
 const pendingPackageWatchSubscribers = new Map<string, Map<number, WebContents>>();
@@ -51,8 +58,47 @@ function toPosixPath(path: string): string {
   return path.split("\\").join("/");
 }
 
+function normalizePackageWatchPath(path: string): string {
+  let normalized = toPosixPath(path).replace(/^\.\/+/, "");
+  while (normalized.startsWith("//")) {
+    normalized = normalized.slice(1);
+  }
+  let end = normalized.length;
+  while (end > 0 && normalized[end - 1] === "/") {
+    end -= 1;
+  }
+  return normalized.slice(0, end);
+}
+
 function shouldNotifyPackagePath(path: string): boolean {
   return path === "package/manifest.json" || path === "policy/project-prompt.md" || /^package\/nodes\/.+\.md$/.test(path);
+}
+
+function isDescendantPath(parentPath: string, childPath: string): boolean {
+  const path = relative(resolve(parentPath), resolve(childPath));
+  return path !== "" && !path.startsWith("..") && !isAbsolute(path);
+}
+
+function watchedRootsForWorkspace(workspace: TaskCanvasWorkspace): PackageWatchRoot[] {
+  const roots: PackageWatchRoot[] = [
+    { rootPath: workspace.packageDir, relativeRoot: "package", coarsePath: "package/manifest.json" },
+    { rootPath: join(workspace.packageDir, "nodes"), relativeRoot: "package/nodes", coarsePath: "package/manifest.json" },
+    { rootPath: dirname(workspace.projectPromptFile), relativeRoot: "policy", coarsePath: "policy/project-prompt.md", preserveOverlaps: true }
+  ];
+  return roots.filter(
+    (root) => root.preserveOverlaps || !roots.some((candidate) => candidate !== root && isDescendantPath(candidate.rootPath, root.rootPath))
+  );
+}
+
+function normalizeWatchEventPath(relativeRoot: string, coarsePath: string, filename: string | Buffer | null): string {
+  if (!filename) {
+    return coarsePath;
+  }
+  return normalizePackageWatchPath(join(relativeRoot, filename.toString()));
+}
+
+function dedupePackageWatchPaths(paths: Iterable<string>): string[] {
+  return [...new Set([...paths].map(normalizePackageWatchPath).filter(shouldNotifyPackagePath))].sort();
 }
 
 function isMissingPathError(caught: unknown): boolean {
@@ -142,11 +188,7 @@ function watchRoot(rootPath: string, relativeRoot: string, coarsePath: string, r
     return null;
   }
   const onChange = (_eventType: string, filename: string | Buffer | null) => {
-    if (!filename) {
-      recordChange(coarsePath);
-      return;
-    }
-    recordChange(toPosixPath(join(relativeRoot, filename.toString())));
+    recordChange(normalizeWatchEventPath(relativeRoot, coarsePath, filename));
   };
   return watch(rootPath, { recursive: true }, onChange);
 }
@@ -156,11 +198,7 @@ function startNativePackageWatchBackend(
   recordChange: (path: string) => void
 ): PackageWatchBackend | null {
   const watchers: FSWatcher[] = [];
-  const roots = [
-    { rootPath: workspace.packageDir, relativeRoot: "package", coarsePath: "package/manifest.json" },
-    { rootPath: dirname(workspace.projectPromptFile), relativeRoot: "policy", coarsePath: "policy/project-prompt.md" },
-    { rootPath: join(workspace.packageDir, "nodes"), relativeRoot: "package/nodes", coarsePath: "package/manifest.json" }
-  ];
+  const roots = watchedRootsForWorkspace(workspace);
   try {
     for (const root of roots) {
       const watcher = watchRoot(root.rootPath, root.relativeRoot, root.coarsePath, recordChange);
@@ -328,7 +366,7 @@ function flushPackageFileChange(projectRoot: string, canvasId?: string | null): 
     return;
   }
   activeWatch.timer = null;
-  const paths = [...activeWatch.changedPaths].filter(shouldNotifyPackagePath);
+  const paths = dedupePackageWatchPaths(activeWatch.changedPaths);
   activeWatch.changedPaths.clear();
   if (paths.length === 0) {
     return;

@@ -241,7 +241,7 @@ function affectedTasksForPromptPaths(graph: CompiledTaskGraph, paths: string[]):
   return [...affected];
 }
 
-function promptSurfaceRefsForPromptPaths(graph: CompiledTaskGraph, paths: string[]): string[] {
+function dedupedPromptSurfaceRefsForPromptPaths(graph: CompiledTaskGraph, paths: string[]): string[] {
   const refs = new Set<string>();
   for (const path of paths) {
     for (const taskId of graph.taskNodesInManifestOrder) {
@@ -505,7 +505,7 @@ export async function refreshChangedPackagePromptsForPaths(
     }
 
     const impact = incrementalPromptImpact(previous.graph, changedPromptPaths);
-    const refsToRefresh = promptSurfaceRefsForPromptPaths(previous.graph, changedPromptPaths);
+    const refsToRefresh = dedupedPromptSurfaceRefsForPromptPaths(previous.graph, changedPromptPaths);
     const refreshConcurrency = normalizeConcurrency(options.refreshConcurrency ?? DEFAULT_PROMPT_REFRESH_CONCURRENCY);
     const refreshed = await mapWithConcurrency(refsToRefresh, refreshConcurrency, (ref) => refreshPrompt({ projectRoot, ref }));
     return {

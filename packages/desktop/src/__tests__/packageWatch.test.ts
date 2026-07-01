@@ -1,6 +1,6 @@
 import { mkdtemp, mkdir, rm, stat, unlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { desktopBridgeInvokeChannels, packageFileChangedChannel } from "../shared/ipcChannels";
 
@@ -210,6 +210,16 @@ describe("package file watcher", () => {
     );
   });
 
+  it("uses non-overlapping native watch roots and keeps the project prompt policy root", async () => {
+    const workspace = await createWorkspace();
+    const webContents = createWebContents();
+
+    await registerAndWatch(webContents, workspace);
+
+    expect(fsMock.watchers.map((watcher) => watcher.rootPath)).toEqual([workspace.packageDir, dirname(workspace.projectPromptFile)]);
+    expect(fsMock.watchers.map((watcher) => watcher.rootPath)).not.toContain(join(workspace.packageDir, "nodes"));
+  });
+
   it("falls back to polling when recursive watch creation fails", async () => {
     vi.useRealTimers();
     const workspace = await createWorkspace();
@@ -302,6 +312,30 @@ describe("package file watcher", () => {
     await vi.advanceTimersByTimeAsync(149);
     expect(webContents.send).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
+
+    expect(webContents.send).toHaveBeenCalledTimes(1);
+    expect(webContents.send).toHaveBeenCalledWith(
+      packageFileChangedChannel,
+      expect.objectContaining({
+        paths: ["package/manifest.json", "package/nodes/T-001/prompt.md"],
+        changedPathCount: 2,
+        backendKind: "native"
+      })
+    );
+  });
+
+  it("normalizes, dedupes, and sorts debounced native watcher paths", async () => {
+    const workspace = await createWorkspace();
+    const webContents = createWebContents();
+
+    await registerAndWatch(webContents, workspace);
+    const packageWatcher = fsMock.watchers.find((watcher) => watcher.rootPath === workspace.packageDir);
+    expect(packageWatcher).toBeDefined();
+
+    packageWatcher?.callback("change", "nodes/T-001/prompt.md");
+    packageWatcher?.callback("change", "nodes\\T-001\\prompt.md\\");
+    packageWatcher?.callback("change", "manifest.json");
+    await flushDebounce();
 
     expect(webContents.send).toHaveBeenCalledTimes(1);
     expect(webContents.send).toHaveBeenCalledWith(

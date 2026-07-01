@@ -151,6 +151,38 @@ describe("desktop file sync API", () => {
     });
   });
 
+  it("keeps batched duplicate prompt watcher paths incremental without duplicate refreshed refs", async () => {
+    const { root, init } = await createTestWorkspace();
+    await createDesktopPackageFileSnapshot(root);
+
+    await writeFile(join(init.workspace.packageDir, "nodes", "T-001", "prompt.md"), "# external task prompt edit\n", "utf8");
+    await writeFile(join(init.workspace.packageDir, "nodes", "T-001", "blocks", "B-001.prompt.md"), "# external block prompt edit\n", "utf8");
+
+    await expect(
+      refreshPackageFileChanges(root, {
+        changedPaths: [
+          "package/nodes/T-001/blocks/B-001.prompt.md",
+          "nodes/T-001/prompt.md",
+          "package/nodes/T-001/prompt.md"
+        ]
+      })
+    ).resolves.toMatchObject({
+      ok: true,
+      primed: false,
+      fullRefresh: false,
+      affectedTasks: ["T-001"],
+      dirtyPromptRefs: expect.arrayContaining(["T-001", "T-001#B-001"]),
+      refreshedPromptCount: 2,
+      refreshConcurrency: 4,
+      refreshStats: expect.objectContaining({
+        changedPathCount: 2,
+        refreshedRefs: 2,
+        mode: "incremental"
+      }),
+      diagnostics: []
+    });
+  });
+
   it("falls back to full package refresh for manifest, unknown, and empty watcher paths", async () => {
     const manifest = basicManifest({ includeSecondTask: true });
     const { root, init } = await createTestWorkspace(manifest);

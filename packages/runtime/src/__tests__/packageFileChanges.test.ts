@@ -123,6 +123,32 @@ describe("package file changes", () => {
     });
   });
 
+  it("dedupes refresh refs for batched task and block prompt changed paths", async () => {
+    const { root, init } = await createTestWorkspace();
+    const before = await createPackageFileSnapshot(root);
+    await writeFile(join(init.workspace.packageDir, "nodes", "T-001", "prompt.md"), "updated task prompt\n", "utf8");
+    await writeFile(join(init.workspace.packageDir, "nodes", "T-001", "blocks", "B-001.prompt.md"), "updated block prompt\n", "utf8");
+
+    const refreshed = await refreshChangedPackagePromptsForPaths(root, before, [
+      "package/nodes/T-001/blocks/B-001.prompt.md",
+      "nodes/T-001/prompt.md",
+      "package/nodes/T-001/prompt.md"
+    ]);
+
+    expect(refreshed.incremental).toBe(true);
+    expect(refreshed.changedPackagePaths).toEqual(["nodes/T-001/blocks/B-001.prompt.md", "nodes/T-001/prompt.md"]);
+    expect(refreshPromptMockState.calls).toEqual(["T-001#B-001", "T-001#R-001"]);
+    expect(refreshed.refreshed.map((prompt) => prompt.ref)).toEqual(["T-001#B-001", "T-001#R-001"]);
+    expectRefreshStats(refreshed.refreshStats, {
+      requested: 2,
+      refreshed: 2,
+      concurrency: 4,
+      changedPathCount: 2,
+      refreshedRefs: 2,
+      mode: "incremental"
+    });
+  });
+
   it("limits incremental prompt refresh concurrency and preserves ref order", async () => {
     const manifest = basicManifest();
     const task = manifest.nodes.find((node) => node.id === "T-001");
@@ -290,7 +316,7 @@ describe("package file changes", () => {
   });
 
   it("normalizes watcher path prefixes and trailing separators for package prompt files", () => {
-    expect(normalizePackageChangedPaths(["./package/nodes/T-001/prompt.md///", "nodes\\T-001\\blocks\\B-001.prompt.md\\"])).toEqual({
+    expect(normalizePackageChangedPaths(["./package/nodes/T-001/prompt.md///", "nodes\\T-001\\blocks\\B-001.prompt.md\\", "nodes/T-001/prompt.md"])).toEqual({
       changedPackagePaths: ["nodes/T-001/prompt.md", "nodes/T-001/blocks/B-001.prompt.md"],
       diagnostics: [],
       incremental: true

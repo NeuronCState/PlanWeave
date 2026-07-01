@@ -11,10 +11,126 @@ import {
   selectUpstreamTasks,
   undoPlanGraphCommand
 } from "../plangraph/index.js";
-import type { PlanPackageManifest } from "../types.js";
+import { handlerForCommand, planGraphCommandHandlers } from "../plangraph/commandHandlers/index.js";
+import { isProjectGraphCommand } from "../plangraph/projectGraphCommand.js";
+import type { PlanGraphCommand, ProjectGraphCommand } from "../plangraph/index.js";
+import type { ManifestBlock, PlanPackageManifest } from "../types.js";
 import { basicManifest, createTestWorkspace } from "./promptTestHelpers.js";
 
+type OrdinaryPackageCommandType = Exclude<PlanGraphCommand["type"], ProjectGraphCommand["type"] | "updateLayout">;
+
+const ordinaryPackageCommandTypes = [
+  "addTaskDependency",
+  "removeTaskDependency",
+  "reconnectTaskDependency",
+  "updateTaskPrompt",
+  "updateBlockPrompt",
+  "updateTaskFields",
+  "updateBlockFields",
+  "addTask",
+  "removeTask",
+  "restoreTask",
+  "addBlock",
+  "removeBlock",
+  "restoreBlock",
+  "updateReviewPipeline"
+] as const satisfies readonly OrdinaryPackageCommandType[];
+
+const ordinaryPackageCommandTypeCoverage: Exclude<OrdinaryPackageCommandType, (typeof ordinaryPackageCommandTypes)[number]> extends never ? true : never = true;
+
 describe("PlanGraph SQLite index and commands", () => {
+  it("covers package commands with one registry handler and keeps special command paths explicit", () => {
+    expect(ordinaryPackageCommandTypeCoverage).toBe(true);
+    const registeredTypes = planGraphCommandHandlers.flatMap((handler) => handler.commandTypes);
+
+    for (const commandType of ordinaryPackageCommandTypes) {
+      expect(registeredTypes.filter((registeredType) => registeredType === commandType)).toHaveLength(1);
+    }
+    expect(registeredTypes.filter((registeredType) => registeredType === "updateLayout")).toHaveLength(1);
+
+    const projectGraphCommandTypes = [
+      "addCanvasDependency",
+      "removeCanvasDependency",
+      "addCrossTaskDependency",
+      "removeCrossTaskDependency"
+    ] as const satisfies readonly ProjectGraphCommand["type"][];
+    for (const commandType of projectGraphCommandTypes) {
+      expect(registeredTypes).not.toContain(commandType);
+    }
+
+    const taskSnapshot = {
+      task: {
+        id: "T-002",
+        type: "task",
+        title: "Restored task",
+        prompt: "nodes/T-002/prompt.md",
+        acceptance: ["Done."],
+        blocks: []
+      },
+      taskPromptMarkdown: "# Task\n",
+      blockPromptMarkdown: [],
+      insertIndex: 1,
+      affectedTaskEdges: []
+    } satisfies Extract<PlanGraphCommand, { type: "addTask" }>["snapshot"];
+    const blockSnapshot = {
+      taskId: "T-001",
+      block: {
+        id: "B-002",
+        type: "implementation",
+        title: "Implement",
+        prompt: "nodes/T-001/blocks/B-002.prompt.md",
+        depends_on: [],
+        parallel: { safe: true, locks: [] }
+      } satisfies ManifestBlock,
+      promptMarkdown: "# Block\n",
+      insertIndex: 1,
+      affectedDependsOn: []
+    } satisfies Extract<PlanGraphCommand, { type: "addBlock" }>["snapshot"];
+    const reviewBlock = {
+      id: "R-002",
+      type: "review",
+      title: "Review",
+      prompt: "nodes/T-001/blocks/R-002.prompt.md",
+      depends_on: [],
+      review: { required: true, maxFeedbackCycles: 1, hook: null }
+    } satisfies Extract<PlanGraphCommand, { type: "updateReviewPipeline" }>["reviewBlocks"][number];
+    const commands = [
+      { type: "addTaskDependency", fromTaskId: "T-002", toTaskId: "T-001" },
+      { type: "removeTaskDependency", fromTaskId: "T-002", toTaskId: "T-001" },
+      { type: "reconnectTaskDependency", fromTaskId: "T-002", oldToTaskId: "T-001", newFromTaskId: "T-003", newToTaskId: "T-001" },
+      { type: "updateTaskPrompt", taskId: "T-001", promptMarkdown: "# Task\n" },
+      { type: "updateBlockPrompt", blockRef: "T-001#B-001", promptMarkdown: "# Block\n" },
+      { type: "updateTaskFields", taskId: "T-001", fields: { title: "Task" } },
+      { type: "updateBlockFields", blockRef: "T-001#B-001", fields: { title: "Block" } },
+      { type: "addTask", snapshot: taskSnapshot },
+      { type: "removeTask", taskId: "T-001" },
+      { type: "restoreTask", snapshot: taskSnapshot },
+      { type: "addBlock", snapshot: blockSnapshot },
+      { type: "removeBlock", blockRef: "T-001#B-001" },
+      { type: "restoreBlock", snapshot: blockSnapshot },
+      {
+        type: "updateReviewPipeline",
+        taskId: "T-001",
+        packageDefaults: { maxFeedbackCycles: 1, completionPolicy: "strict" },
+        reviewBlocks: [reviewBlock],
+        promptMarkdownByBlockId: [{ blockId: "R-002", markdown: "# Review\n" }]
+      }
+    ] as const satisfies readonly PlanGraphCommand[];
+
+    for (const command of commands) {
+      const matches = planGraphCommandHandlers.filter((handler) => handler.handles(command));
+      expect(matches).toHaveLength(1);
+      expect(handlerForCommand(command)).toBe(matches[0]);
+    }
+
+    const projectGraphCommand: PlanGraphCommand = { type: "addCanvasDependency", fromCanvasId: "default", toCanvasId: "second" };
+    expect(isProjectGraphCommand(projectGraphCommand)).toBe(true);
+    expect(handlerForCommand(projectGraphCommand)).toBeUndefined();
+
+    const layoutCommand: PlanGraphCommand = { type: "updateLayout", layoutScope: "canvas", layout: { activeCanvasId: "default" } };
+    expect(handlerForCommand(layoutCommand)?.family).toBe("layout");
+  });
+
   it("rebuilds the derived SQLite index after the database is deleted", async () => {
     const { root, init } = await createTestWorkspace(basicManifest({ includeSecondTask: true }));
     const indexPath = defaultPlanGraphIndexPath(init.workspace);

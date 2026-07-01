@@ -150,6 +150,7 @@ describe("FloatingAutoRunControl", () => {
         autoRunScopeMode="project"
         autoRunState={autoRunState}
         diagnostics={[{ code: "prompt_changed", message: "Prompt changed on disk.", path: "nodes/T-001/prompt.md" }]}
+        projectDiagnostics={[{ code: "desktop_projection_slow_part", message: "Desktop projection project aggregation took 12 ms.", path: "/tmp/demo" }]}
         dirtyPromptRefs={["T-001#B-001"]}
         dirtyPromptCount={2}
         autoRunPreflightExecutorHint="codex"
@@ -214,6 +215,7 @@ describe("FloatingAutoRunControl", () => {
     expect(screen.queryByTestId("file-sync-diagnostic")).not.toBeInTheDocument();
     await userEvent.click(within(screen.getByTestId("file-sync-diagnostics-section")).getByRole("button", { name: "Diagnostics" }));
     expect(screen.getByTestId("file-sync-diagnostic")).toHaveTextContent("Prompt changed on disk.");
+    expect(screen.queryByTestId("desktop-performance-diagnostic")).not.toBeInTheDocument();
     expect(screen.getByTestId("file-sync-refreshed-prompt-count")).toHaveTextContent("3");
     expect(screen.getByTestId("file-sync-refresh-concurrency")).toHaveTextContent("4");
     expect(screen.getByTestId("file-sync-changed-path-count")).toHaveTextContent("2");
@@ -223,6 +225,11 @@ describe("FloatingAutoRunControl", () => {
     expect(onOpenFileSyncRef).toHaveBeenCalledWith("T-001#B-001");
     expect(refreshPackageFiles).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button", { name: "Recheck files" }));
+    await userEvent.click(screen.getByRole("button", { name: "View desktop diagnostics" }));
+    expect(screen.getByTestId("desktop-diagnostics-popover")).toBeVisible();
+    expect(screen.getByTestId("desktop-performance-diagnostic")).toHaveTextContent("desktop_projection_slow_part");
+    expect(screen.getByTestId("desktop-performance-diagnostic")).toHaveTextContent("Desktop projection project aggregation took 12 ms.");
+    expect(screen.getByTestId("desktop-performance-diagnostic")).toHaveTextContent("/tmp/demo");
     await userEvent.click(screen.getByRole("button", { name: "Auto Run" }));
     await userEvent.click(screen.getAllByRole("button", { name: "Reset runtime state" })[0]);
     await userEvent.click(screen.getAllByRole("button", { name: "Stop" })[0]);
@@ -273,6 +280,7 @@ describe("FloatingAutoRunControl", () => {
           error: "Executor exited with code 1."
         })}
         diagnostics={[]}
+        projectDiagnostics={[]}
         dirtyPromptRefs={[]}
         dirtyPromptCount={0}
         autoRunPreflightExecutorHint="codex"
@@ -327,6 +335,7 @@ describe("FloatingAutoRunControl", () => {
         autoRunScopeMode="project"
         autoRunState={null}
         diagnostics={[]}
+        projectDiagnostics={[]}
         dirtyPromptRefs={[]}
         dirtyPromptCount={0}
         autoRunPreflightExecutorHint={null}
@@ -357,5 +366,54 @@ describe("FloatingAutoRunControl", () => {
     expect(screen.getByRole("button", { name: "Auto Run" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Reset runtime state" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "View file sync changes" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "View desktop diagnostics" })).toBeDisabled();
+  });
+
+  it("does not count performance diagnostics as file sync unread changes", async () => {
+    installPointerMocks();
+    render(
+      <FloatingAutoRunControl
+        affectedTasks={[]}
+        autoRunNextAction={null}
+        autoRunRetrospective={null}
+        autoRunScopeMode="project"
+        autoRunState={null}
+        diagnostics={[]}
+        projectDiagnostics={[{ code: "desktop_search_index_slow_part", message: "Desktop projection body search index construction took 12 ms.", path: "/tmp/demo" }]}
+        dirtyPromptRefs={[]}
+        dirtyPromptCount={0}
+        autoRunPreflightExecutorHint={null}
+        handleAutoRunClick={vi.fn().mockResolvedValue(undefined)}
+        handleAutoRunNextAction={vi.fn().mockResolvedValue(undefined)}
+        handleRevealPathInFinder={vi.fn().mockResolvedValue(undefined)}
+        miniRunPanelOpen={false}
+        moveAutoRunControl={vi.fn()}
+        onOpenFileSyncRef={vi.fn()}
+        refreshPackageFiles={vi.fn().mockResolvedValue(undefined)}
+        refreshedPromptCount={0}
+        refreshConcurrency={null}
+        resetRuntimeStateClick={vi.fn().mockResolvedValue(undefined)}
+        selectedBlockPresent={false}
+        selectedProject={project}
+        selectedTaskPanelId={null}
+        setAutoRunScopeMode={vi.fn()}
+        setMiniRunPanelOpen={vi.fn()}
+        startAutoRunControlDrag={vi.fn()}
+        stopAutoRunClick={vi.fn().mockResolvedValue(undefined)}
+        stopAutoRunControlDrag={vi.fn()}
+        style={{ right: 24, bottom: 24 }}
+        t={t}
+      />
+    );
+
+    expect(screen.queryByTestId("file-sync-unread-count")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "View file sync changes" }));
+    expect(screen.getByTestId("file-sync-popover")).toHaveTextContent("No file changes to review");
+    expect(screen.queryByTestId("desktop-performance-diagnostic")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "View desktop diagnostics" }));
+    expect(screen.getByTestId("desktop-diagnostics-popover")).toHaveTextContent("Performance diagnostics");
+    expect(screen.getByTestId("desktop-performance-diagnostic")).toHaveTextContent("desktop_search_index_slow_part");
   });
 });

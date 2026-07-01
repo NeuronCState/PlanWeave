@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type Dispatch, type PointerEvent, type ReactNode, type Ref, type SetStateAction } from "react";
 import type { DesktopAutoRunRetrospectiveSummary, DesktopAutoRunState, DesktopProjectSummary, ValidationIssue } from "@planweave-ai/runtime";
-import { ChevronDownIcon, ChevronRightIcon, ClipboardIcon, FolderOpenIcon, MoveIcon, PauseIcon, PlayIcon, RefreshCwIcon, RotateCcwIcon, SquareIcon } from "lucide-react";
+import { AlertTriangleIcon, ChevronDownIcon, ChevronRightIcon, ClipboardIcon, FolderOpenIcon, MoveIcon, PauseIcon, PlayIcon, RefreshCwIcon, RotateCcwIcon, SquareIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/context-menu";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { isDesktopPerformanceDiagnostic } from "../diagnostics";
 import { useExecutorPreflight } from "../hooks/useExecutorPreflight";
 import type { createTranslator } from "../i18n";
 import type { AutoRunNextActionDescriptor } from "./autoRunNextActions";
@@ -29,6 +30,7 @@ type FloatingAutoRunControlProps = {
   autoRunState: DesktopAutoRunState | null;
   controlRef: Ref<HTMLDivElement>;
   diagnostics: ValidationIssue[];
+  projectDiagnostics: ValidationIssue[];
   dirtyPromptCount: number;
   dirtyPromptRefs: string[];
   autoRunPreflightExecutorHint: string | null;
@@ -258,15 +260,31 @@ function FileSyncRefList({
   );
 }
 
-function FileSyncDiagnosticsList({ diagnostics, emptyLabel, label }: { diagnostics: ValidationIssue[]; emptyLabel: string; label: string }) {
+function DesktopDiagnosticsList({
+  diagnostics,
+  emptyLabel,
+  itemTestId,
+  label,
+  tone = "destructive"
+}: {
+  diagnostics: ValidationIssue[];
+  emptyLabel: string;
+  itemTestId: string;
+  label: string;
+  tone?: "destructive" | "warning";
+}) {
+  const itemClassName = tone === "destructive"
+    ? "rounded-md border border-destructive/40 bg-destructive/5 px-2 py-1.5 text-xs"
+    : "rounded-md border border-border/70 bg-muted/30 px-2 py-1.5 text-xs";
+  const codeClassName = tone === "destructive" ? "font-medium text-destructive" : "font-medium text-text-strong";
   return (
     <div className="flex flex-col gap-1.5">
       <div className="text-xs font-semibold text-text-strong">{label}</div>
       {diagnostics.length > 0 ? (
         <div className="flex max-h-28 flex-col gap-1 overflow-y-auto">
           {diagnostics.map((diagnostic, index) => (
-            <div className="rounded-md border border-destructive/40 bg-destructive/5 px-2 py-1.5 text-xs" data-testid="file-sync-diagnostic" key={`${diagnostic.code}:${diagnostic.path ?? ""}:${index}`}>
-              <div className="font-medium text-destructive">{diagnostic.code}</div>
+            <div className={itemClassName} data-testid={itemTestId} key={`${diagnostic.code}:${diagnostic.path ?? ""}:${index}`}>
+              <div className={codeClassName}>{diagnostic.code}</div>
               <div className="break-words text-muted-foreground">{diagnostic.message}</div>
               {diagnostic.path ? <div className="mt-1 break-all text-text-faint">{diagnostic.path}</div> : null}
             </div>
@@ -287,6 +305,7 @@ export function FloatingAutoRunControl({
   autoRunState,
   controlRef,
   diagnostics,
+  projectDiagnostics,
   dirtyPromptCount,
   dirtyPromptRefs,
   autoRunPreflightExecutorHint,
@@ -332,12 +351,16 @@ export function FloatingAutoRunControl({
   const showFailureDetails = isFailureState(autoRunState);
   const fileSyncDirtyRefs = uniqueStrings(dirtyPromptRefs);
   const fileSyncAffectedTasks = uniqueStrings(affectedTasks);
+  const performanceDiagnostics = projectDiagnostics.filter(isDesktopPerformanceDiagnostic);
   const fileSyncDirtyCount = Math.max(dirtyPromptCount, fileSyncDirtyRefs.length);
   const fileSyncIssueCount = fileSyncDirtyCount + fileSyncAffectedTasks.length + diagnostics.length;
-  const currentFileSyncChangeKey = fileSyncIssueCount > 0 ? fileSyncChangeKey({ affectedTasks: fileSyncAffectedTasks, diagnostics, dirtyPromptRefs: fileSyncDirtyRefs }) : null;
+  const currentFileSyncChangeKey = fileSyncIssueCount > 0
+    ? fileSyncChangeKey({ affectedTasks: fileSyncAffectedTasks, diagnostics, dirtyPromptRefs: fileSyncDirtyRefs })
+    : null;
   const [fileSyncPopoverOpen, setFileSyncPopoverOpen] = useState(false);
   const [viewedFileSyncChangeKey, setViewedFileSyncChangeKey] = useState<string | null>(null);
   const showFileSyncUnreadCount = fileSyncIssueCount > 0 && currentFileSyncChangeKey !== viewedFileSyncChangeKey;
+  const hasPerformanceDiagnostics = performanceDiagnostics.length > 0;
 
   useEffect(() => {
     if (fileSyncPopoverOpen) {
@@ -422,7 +445,38 @@ export function FloatingAutoRunControl({
               />
             </DisclosureSection>
             <DisclosureSection title={t("diagnostics")} testId="file-sync-diagnostics-section">
-              <FileSyncDiagnosticsList diagnostics={diagnostics} emptyLabel={t("fileSyncNoChanges")} label={t("diagnostics")} />
+              <DesktopDiagnosticsList diagnostics={diagnostics} emptyLabel={t("fileSyncNoChanges")} itemTestId="file-sync-diagnostic" label={t("diagnostics")} />
+            </DisclosureSection>
+          </div>
+        </PopoverContent>
+      </Popover>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            data-testid="desktop-diagnostics-trigger"
+            size="icon-sm"
+            variant={hasPerformanceDiagnostics ? "outline" : "ghost"}
+            aria-label={t("viewDesktopDiagnostics")}
+            title={t("viewDesktopDiagnostics")}
+            disabled={!hasProject}
+          >
+            <AlertTriangleIcon data-icon="inline-start" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-80" data-testid="desktop-diagnostics-popover">
+          <PopoverHeader>
+            <PopoverTitle>{t("desktopDiagnostics")}</PopoverTitle>
+            <PopoverDescription>{hasPerformanceDiagnostics ? t("desktopDiagnosticsHint") : t("desktopDiagnosticsNoIssues")}</PopoverDescription>
+          </PopoverHeader>
+          <div className="flex flex-col gap-3">
+            <DisclosureSection title={t("performanceDiagnostics")} testId="performance-diagnostics-section" defaultOpen={hasPerformanceDiagnostics}>
+              <DesktopDiagnosticsList
+                diagnostics={performanceDiagnostics}
+                emptyLabel={t("desktopDiagnosticsNoIssues")}
+                itemTestId="desktop-performance-diagnostic"
+                label={t("performanceDiagnostics")}
+                tone="warning"
+              />
             </DisclosureSection>
           </div>
         </PopoverContent>

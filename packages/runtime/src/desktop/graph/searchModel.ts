@@ -1,13 +1,8 @@
 import type { ValidationIssue } from "../../types.js";
-import type { DesktopSearchFilters, DesktopSearchResult } from "../types.js";
+import type { DesktopSearchFilters, DesktopSearchProjection, DesktopSearchResult } from "../types.js";
 import { appendDesktopDiagnostics } from "./desktopDiagnostics.js";
 import { readDesktopProjectProjection, readDesktopProjectSearchIndex } from "./projectProjectionModel.js";
 import { searchDesktopSearchIndex } from "./searchIndexModel.js";
-
-export type DesktopSearchProjection = {
-  results: DesktopSearchResult[];
-  diagnostics: ValidationIssue[];
-};
 
 const bodySearchKinds = new Set(["prompt", "run_record", "review_attempt"]);
 

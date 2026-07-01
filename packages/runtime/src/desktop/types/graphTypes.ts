@@ -322,6 +322,11 @@ export type DesktopSearchResult = {
   path?: string;
 };
 
+export type DesktopSearchProjection = {
+  results: DesktopSearchResult[];
+  diagnostics: ValidationIssue[];
+};
+
 export type DesktopTaskDraftMode = "task" | "blocks" | "document";
 
 export type DesktopTaskDraft = {

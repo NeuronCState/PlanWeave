@@ -92,6 +92,7 @@ function projectSnapshot(overrides: Partial<DesktopProjectSnapshot> = {}): Deskt
     todoGroups: null,
     executionPlan: null,
     statistics: null,
+    diagnostics: [],
     errors: [],
     ...overrides
   };
@@ -603,6 +604,48 @@ describe("desktop renderer hook interfaces", () => {
     expect(result.current.projectPromptPolicy).toEqual({ includeGlobalPrompt: true });
     expect(result.current.graph).toBeNull();
     expect(setError).toHaveBeenCalledWith("graph: Invalid manifest schema");
+  });
+
+  it("keeps performance diagnostics out of the project error banner", async () => {
+    const bridge = createDesktopBridgeMock({
+      listProjects: vi.fn().mockResolvedValue([project]),
+      getDesktopProjectSnapshot: vi.fn().mockResolvedValue(projectSnapshot({
+        diagnostics: [
+          {
+            code: "desktop_projection_slow_part",
+            message: "Desktop projection project aggregation took 42 ms.",
+            path: project.rootPath
+          },
+          {
+            code: "desktop_canvas_execution_snapshot_failed",
+            message: "Canvas snapshot failed.",
+            path: "canvas-main"
+          }
+        ],
+        errors: [
+          "Desktop projection project aggregation took 42 ms.",
+          "Canvas snapshot failed."
+        ]
+      }))
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
+
+    const setError = vi.fn();
+    const { result } = renderHook(() =>
+      useDesktopProject({
+        setError,
+        t: createTranslator("en"),
+        updateSettings: vi.fn()
+      })
+    );
+
+    await waitFor(() => expect(result.current.projectDiagnostics).toHaveLength(2));
+
+    expect(result.current.projectDiagnostics[0]?.code).toBe("desktop_projection_slow_part");
+    expect(setError).toHaveBeenCalledWith("Canvas snapshot failed.");
+    expect(setError).not.toHaveBeenCalledWith("Desktop projection project aggregation took 42 ms.");
   });
 
   it("keeps the selected canvas graph when layout loading fails", async () => {

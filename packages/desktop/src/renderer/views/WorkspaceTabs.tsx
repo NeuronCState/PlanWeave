@@ -21,10 +21,11 @@ import type {
   DesktopStatistics,
   DesktopTaskDraft,
   DesktopTaskDraftMode,
-  DesktopTodoGroups
+  DesktopTodoGroups,
+  ValidationIssue
 } from "@planweave-ai/runtime";
 import type { createTranslator, Language } from "../i18n";
-import type { DesktopSearchCanvasScope } from "../hooks/useDesktopSearch";
+import type { DesktopSearchCanvasScope, DesktopSearchStatus } from "../hooks/useDesktopSearch";
 import type { AppEdgeTypes, AppNodeTypes } from "../graph/flowModel";
 import type { AutoRunNextActionDescriptor } from "../run/autoRunNextActions";
 import type { AppFlowNode, AppView, AutoRunScopeMode, DesktopSettingsUpdate, DesktopUiSettings, NotificationItem } from "../types";
@@ -52,6 +53,7 @@ export type WorkspaceTabsViewProps = {
   confirmTaskDraft: () => Promise<void>;
   edges: Edge[];
   fileSyncResult: DesktopPackageFileSyncResult | null;
+  projectDiagnostics: ValidationIssue[];
   generateTaskDraft: () => Promise<void>;
   graph: DesktopGraphViewModel | null;
   executionPlan: DesktopProjectExecutionPlan | null;
@@ -103,6 +105,7 @@ export type WorkspaceTabsViewProps = {
   searchQuery: string;
   searchResultKinds: DesktopSearchResultKind[];
   searchResults: DesktopSearchResult[];
+  searchStatus: DesktopSearchStatus;
   selectedBlockPresent: boolean;
   selectedCanvasId: string | null;
   selectedProject: DesktopProjectSummary | null;
@@ -203,7 +206,7 @@ export type WorkspaceTabsAutoRunProps = Pick<
   | "stopAutoRunControlDrag"
 >;
 
-export type WorkspaceTabsFileSyncProps = Pick<WorkspaceTabsViewProps, "fileSyncResult" | "refreshPackageFiles">;
+export type WorkspaceTabsFileSyncProps = Pick<WorkspaceTabsViewProps, "fileSyncResult" | "projectDiagnostics" | "refreshPackageFiles">;
 
 export type WorkspaceTabsSearchProps = Pick<
   WorkspaceTabsViewProps,
@@ -212,6 +215,7 @@ export type WorkspaceTabsSearchProps = Pick<
   | "searchQuery"
   | "searchResultKinds"
   | "searchResults"
+  | "searchStatus"
   | "selectedSearchResultKinds"
   | "setSearchCanvasScope"
   | "setSearchQuery"

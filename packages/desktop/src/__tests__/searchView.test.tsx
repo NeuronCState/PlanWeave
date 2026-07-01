@@ -4,13 +4,21 @@ import "@testing-library/jest-dom/vitest";
 import { useState } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { DesktopSearchResult, DesktopSearchResultKind } from "@planweave-ai/runtime";
+import type { DesktopProjectSummary, DesktopSearchResult, DesktopSearchResultKind } from "@planweave-ai/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DesktopSearchCanvasScope } from "../renderer/hooks/useDesktopSearch";
 import { createTranslator } from "../renderer/i18n";
 import { SearchView } from "../renderer/views/SearchView";
 
 const searchResultKinds: DesktopSearchResultKind[] = ["task", "block", "prompt", "run_record", "review_attempt", "feedback"];
+const project: DesktopProjectSummary = {
+  projectId: "P-001",
+  name: "Demo",
+  rootPath: "/tmp/demo",
+  workspaceRoot: "/tmp/demo",
+  activeCanvasId: "canvas-main",
+  taskCanvases: []
+};
 
 afterEach(() => {
   cleanup();
@@ -40,6 +48,7 @@ describe("SearchView", () => {
         searchQuery=""
         searchResultKinds={searchResultKinds}
         searchResults={[]}
+        searchStatus={{ phase: "idle" }}
         selectedCanvasId={null}
         selectedProject={null}
         selectedSearchResultKinds={searchResultKinds}
@@ -70,6 +79,7 @@ describe("SearchView", () => {
           searchQuery=""
           searchResultKinds={searchResultKinds}
           searchResults={[]}
+          searchStatus={{ phase: "idle" }}
           selectedCanvasId="canvas-main"
           selectedProject={{
             projectId: "P-001",
@@ -99,6 +109,109 @@ describe("SearchView", () => {
     expect(screen.getByTestId("search-scope-all")).toHaveAttribute("aria-pressed", "true");
     await userEvent.click(screen.getByTestId("search-scope-current"));
     expect(screen.getByTestId("search-scope-current")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("shows search stage feedback without deriving it from result length", () => {
+    stubResizeObserver();
+    render(
+      <SearchView
+        handleOpenProject={vi.fn().mockResolvedValue(undefined)}
+        handleSearchResultOpen={vi.fn().mockResolvedValue(undefined)}
+        searchCanvasScope="all"
+        searchQuery="alpha"
+        searchResultKinds={searchResultKinds}
+        searchResults={[]}
+        searchStatus={{ phase: "summary_loading" }}
+        selectedCanvasId="canvas-main"
+        selectedProject={project}
+        selectedSearchResultKinds={searchResultKinds}
+        setSearchCanvasScope={vi.fn()}
+        setSearchQuery={vi.fn()}
+        setSearchResultKindEnabled={vi.fn()}
+        t={createTranslator("en")}
+      />
+    );
+
+    expect(screen.getByTestId("search-status")).toHaveTextContent("Searching task and block summaries");
+    expect(screen.queryByText("No results found")).not.toBeInTheDocument();
+  });
+
+  it("keeps summary results visible while body search is pending", () => {
+    stubResizeObserver();
+    const results: DesktopSearchResult[] = [{ kind: "task", ref: "T-ALPHA", title: "Alpha task", excerpt: "Alpha task" }];
+
+    render(
+      <SearchView
+        handleOpenProject={vi.fn().mockResolvedValue(undefined)}
+        handleSearchResultOpen={vi.fn().mockResolvedValue(undefined)}
+        searchCanvasScope="all"
+        searchQuery="alpha"
+        searchResultKinds={searchResultKinds}
+        searchResults={results}
+        searchStatus={{ phase: "body_loading", summaryResultCount: results.length }}
+        selectedCanvasId="canvas-main"
+        selectedProject={project}
+        selectedSearchResultKinds={searchResultKinds}
+        setSearchCanvasScope={vi.fn()}
+        setSearchQuery={vi.fn()}
+        setSearchResultKindEnabled={vi.fn()}
+        t={createTranslator("en")}
+      />
+    );
+
+    expect(screen.getByTestId("search-status")).toHaveTextContent("Expanding body search Summary results: 1");
+    expect(screen.getAllByText("Alpha task").length).toBeGreaterThan(0);
+  });
+
+  it("shows no results only after search completes with zero results", () => {
+    stubResizeObserver();
+    render(
+      <SearchView
+        handleOpenProject={vi.fn().mockResolvedValue(undefined)}
+        handleSearchResultOpen={vi.fn().mockResolvedValue(undefined)}
+        searchCanvasScope="all"
+        searchQuery="missing"
+        searchResultKinds={searchResultKinds}
+        searchResults={[]}
+        searchStatus={{ phase: "complete", resultCount: 0, expandedBodySearch: true }}
+        selectedCanvasId="canvas-main"
+        selectedProject={project}
+        selectedSearchResultKinds={searchResultKinds}
+        setSearchCanvasScope={vi.fn()}
+        setSearchQuery={vi.fn()}
+        setSearchResultKindEnabled={vi.fn()}
+        t={createTranslator("en")}
+      />
+    );
+
+    expect(screen.getByText("No results found")).toBeInTheDocument();
+  });
+
+  it("shows result count after completed searches with matches", () => {
+    stubResizeObserver();
+    const results: DesktopSearchResult[] = [{ kind: "task", ref: "T-ALPHA", title: "Alpha task", excerpt: "Alpha task" }];
+
+    render(
+      <SearchView
+        handleOpenProject={vi.fn().mockResolvedValue(undefined)}
+        handleSearchResultOpen={vi.fn().mockResolvedValue(undefined)}
+        searchCanvasScope="all"
+        searchQuery="alpha"
+        searchResultKinds={searchResultKinds}
+        searchResults={results}
+        searchStatus={{ phase: "complete", resultCount: results.length, expandedBodySearch: true }}
+        selectedCanvasId="canvas-main"
+        selectedProject={project}
+        selectedSearchResultKinds={searchResultKinds}
+        setSearchCanvasScope={vi.fn()}
+        setSearchQuery={vi.fn()}
+        setSearchResultKindEnabled={vi.fn()}
+        t={createTranslator("en")}
+      />
+    );
+
+    expect(screen.getByTestId("search-status")).toHaveTextContent("Results: 1");
+    expect(screen.queryByText("No results found")).not.toBeInTheDocument();
   });
 
   it("labels task and block match sources from the runtime match field", () => {
@@ -146,6 +259,7 @@ describe("SearchView", () => {
         searchQuery="match"
         searchResultKinds={searchResultKinds}
         searchResults={results}
+        searchStatus={{ phase: "complete", resultCount: results.length, expandedBodySearch: true }}
         selectedCanvasId="canvas-main"
         selectedProject={{
           projectId: "P-001",

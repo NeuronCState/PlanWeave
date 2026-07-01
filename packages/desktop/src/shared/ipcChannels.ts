@@ -70,6 +70,7 @@ export const desktopBridgeInvokeChannels = {
   saveCanvasMapLayout: "planweave:saveCanvasMapLayout",
   saveDesktopLayout: "planweave:saveDesktopLayout",
   searchProject: "planweave:searchProject",
+  searchProjectWithDiagnostics: "planweave:searchProjectWithDiagnostics",
   selectTaskCanvas: "planweave:selectTaskCanvas",
   startAutoRun: "planweave:startAutoRun",
   stopAutoRun: "planweave:stopAutoRun",

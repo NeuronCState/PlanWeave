@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SearchResultList } from "../components/SearchResultList";
-import type { DesktopSearchCanvasScope } from "../hooks/useDesktopSearch";
+import type { DesktopSearchCanvasScope, DesktopSearchStatus } from "../hooks/useDesktopSearch";
 import type { createTranslator } from "../i18n";
 
 type SearchViewProps = {
@@ -15,6 +15,7 @@ type SearchViewProps = {
   searchQuery: string;
   searchResultKinds: DesktopSearchResultKind[];
   searchResults: DesktopSearchResult[];
+  searchStatus: DesktopSearchStatus;
   selectedCanvasId: string | null;
   selectedProject: DesktopProjectSummary | null;
   selectedSearchResultKinds: DesktopSearchResultKind[];
@@ -43,6 +44,25 @@ function searchKindLabel(kind: DesktopSearchResultKind, t: ReturnType<typeof cre
   return exhaustiveKind;
 }
 
+function searchStatusLabel(status: DesktopSearchStatus, t: ReturnType<typeof createTranslator>): string | null {
+  switch (status.phase) {
+    case "idle":
+      return null;
+    case "debouncing":
+      return t("searchStatusDebouncing");
+    case "summary_loading":
+      return t("searchStatusSummaryLoading");
+    case "body_loading":
+      return `${t("searchStatusBodyLoading")} ${t("searchStatusSummaryCount")}: ${status.summaryResultCount}`;
+    case "complete":
+      return status.resultCount === 0 ? null : `${t("searchStatusResultCount")}: ${status.resultCount}`;
+    case "error":
+      return `${t("searchStatusError")}: ${status.message}`;
+  }
+  const exhaustiveStatus: never = status;
+  return exhaustiveStatus;
+}
+
 export function SearchView({
   handleOpenProject,
   handleSearchResultOpen,
@@ -50,6 +70,7 @@ export function SearchView({
   searchQuery,
   searchResultKinds,
   searchResults,
+  searchStatus,
   selectedCanvasId,
   selectedProject,
   selectedSearchResultKinds,
@@ -61,6 +82,8 @@ export function SearchView({
   const selectedKinds = new Set(selectedSearchResultKinds);
   const hasProject = Boolean(selectedProject);
   const hasQuery = Boolean(searchQuery.trim());
+  const statusLabel = searchStatusLabel(searchStatus, t);
+  const showNoResults = searchStatus.phase === "complete" && searchStatus.resultCount === 0;
   const kindLabels: Record<DesktopSearchResultKind, string> = {
     task: searchKindLabel("task", t),
     block: searchKindLabel("block", t),
@@ -149,16 +172,34 @@ export function SearchView({
         ) : !hasQuery ? (
           <div className="rounded-md border border-border/80 bg-surface-muted/70 p-4 text-sm text-text-muted">{t("searchEmptyHint")}</div>
         ) : (
-          <SearchResultList
-            canvasLabel={t("searchResultCanvas")}
-            kindLabels={kindLabels}
-            matchSourceLabels={matchSourceLabels}
-            refLabel={t("searchResultRef")}
-            results={searchResults}
-            targetLabel={t("searchResultTarget")}
-            targetMissingLabel={t("searchTargetMissing")}
-            onOpenResult={handleSearchResultOpen}
-          />
+          <div className="flex flex-col gap-3">
+            {statusLabel ? (
+              <div
+                className={`rounded-md border p-3 text-sm ${
+                  searchStatus.phase === "error"
+                    ? "border-destructive/40 bg-destructive/10 text-destructive"
+                    : "border-border/80 bg-surface-muted/70 text-text-muted"
+                }`}
+                data-testid="search-status"
+              >
+                {statusLabel}
+              </div>
+            ) : null}
+            {showNoResults ? (
+              <div className="rounded-md border border-border/80 bg-surface-muted/70 p-4 text-sm text-text-muted">{t("searchNoResults")}</div>
+            ) : (
+              <SearchResultList
+                canvasLabel={t("searchResultCanvas")}
+                kindLabels={kindLabels}
+                matchSourceLabels={matchSourceLabels}
+                refLabel={t("searchResultRef")}
+                results={searchResults}
+                targetLabel={t("searchResultTarget")}
+                targetMissingLabel={t("searchTargetMissing")}
+                onOpenResult={handleSearchResultOpen}
+              />
+            )}
+          </div>
         )}
       </ScrollArea>
     </section>

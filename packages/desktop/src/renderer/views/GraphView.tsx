@@ -16,7 +16,8 @@ import type {
   DesktopAutoRunState,
   DesktopGraphViewModel,
   DesktopPackageFileSyncResult,
-  DesktopProjectSummary
+  DesktopProjectSummary,
+  ValidationIssue
 } from "@planweave-ai/runtime";
 import { ChevronRightIcon, NetworkIcon, Redo2Icon, Undo2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ type GraphViewProps = {
   edges: Edge[];
   fileSyncResult: DesktopPackageFileSyncResult | null;
   graph: DesktopGraphViewModel | null;
+  projectDiagnostics: ValidationIssue[];
   handleAutoRunClick: () => Promise<void>;
   handleAutoRunNextAction: (action: AutoRunNextActionDescriptor) => Promise<void>;
   handleOpenBlockInspector: (ref: string, canvasId?: string | null) => Promise<void>;
@@ -89,6 +91,7 @@ export function GraphView({
   edges,
   fileSyncResult,
   graph,
+  projectDiagnostics,
   handleAutoRunClick,
   handleAutoRunNextAction,
   handleOpenBlockInspector,
@@ -299,6 +302,7 @@ export function GraphView({
         controlRef={autoRunControlRef}
         affectedTasks={fileSyncResult?.affectedTasks ?? []}
         diagnostics={fileSyncResult?.diagnostics ?? []}
+        projectDiagnostics={projectDiagnostics}
         dirtyPromptRefs={dirtyPromptRefs}
         dirtyPromptCount={dirtyPromptCount}
         autoRunPreflightExecutorHint={graph?.autoRunPreflightExecutorHint ?? null}

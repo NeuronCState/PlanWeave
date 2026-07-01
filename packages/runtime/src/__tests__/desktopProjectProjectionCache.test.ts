@@ -72,11 +72,20 @@ describe("desktop project projection cache", () => {
 
     const incrementalSearchIndex = await readDesktopProjectSearchIndex(root);
     const incrementalStatistics = await readDesktopProjectStatisticsProjection(root);
+    const slowDiagnosticCodes = new Set([
+      ...incrementalSearchIndex.diagnostics.map((diagnostic) => diagnostic.code),
+      ...incrementalStatistics.diagnostics.map((diagnostic) => diagnostic.code)
+    ]);
     const slowSearchPaths = incrementalSearchIndex.diagnostics
       .filter((diagnostic) => diagnostic.code === "desktop_search_index_slow_part")
       .filter((diagnostic) => diagnostic.message.includes("summary search index construction"))
       .map((diagnostic) => diagnostic.path);
 
+    expect([...slowDiagnosticCodes]).toEqual(expect.arrayContaining([
+      "desktop_projection_slow_part",
+      "desktop_search_index_slow_part",
+      "desktop_statistics_slow_part"
+    ]));
     expect(slowSearchPaths).toContain("default");
     expect(slowSearchPaths).not.toContain(secondCanvas.canvasId);
     expect(searchDesktopSearchIndex(incrementalSearchIndex, "changed canvas cache needle", { kinds: ["prompt"] })).toEqual([]);
@@ -85,7 +94,14 @@ describe("desktop project projection cache", () => {
     invalidateDesktopProjectProjection(root);
     const rebuiltSearchIndex = await readDesktopProjectSearchIndex(root);
     const rebuiltStatistics = await readDesktopProjectStatisticsProjection(root);
+    const rebuiltSlowDiagnosticCodes = new Set([
+      ...rebuiltSearchIndex.diagnostics.map((diagnostic) => diagnostic.code),
+      ...rebuiltStatistics.diagnostics.map((diagnostic) => diagnostic.code)
+    ]);
 
+    expect(rebuiltSlowDiagnosticCodes).not.toContain("desktop_projection_slow_part");
+    expect(rebuiltSlowDiagnosticCodes).not.toContain("desktop_search_index_slow_part");
+    expect(rebuiltSlowDiagnosticCodes).not.toContain("desktop_statistics_slow_part");
     expect(searchDesktopSearchIndex(incrementalSearchIndex, "changed canvas cache needle")).toEqual(
       searchDesktopSearchIndex(rebuiltSearchIndex, "changed canvas cache needle")
     );

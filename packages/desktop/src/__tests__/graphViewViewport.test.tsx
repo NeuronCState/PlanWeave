@@ -154,6 +154,7 @@ function defaultProps(patch: Partial<ComponentProps<typeof GraphView>> = {}): Co
     onNodeDragStop: vi.fn().mockResolvedValue(undefined),
     onNodesChange: vi.fn(),
     onTaskPanelSelect: vi.fn(),
+    projectDiagnostics: [],
     projectLoading: false,
     refreshPackageFiles: vi.fn().mockResolvedValue(undefined),
     selectedBlockPresent: false,

@@ -273,11 +273,15 @@ async function captureProjectionPart<T>(
   } finally {
     const elapsedMs = performance.now() - startedAt;
     if (elapsedMs >= threshold) {
-      const isSearchPart = label.includes("search");
+      const code = label.includes("statistics")
+        ? "desktop_statistics_slow_part"
+        : label.includes("search")
+          ? "desktop_search_index_slow_part"
+          : "desktop_projection_slow_part";
       appendDesktopDiagnostic(
         diagnostics,
         desktopDiagnostic(
-          isSearchPart ? "desktop_search_index_slow_part" : "desktop_projection_slow_part",
+          code,
           `Desktop projection ${label} took ${Math.round(elapsedMs)} ms.`,
           path
         )

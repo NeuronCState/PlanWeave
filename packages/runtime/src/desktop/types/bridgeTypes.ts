@@ -11,6 +11,7 @@ import type {
   DesktopProjectExecutionPlan,
   DesktopProjectSnapshot,
   DesktopSearchFilters,
+  DesktopSearchProjection,
   DesktopSearchResult,
   DesktopStatistics,
   DesktopTaskDetail,
@@ -249,4 +250,5 @@ export type DesktopBridgeApi = {
   getLatestAutoRunRetrospective(ref: DesktopCanvasReference): Promise<DesktopAutoRunRetrospectiveSummary | null>;
   getStatistics(projectRoot: string): Promise<DesktopStatistics>;
   searchProject(projectRoot: string, query: string, filters?: DesktopSearchFilters): Promise<DesktopSearchResult[]>;
+  searchProjectWithDiagnostics(projectRoot: string, query: string, filters?: DesktopSearchFilters): Promise<DesktopSearchProjection>;
 };

@@ -7,9 +7,11 @@ import type {
   DesktopProjectSummary,
   DesktopStatistics,
   DesktopTodoGroups,
+  ValidationIssue,
   ProjectPromptPolicy
 } from "@planweave-ai/runtime";
 import { bridge, desktopCanvasReference } from "../bridge";
+import { isDesktopPerformanceDiagnostic } from "../diagnostics";
 import type { createTranslator } from "../i18n";
 import type { DesktopSettingsUpdate } from "../types";
 
@@ -53,6 +55,7 @@ export function useDesktopProject({
   const [todoGroups, setTodoGroups] = useState<DesktopTodoGroups | null>(null);
   const [executionPlan, setExecutionPlan] = useState<DesktopProjectExecutionPlan | null>(null);
   const [statistics, setStatistics] = useState<DesktopStatistics | null>(null);
+  const [projectDiagnostics, setProjectDiagnostics] = useState<ValidationIssue[]>([]);
   const [projectPromptMarkdown, setProjectPromptMarkdown] = useState<string | null>(null);
   const [projectPromptPolicy, setProjectPromptPolicy] = useState<ProjectPromptPolicy | null>(null);
   const currentCanvasRef = useRef<{
@@ -86,7 +89,11 @@ export function useDesktopProject({
       setTodoGroups(snapshot.todoGroups);
       setExecutionPlan(snapshot.executionPlan);
       setStatistics(snapshot.statistics);
-      return snapshot.errors;
+      setProjectDiagnostics(snapshot.diagnostics);
+      return snapshot.errors.filter((_, index) => {
+        const diagnostic = snapshot.diagnostics[index];
+        return !diagnostic || !isDesktopPerformanceDiagnostic(diagnostic);
+      });
     },
     []
   );
@@ -112,6 +119,7 @@ export function useDesktopProject({
         setTodoGroups(null);
         setExecutionPlan(null);
         setStatistics(null);
+        setProjectDiagnostics([]);
         setProjectPromptMarkdown(null);
         setProjectPromptPolicy(null);
       }
@@ -286,6 +294,7 @@ export function useDesktopProject({
       setTodoGroups(null);
       setExecutionPlan(null);
       setStatistics(null);
+      setProjectDiagnostics([]);
       setProjectPromptMarkdown(null);
       setProjectPromptPolicy(null);
     },
@@ -301,6 +310,7 @@ export function useDesktopProject({
     loadProject,
     projectLoading,
     projects,
+    projectDiagnostics,
     projectPromptMarkdown,
     projectPromptPolicy,
     refreshProjectSummary,

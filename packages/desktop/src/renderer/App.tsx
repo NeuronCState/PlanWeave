@@ -41,6 +41,7 @@ import { createAutoRunController, createFileSyncController } from "./controllers
 import { createGraphWorkspaceController } from "./controllers/GraphWorkspaceController";
 import { createSearchController } from "./controllers/SearchController";
 import { writeAgentScopePromptToClipboard } from "./agentPrompt";
+import { uniqueDesktopDiagnostics } from "./diagnostics";
 
 const emptyExecutorOptions: string[] = [];
 
@@ -101,6 +102,7 @@ export function App() {
     layout,
     projects,
     projectLoading,
+    projectDiagnostics,
     projectPromptMarkdown,
     projectPromptPolicy,
     refreshProjectSummary,
@@ -253,8 +255,10 @@ export function App() {
     desktopSearchResultKinds: searchResultKinds,
     handleSearchResultOpen,
     searchCanvasScope,
+    searchDiagnostics,
     searchQuery,
     searchResults,
+    searchStatus,
     selectedSearchResultKinds,
     setSearchCanvasScope,
     setSearchQuery,
@@ -268,6 +272,10 @@ export function App() {
     selectedProject,
     setError
   });
+  const visibleProjectDiagnostics = useMemo(
+    () => uniqueDesktopDiagnostics([...projectDiagnostics, ...searchDiagnostics]),
+    [projectDiagnostics, searchDiagnostics]
+  );
 
   const {
     addReviewStep,
@@ -544,6 +552,7 @@ export function App() {
   });
   const fileSync = createFileSyncController({
     fileSyncResult,
+    projectDiagnostics: visibleProjectDiagnostics,
     refreshPackageFiles
   });
   const search = createSearchController({
@@ -552,6 +561,7 @@ export function App() {
     searchQuery,
     searchResultKinds,
     searchResults,
+    searchStatus,
     selectedSearchResultKinds,
     setSearchCanvasScope,
     setSearchQuery,

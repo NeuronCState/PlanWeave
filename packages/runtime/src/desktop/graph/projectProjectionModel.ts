@@ -1,6 +1,6 @@
-import { stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { join, resolve } from "node:path";
+import { isNodeFileNotFoundError, optionalStat } from "../../fs/optionalFile.js";
 import { createPackageFileMetadataSnapshot } from "../../package/fileChanges.js";
 import { createExecutionGraphSessionFromSnapshot } from "../../graph/session.js";
 import { resolveProjectWorkspace } from "../../project.js";
@@ -131,16 +131,15 @@ export function invalidateDesktopProjectProjection(projectRoot?: PackageWorkspac
 }
 
 async function optionalFileStatFingerprint(path: string): Promise<FileStatFingerprint | null> {
-  try {
-    const metadata = await stat(path);
-    return {
-      path,
-      mtimeMs: metadata.mtimeMs,
-      size: metadata.size
-    };
-  } catch {
+  const metadata = await optionalStat(path);
+  if (!metadata) {
     return null;
   }
+  return {
+    path,
+    mtimeMs: metadata.mtimeMs,
+    size: metadata.size
+  };
 }
 
 function packageInputFingerprintFromSnapshot(snapshot: PackageFileSnapshot): PackageInputFingerprint {
@@ -162,15 +161,74 @@ function workspaceFingerprint(workspace: ProjectWorkspace): CanvasWorkspaceFinge
 async function canvasRuntimeInput(workspace: ProjectWorkspace): Promise<CanvasRuntimeInput | null> {
   try {
     const snapshot = await createPackageFileMetadataSnapshot(workspace);
-    return {
-      fingerprint: {
-        workspace: workspaceFingerprint(workspace),
-        packageFiles: packageInputFingerprintFromSnapshot(snapshot),
-        stateFile: await optionalFileStatFingerprint(workspace.stateFile)
-      },
-      snapshot
-    };
-  } catch {
+    return await canvasRuntimeInputFromSnapshot(workspace, snapshot);
+  } catch (error) {
+    if (isNodeFileNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function canvasRuntimeInputFromSnapshot(workspace: ProjectWorkspace, snapshot: PackageFileSnapshot): Promise<CanvasRuntimeInput> {
+  return {
+    fingerprint: {
+      workspace: workspaceFingerprint(workspace),
+      packageFiles: packageInputFingerprintFromSnapshot(snapshot),
+      stateFile: await optionalFileStatFingerprint(workspace.stateFile)
+    },
+    snapshot
+  };
+}
+
+async function canvasRuntimeInputWithDiagnostics(
+  workspace: ProjectWorkspace,
+  canvasId: string,
+  diagnostics: ValidationIssue[]
+): Promise<CanvasRuntimeInput | null> {
+  try {
+    return await canvasRuntimeInput(workspace);
+  } catch (caught) {
+    appendDesktopDiagnostic(
+      diagnostics,
+      desktopDiagnostic("desktop_canvas_runtime_input_failed", `Canvas runtime input could not be read: ${errorMessage(caught)}`, canvasId)
+    );
+    return null;
+  }
+}
+
+async function cachedCanvasRuntimeInput(
+  workspace: ProjectWorkspace,
+  canvasId: string,
+  diagnostics: ValidationIssue[],
+  runtimeInputsByCanvas: Map<string, CanvasRuntimeInput | null>,
+  options: { refresh?: boolean } = {}
+): Promise<CanvasRuntimeInput | null> {
+  if (!options.refresh && runtimeInputsByCanvas.has(canvasId)) {
+    return runtimeInputsByCanvas.get(canvasId) ?? null;
+  }
+  const runtimeInput = await canvasRuntimeInputWithDiagnostics(workspace, canvasId, diagnostics);
+  runtimeInputsByCanvas.set(canvasId, runtimeInput);
+  return runtimeInput;
+}
+
+async function cacheCanvasRuntimeInputFromSnapshot(
+  workspace: ProjectWorkspace,
+  canvasId: string,
+  snapshot: PackageFileSnapshot,
+  diagnostics: ValidationIssue[],
+  runtimeInputsByCanvas: Map<string, CanvasRuntimeInput | null>
+): Promise<CanvasRuntimeInput | null> {
+  try {
+    const runtimeInput = await canvasRuntimeInputFromSnapshot(workspace, snapshot);
+    runtimeInputsByCanvas.set(canvasId, runtimeInput);
+    return runtimeInput;
+  } catch (caught) {
+    appendDesktopDiagnostic(
+      diagnostics,
+      desktopDiagnostic("desktop_canvas_runtime_input_failed", `Canvas runtime input could not be read: ${errorMessage(caught)}`, canvasId)
+    );
+    runtimeInputsByCanvas.set(canvasId, null);
     return null;
   }
 }
@@ -320,11 +378,11 @@ async function loadCanvasRuntimeSnapshot(
   workspace: ProjectWorkspace,
   canvasId: string,
   cached: CachedProjectProjection | undefined,
+  diagnostics: ValidationIssue[],
   runtimeInputsByCanvas: Map<string, CanvasRuntimeInput | null>,
   runtimesByCanvas: Map<string, RuntimeContext>
 ): Promise<ProjectCanvasRuntimeSnapshot> {
-  const currentInput = await canvasRuntimeInput(workspace);
-  runtimeInputsByCanvas.set(canvasId, currentInput);
+  const currentInput = await cachedCanvasRuntimeInput(workspace, canvasId, diagnostics, runtimeInputsByCanvas, { refresh: true });
   const cachedEntry = cached?.canvases.get(canvasId);
   if (
     currentInput
@@ -340,19 +398,11 @@ async function loadCanvasRuntimeSnapshot(
     : undefined;
   const runtime = session ? await loadRuntime({ projectRoot: workspace, session }) : await loadRuntime({ projectRoot: workspace });
   runtimesByCanvas.set(canvasId, runtime);
-  runtimeInputsByCanvas.set(
-    canvasId,
-    session
-      ? {
-          fingerprint: {
-            workspace: workspaceFingerprint(workspace),
-            packageFiles: packageInputFingerprintFromSnapshot(session.fileSnapshot),
-            stateFile: await optionalFileStatFingerprint(workspace.stateFile)
-          },
-          snapshot: session.fileSnapshot
-        }
-      : await canvasRuntimeInput(workspace)
-  );
+  if (session) {
+    await cacheCanvasRuntimeInputFromSnapshot(workspace, canvasId, session.fileSnapshot, diagnostics, runtimeInputsByCanvas);
+  } else {
+    await cachedCanvasRuntimeInput(workspace, canvasId, diagnostics, runtimeInputsByCanvas, { refresh: true });
+  }
   return runtimeSnapshotFromGraphState(runtime.graph, runtime.state);
 }
 
@@ -473,6 +523,7 @@ async function buildDesktopProjectProjection(projectRoot: string, cached: Cached
         workspace,
         canvasId,
         cached,
+        diagnostics,
         runtimeInputsByCanvas,
         runtimesByCanvas
       )
@@ -491,7 +542,7 @@ async function buildDesktopProjectProjection(projectRoot: string, cached: Cached
     if (!canvas) {
       continue;
     }
-    const runtimeInput = runtimeInputsByCanvas.get(canvasId) ?? await canvasRuntimeInput(canvas.workspace);
+    const runtimeInput = await cachedCanvasRuntimeInput(canvas.workspace, canvasId, diagnostics, runtimeInputsByCanvas);
     const runtimeInputFingerprint = runtimeInput?.fingerprint ?? null;
     const resultsFingerprint = await captureProjectionPart(
       diagnostics,

@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { performance } from "node:perf_hooks";
+import { optionalReaddir } from "../fs/optionalFile.js";
 import { compilePackageGraph } from "../graph/compileTaskGraph.js";
 import { affectedTasksForPackageFileChange, type PackageChangeImpact } from "../graph/editGraph.js";
 import { loadPackage } from "./loadPackage.js";
@@ -75,21 +76,20 @@ async function statFingerprint(path: string): Promise<FileFingerprint> {
 }
 
 async function listMarkdownFiles(root: string): Promise<string[]> {
-  try {
-    const entries = await readdir(root, { withFileTypes: true });
-    const files: string[] = [];
-    for (const entry of entries) {
-      const path = join(root, entry.name);
-      if (entry.isDirectory()) {
-        files.push(...(await listMarkdownFiles(path)));
-      } else if (entry.isFile() && entry.name.endsWith(".md")) {
-        files.push(path);
-      }
-    }
-    return files;
-  } catch {
+  const entries = await optionalReaddir(root, { withFileTypes: true });
+  if (!entries) {
     return [];
   }
+  const files: string[] = [];
+  for (const entry of entries) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await listMarkdownFiles(path)));
+    } else if (entry.isFile() && entry.name.endsWith(".md")) {
+      files.push(path);
+    }
+  }
+  return files;
 }
 
 async function snapshotPromptFiles(packageDir: string, mode: PromptFingerprintMode): Promise<Record<string, FileFingerprint>> {

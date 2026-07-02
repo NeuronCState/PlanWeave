@@ -14,16 +14,39 @@ import { claimBlock } from "../taskManager/claimScheduler.js";
 import type { ValidationIssue } from "../types.js";
 import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
 
+const fsMockState = vi.hoisted(() => ({
+  statErrorPath: null as string | null,
+  statErrorCode: "EACCES",
+  statErrorAfterMatches: 0,
+  statMatchCount: 0
+}));
+
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   return {
     ...actual,
-    readFile: vi.fn(actual.readFile)
+    readFile: vi.fn(actual.readFile),
+    stat: vi.fn(async (path: string) => {
+      if (path === fsMockState.statErrorPath) {
+        fsMockState.statMatchCount += 1;
+        if (fsMockState.statMatchCount <= fsMockState.statErrorAfterMatches) {
+          return actual.stat(path);
+        }
+        const error = new Error(`${fsMockState.statErrorCode} stat failed for ${path}`) as NodeJS.ErrnoException;
+        error.code = fsMockState.statErrorCode;
+        throw error;
+      }
+      return actual.stat(path);
+    })
   };
 });
 
 afterEach(() => {
   vi.clearAllMocks();
+  fsMockState.statErrorPath = null;
+  fsMockState.statErrorCode = "EACCES";
+  fsMockState.statErrorAfterMatches = 0;
+  fsMockState.statMatchCount = 0;
   invalidateDesktopProjectProjection();
   delete process.env.PLANWEAVE_DESKTOP_PROJECTION_SLOW_DIAGNOSTICS_MS;
   delete process.env.PLANWEAVE_HOME;
@@ -222,6 +245,38 @@ describe("desktop project projection cache", () => {
       status: "in_progress"
     });
     expect(stateSnapshot.todoGroups?.ready.map((item) => item.ref)).not.toContain("T-001#B-001");
+  });
+
+  it("reports non-missing canvas runtime input stat errors as diagnostics", async () => {
+    const { root, init } = await createTestWorkspace();
+    fsMockState.statErrorPath = init.workspace.stateFile;
+
+    const snapshot = await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
+
+    expect(snapshot.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "desktop_canvas_runtime_input_failed",
+        path: "default",
+        message: expect.stringContaining("EACCES")
+      })
+    ]));
+  });
+
+  it("reports runtime input refresh stat errors after an initial successful fingerprint", async () => {
+    const { root, init } = await createTestWorkspace();
+    fsMockState.statErrorPath = init.workspace.stateFile;
+    fsMockState.statErrorAfterMatches = 1;
+
+    const snapshot = await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
+
+    expect(fsMockState.statMatchCount).toBeGreaterThan(1);
+    expect(snapshot.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "desktop_canvas_runtime_input_failed",
+        path: "default",
+        message: expect.stringContaining("EACCES")
+      })
+    ]));
   });
 
   it("replays cached canvas snapshot failure diagnostics through search, snapshot, and statistics reads", async () => {

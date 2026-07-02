@@ -287,6 +287,15 @@ describe("package file changes", () => {
     expect(refreshed.snapshot?.promptFiles).toEqual(before.promptFiles);
   });
 
+  it("treats a missing nodes directory as an empty prompt file snapshot", async () => {
+    const { root, init } = await createTestWorkspace();
+    await rm(join(init.workspace.packageDir, "nodes"), { recursive: true, force: true });
+
+    const snapshot = await createPackageFileSnapshot(root);
+
+    expect(snapshot.promptFiles).toEqual({});
+  });
+
   it("falls back to a full refresh for added prompt files that are not in the current graph", async () => {
     const { root, init } = await createTestWorkspace();
     const before = await createPackageFileSnapshot(root);

@@ -42,6 +42,17 @@ type OperationLogCoalescingEntry = {
   affected: PlanGraphAffectedRefs;
 };
 
+const sqliteIndexDefinitions = [
+  {
+    name: "idx_operation_log_undo_redo",
+    sql: "CREATE INDEX IF NOT EXISTS idx_operation_log_undo_redo ON operation_log (project_root, undone_at DESC, id ASC)"
+  },
+  {
+    name: "idx_edges_project_order",
+    sql: "CREATE INDEX IF NOT EXISTS idx_edges_project_order ON edges (project_root, edge_type, from_ref, to_ref)"
+  }
+] as const;
+
 const nodeRequire = createRequire(import.meta.url);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -171,6 +182,13 @@ function ensureSchema(db: SqliteDatabase): void {
   const operationLogColumns = db.prepare("PRAGMA table_info(operation_log)").all();
   if (!operationLogColumns.some((column) => isRecord(column) && column.name === "workspace_ref_json")) {
     db.exec("ALTER TABLE operation_log ADD COLUMN workspace_ref_json TEXT");
+  }
+  ensureIndexes(db);
+}
+
+function ensureIndexes(db: SqliteDatabase): void {
+  for (const indexDefinition of sqliteIndexDefinitions) {
+    db.exec(indexDefinition.sql);
   }
 }
 

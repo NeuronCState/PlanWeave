@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { getDesktopLayout } from "../desktop/layoutApi.js";
 import { readJsonFile } from "../json.js";
 import {
+  createSqlitePlanGraphStore,
   defaultPlanGraphIndexPath,
   executePlanGraphCommand,
   loadPlanGraphPackage,
@@ -14,7 +15,7 @@ import {
   undoPlanGraphCommand
 } from "../plangraph/index.js";
 import type { PlanPackageManifest } from "../types.js";
-import { createTestWorkspace } from "./promptTestHelpers.js";
+import { basicManifest, createTestWorkspace } from "./promptTestHelpers.js";
 
 type SqliteRunResult = {
   lastInsertRowid: number | bigint;
@@ -23,9 +24,11 @@ type SqliteRunResult = {
 type SqliteStatement = {
   run(...values: unknown[]): SqliteRunResult;
   get(...values: unknown[]): Record<string, unknown> | undefined;
+  all(...values: unknown[]): Array<Record<string, unknown>>;
 };
 
 type SqliteDatabase = {
+  exec(sql: string): void;
   prepare(sql: string): SqliteStatement;
   close(): void;
 };
@@ -48,14 +51,48 @@ function loadSqliteModule(): SqliteModule {
   return moduleValue as SqliteModule;
 }
 
-function withSqlite(indexPath: string, action: (db: SqliteDatabase) => void): void {
+function withSqlite<T>(indexPath: string, action: (db: SqliteDatabase) => T): T {
   const sqlite = loadSqliteModule();
   const db = new sqlite.DatabaseSync(indexPath);
   try {
-    action(db);
+    return action(db);
   } finally {
     db.close();
   }
+}
+
+function stringColumn(row: Record<string, unknown>, key: string): string {
+  const value = row[key];
+  if (typeof value !== "string") {
+    throw new Error(`SQLite column '${key}' must be a string.`);
+  }
+  return value;
+}
+
+function sqliteIndexNames(indexPath: string): string[] {
+  return withSqlite(indexPath, (db) =>
+    db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'index' ORDER BY name")
+      .all()
+      .map((row) => stringColumn(row, "name"))
+  );
+}
+
+function queryPlanDetails(indexPath: string, sql: string, ...values: unknown[]): string[] {
+  return withSqlite(indexPath, (db) =>
+    db
+      .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+      .all(...values)
+      .map((row) => stringColumn(row, "detail"))
+  );
+}
+
+function expectPlanUsesIndex(details: string[], indexName: string): void {
+  expect(details.join("\n")).toContain(indexName);
+}
+
+function expectNoBareOperationLogScan(details: string[]): void {
+  expect(details.some((detail) => detail === "SCAN operation_log")).toBe(false);
 }
 
 function setOperationLogField(indexPath: string, operationId: number, fieldName: "command_json" | "inverse_json" | "affected_json", value: unknown): void {
@@ -75,6 +112,76 @@ function operationUndoneAt(indexPath: string, operationId: number): string | nul
 }
 
 describe("PlanGraph command history schema", () => {
+  it("creates SQLite indexes and uses them for history and graph queries", async () => {
+    const { root, init } = await createTestWorkspace(basicManifest({ includeSecondTask: true, taskDependsOn: ["T-002"] }));
+    const store = await createSqlitePlanGraphStore({ projectRoot: root });
+    await store.rebuild();
+    const indexPath = store.indexPath;
+    const historyKey = init.workspace.rootPath;
+    const graphKey = init.workspace.workspaceRoot;
+
+    const firstResult = await executePlanGraphCommand({
+      projectRoot: root,
+      command: { type: "updateTaskFields", taskId: "T-001", fields: { title: "History index first" } }
+    });
+    const secondResult = await executePlanGraphCommand({
+      projectRoot: root,
+      command: { type: "updateTaskFields", taskId: "T-001", fields: { title: "History index second" } }
+    });
+    if (!firstResult.ok || !secondResult.ok) {
+      throw new Error("Expected history seed commands to succeed.");
+    }
+    await expect(undoPlanGraphCommand({ projectRoot: root })).resolves.toMatchObject({ ok: true });
+
+    const indexes = sqliteIndexNames(indexPath);
+    expect(indexes).toEqual(expect.arrayContaining(["idx_edges_project_order", "idx_operation_log_undo_redo"]));
+    expect(indexes).not.toContain("idx_prompt_index_project_owner");
+
+    const undoPlan = queryPlanDetails(indexPath, "SELECT * FROM operation_log WHERE project_root = ? AND undone_at IS NULL ORDER BY id DESC LIMIT 1", historyKey);
+    const redoPlan = queryPlanDetails(
+      indexPath,
+      "SELECT * FROM operation_log WHERE project_root = ? AND undone_at IS NOT NULL ORDER BY undone_at DESC, id ASC LIMIT 1",
+      historyKey
+    );
+    const cleanupPlan = queryPlanDetails(indexPath, "DELETE FROM operation_log WHERE project_root = ? AND undone_at IS NOT NULL", historyKey);
+    expectPlanUsesIndex(undoPlan, "idx_operation_log_undo_redo");
+    expectPlanUsesIndex(redoPlan, "idx_operation_log_undo_redo");
+    expectPlanUsesIndex(cleanupPlan, "idx_operation_log_undo_redo");
+    expectNoBareOperationLogScan(undoPlan);
+    expectNoBareOperationLogScan(redoPlan);
+    expectNoBareOperationLogScan(cleanupPlan);
+
+    expectPlanUsesIndex(queryPlanDetails(indexPath, "SELECT * FROM edges WHERE project_root = ? ORDER BY edge_type, from_ref, to_ref", graphKey), "idx_edges_project_order");
+    expectPlanUsesIndex(queryPlanDetails(indexPath, "SELECT * FROM prompt_index WHERE project_root = ? ORDER BY owner_ref", graphKey), "sqlite_autoindex_prompt_index");
+    expectPlanUsesIndex(
+      queryPlanDetails(indexPath, "DELETE FROM prompt_index WHERE project_root = ? AND owner_ref = ?", graphKey, "T-001"),
+      "sqlite_autoindex_prompt_index"
+    );
+    expectPlanUsesIndex(queryPlanDetails(indexPath, "SELECT * FROM tasks WHERE project_root = ? ORDER BY task_id", graphKey), "sqlite_autoindex_tasks");
+    expectPlanUsesIndex(queryPlanDetails(indexPath, "SELECT * FROM blocks WHERE project_root = ? ORDER BY block_ref", graphKey), "sqlite_autoindex_blocks");
+
+    await expect(redoPlanGraphCommand({ projectRoot: root })).resolves.toMatchObject({ ok: true });
+    const manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    expect(manifest.nodes[0]?.type === "task" ? manifest.nodes[0].title : null).toBe("History index second");
+  });
+
+  it("recreates explicit SQLite indexes when an existing database is reopened", async () => {
+    const { root } = await createTestWorkspace();
+    const store = await createSqlitePlanGraphStore({ projectRoot: root });
+    await store.rebuild();
+
+    withSqlite(store.indexPath, (db) => {
+      db.exec("DROP INDEX idx_edges_project_order");
+      db.exec("DROP INDEX idx_operation_log_undo_redo");
+    });
+    expect(sqliteIndexNames(store.indexPath)).not.toContain("idx_edges_project_order");
+    expect(sqliteIndexNames(store.indexPath)).not.toContain("idx_operation_log_undo_redo");
+
+    await store.load();
+
+    expect(sqliteIndexNames(store.indexPath)).toEqual(expect.arrayContaining(["idx_edges_project_order", "idx_operation_log_undo_redo"]));
+  });
+
   it("parses persisted command variants through the runtime command schema", () => {
     const taskSnapshot = {
       task: {

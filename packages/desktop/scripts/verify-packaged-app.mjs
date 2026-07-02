@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { mkdtemp, readdir } from "node:fs/promises";
+import { access, mkdtemp, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,9 +8,6 @@ import { listPackage } from "@electron/asar";
 
 const packageRoot = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
 const repoRoot = resolve(packageRoot, "../..");
-const appName = process.env.PLANWEAVE_PACKAGED_APP_PATH ?? (await resolvePackagedAppPath());
-const appAsarPath = resolve(appName, "Contents", "Resources", "app.asar");
-const executablePath = resolve(appName, "Contents", "MacOS", "PlanWeave");
 const requiredAsarEntries = [
   "/dist/main/main.js",
   "/dist/preload/preload.js",
@@ -20,21 +17,90 @@ const requiredAsarEntries = [
 ];
 const startupErrorPattern = /MODULE_NOT_FOUND|Cannot find module|Uncaught Exception/i;
 
-async function resolvePackagedAppPath() {
+async function pathExists(path) {
+  await access(path);
+  return path;
+}
+
+async function firstExisting(paths) {
+  for (const path of paths) {
+    try {
+      return await pathExists(path);
+    } catch {
+      // Try the next expected packaged output location.
+    }
+  }
+  return undefined;
+}
+
+async function resolvePackagedMacAppPath() {
   const releaseDir = resolve(packageRoot, "release");
   const entries = await readdir(releaseDir, { withFileTypes: true }).catch(() => []);
   const candidates = entries
     .filter((entry) => entry.isDirectory() && entry.name.startsWith("mac"))
     .map((entry) => resolve(releaseDir, entry.name, "PlanWeave.app"))
     .sort();
-  return candidates[0] ?? resolve(releaseDir, "mac-arm64", "PlanWeave.app");
+  return (await firstExisting(candidates)) ?? pathExists(resolve(releaseDir, "mac-arm64", "PlanWeave.app"));
+}
+
+async function resolvePackagedUnpackedDir(platform) {
+  const releaseDir = resolve(packageRoot, "release");
+  const entries = await readdir(releaseDir, { withFileTypes: true }).catch(() => []);
+  const candidates = entries
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith(platform) && entry.name.endsWith("-unpacked"))
+    .map((entry) => resolve(releaseDir, entry.name))
+    .sort();
+  return (await firstExisting(candidates)) ?? pathExists(resolve(releaseDir, `${platform}-unpacked`));
+}
+
+async function resolvePackagedApp() {
+  const platform = process.env.PLANWEAVE_PACKAGED_PLATFORM ?? process.platform;
+  if (process.env.PLANWEAVE_PACKAGED_APP_PATH) {
+    const appPath = resolve(process.env.PLANWEAVE_PACKAGED_APP_PATH);
+    if (platform === "darwin") {
+      return {
+        appAsarPath: resolve(appPath, "Contents", "Resources", "app.asar"),
+        executablePath: resolve(appPath, "Contents", "MacOS", "PlanWeave")
+      };
+    }
+    return {
+      appAsarPath: resolve(appPath, "resources", "app.asar"),
+      executablePath: resolve(appPath, platform === "win32" ? "PlanWeave.exe" : "PlanWeave")
+    };
+  }
+
+  if (platform === "darwin") {
+    const appPath = await resolvePackagedMacAppPath();
+    return {
+      appAsarPath: resolve(appPath, "Contents", "Resources", "app.asar"),
+      executablePath: resolve(appPath, "Contents", "MacOS", "PlanWeave")
+    };
+  }
+
+  if (platform === "linux") {
+    const appPath = await resolvePackagedUnpackedDir("linux");
+    return {
+      appAsarPath: resolve(appPath, "resources", "app.asar"),
+      executablePath: resolve(appPath, "PlanWeave")
+    };
+  }
+
+  if (platform === "win32") {
+    const appPath = await resolvePackagedUnpackedDir("win");
+    return {
+      appAsarPath: resolve(appPath, "resources", "app.asar"),
+      executablePath: resolve(appPath, "PlanWeave.exe")
+    };
+  }
+
+  throw new Error(`Unsupported packaged app platform: ${platform}`);
 }
 
 function hasEntry(entries, requiredEntry) {
   return entries.some((entry) => entry === requiredEntry || entry.startsWith(`${requiredEntry}/`));
 }
 
-async function verifyAsarContents() {
+async function verifyAsarContents(appAsarPath) {
   const entries = await listPackage(appAsarPath);
   const missing = requiredAsarEntries.filter((entry) => !hasEntry(entries, entry));
   if (missing.length > 0) {
@@ -42,7 +108,7 @@ async function verifyAsarContents() {
   }
 }
 
-async function smokeLaunch() {
+async function smokeLaunch(executablePath) {
   const smokeHome = await mkdtemp(join(tmpdir(), "planweave-packaged-smoke-home-"));
   const smokeUserData = await mkdtemp(join(tmpdir(), "planweave-packaged-smoke-user-data-"));
   const child = spawn(executablePath, [], {
@@ -59,8 +125,9 @@ async function smokeLaunch() {
   let output = "";
   await new Promise((resolve, reject) => {
     let settled = false;
+    let ready = false;
 
-    const finish = (code) => {
+    const finish = (code, reason = "exit") => {
       if (settled) {
         return;
       }
@@ -71,8 +138,16 @@ async function smokeLaunch() {
         reject(new Error(`Packaged app emitted a startup module error:\n${output}`));
         return;
       }
+      if (reason === "timeout") {
+        reject(new Error(`Packaged app did not report startup readiness before timeout:\n${output}`));
+        return;
+      }
       if (code !== null && code !== 0) {
         reject(new Error(`Packaged app exited with code ${code}:\n${output}`));
+        return;
+      }
+      if (!ready) {
+        reject(new Error(`Packaged app exited before reporting startup readiness:\n${output}`));
         return;
       }
       resolve();
@@ -83,6 +158,7 @@ async function smokeLaunch() {
       output += text;
       process.stdout.write(text);
       if (output.includes("PLANWEAVE_DESKTOP_STARTUP_SMOKE_READY")) {
+        ready = true;
         finish(0);
       }
     });
@@ -95,12 +171,20 @@ async function smokeLaunch() {
       }
     });
 
-    const timeout = setTimeout(() => finish(0), 15_000);
+    const timeout = setTimeout(() => finish(null, "timeout"), 15_000);
     child.on("exit", finish);
-    child.on("error", reject);
+    child.on("error", (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    });
   });
 }
 
-await verifyAsarContents();
-await smokeLaunch();
+const packagedApp = await resolvePackagedApp();
+await verifyAsarContents(packagedApp.appAsarPath);
+await smokeLaunch(packagedApp.executablePath);
 console.log("Packaged PlanWeave app smoke passed.");

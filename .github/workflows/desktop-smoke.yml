@@ -1,15 +1,7 @@
 name: Desktop Smoke
 
 on:
-  push:
-    paths:
-      - ".github/workflows/desktop-smoke.yml"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "packages/desktop/**"
-      - "packages/mcp/**"
-      - "packages/runtime/**"
-      - "scripts/sync-version-metadata.mjs"
+  workflow_dispatch:
   pull_request:
     paths:
       - ".github/workflows/desktop-smoke.yml"

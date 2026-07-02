@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import { createWriteStream, constants } from "node:fs";
 import type { WriteStream } from "node:fs";
-import { access, mkdir, open, readdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { optionalReaddir, optionalStat } from "../fs/optionalFile.js";
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import { writeJsonFile } from "../json.js";
 import { loadPackage } from "../package/loadPackage.js";
@@ -111,22 +112,13 @@ export function workspaceExecutionCwd(workspace: Pick<ProjectWorkspace, "rootPat
 }
 
 export async function pathExists(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.F_OK);
-    return true;
-  } catch {
-    return false;
-  }
+  return (await optionalStat(path)) !== null;
 }
 
 export async function nextRunId(runRoot: string): Promise<string> {
-  try {
-    const entries = await readdir(runRoot, { withFileTypes: true });
-    const count = entries.filter((entry) => entry.isDirectory() && /^RUN-\d+$/.test(entry.name)).length;
-    return `RUN-${String(count + 1).padStart(3, "0")}`;
-  } catch {
-    return "RUN-001";
-  }
+  const entries = await optionalReaddir(runRoot, { withFileTypes: true });
+  const count = entries?.filter((entry) => entry.isDirectory() && /^RUN-\d+$/.test(entry.name)).length ?? 0;
+  return `RUN-${String(count + 1).padStart(3, "0")}`;
 }
 
 export async function prepareBlockRun(options: {

@@ -1,6 +1,5 @@
-import { constants } from "node:fs";
-import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { optionalReadFile, optionalReaddir, optionalStat } from "../fs/optionalFile.js";
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import { readJsonFile } from "../json.js";
 import { loadPackage } from "../package/loadPackage.js";
@@ -15,28 +14,21 @@ import type {
 } from "./types.js";
 
 async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.R_OK);
-    return true;
-  } catch {
-    return false;
-  }
+  return (await optionalStat(path)) !== null;
 }
 
 async function readOptionalFile(path: string): Promise<string> {
-  return (await exists(path)) ? readFile(path, "utf8") : "";
+  return (await optionalReadFile(path, "utf8")) ?? "";
 }
 
 async function listDirectories(path: string): Promise<string[]> {
-  try {
-    const entries = await readdir(path, { withFileTypes: true });
-    return entries
-      .filter((entry) => entry.isDirectory())
+  const entries = await optionalReaddir(path, { withFileTypes: true });
+  return (
+    entries
+      ?.filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
-      .sort();
-  } catch {
-    return [];
-  }
+      .sort() ?? []
+  );
 }
 
 function blockRunRoot(resultsDir: string, blockRef: string): string {

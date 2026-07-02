@@ -1,6 +1,6 @@
-import { access, cp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { constants } from "node:fs";
+import { optionalStat } from "./fs/optionalFile.js";
 import { resolvePlanweaveHome } from "./paths.js";
 import { projectWorkspacePaths, resolveProjectWorkspace } from "./project.js";
 import { createManagedProjectId } from "./projectId.js";
@@ -33,12 +33,7 @@ export function initialManifest(projectName: string): PlanPackageManifest {
 }
 
 async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.F_OK);
-    return true;
-  } catch {
-    return false;
-  }
+  return (await optionalStat(path)) !== null;
 }
 
 async function initializeWorkspace(

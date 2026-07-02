@@ -1,6 +1,5 @@
-import { access } from "node:fs/promises";
-import { constants } from "node:fs";
 import { join } from "node:path";
+import { optionalStat } from "../fs/optionalFile.js";
 import { compileTaskGraph } from "../graph/compileTaskGraph.js";
 import { readJsonFile } from "../json.js";
 import { findOrphanResults } from "../package/orphans.js";
@@ -16,12 +15,7 @@ import type {
 import { readTaskIndex, updateTaskIndex } from "./resultIndex.js";
 
 async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.R_OK);
-    return true;
-  } catch {
-    return false;
-  }
+  return (await optionalStat(path)) !== null;
 }
 
 async function resultRunMatchesIndex(workspace: ProjectWorkspace, ref: string, taskId: string, runId: string): Promise<boolean> {

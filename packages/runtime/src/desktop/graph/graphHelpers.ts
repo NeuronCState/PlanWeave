@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { isNodeFileNotFoundError } from "../../fs/optionalFile.js";
 import { parseBlockRef } from "../../graph/compileTaskGraph.js";
 import type { BlockStatus, CompiledExecutionGraph, ManifestBlock, ManifestTaskNode, ValidationIssue } from "../../types.js";
 import type { DesktopTaskException } from "../types.js";
@@ -9,10 +10,6 @@ export type PromptFileReadResult = {
   diagnostic: ValidationIssue | null;
 };
 
-function fileReadCode(error: unknown): string | null {
-  return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string" ? error.code : null;
-}
-
 export async function readOptionalFile(path: string, packagePath: string): Promise<PromptFileReadResult> {
   try {
     return {
@@ -21,7 +18,7 @@ export async function readOptionalFile(path: string, packagePath: string): Promi
       diagnostic: null
     };
   } catch (error) {
-    const missing = fileReadCode(error) === "ENOENT";
+    const missing = isNodeFileNotFoundError(error);
     return {
       markdown: "",
       missing,

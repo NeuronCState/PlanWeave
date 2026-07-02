@@ -1,7 +1,6 @@
-import { access } from "node:fs/promises";
-import { constants } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { ZodError } from "zod";
+import { optionalStat } from "../fs/optionalFile.js";
 import { compilePackageGraph } from "../graph/compileTaskGraph.js";
 import { readJsonFile } from "../json.js";
 import { findOrphanState } from "../package/orphans.js";
@@ -15,15 +14,6 @@ export type ProjectDoctorCanvasDiagnostics = {
   warnings: ProjectDoctorIssue[];
   manifest: PlanPackageManifest | null;
 };
-
-async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.R_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function toPosixPath(path: string): string {
   return path.split("\\").join("/");
@@ -127,12 +117,34 @@ export async function validateCanvasPackageForDoctor(options: {
   const warnings: ProjectDoctorIssue[] = [];
   const { canvasId, workspace } = options;
 
-  if (!(await exists(workspace.workspaceRoot))) {
-    errors.push({ code: "workspace_missing", message: "PlanWeave workspace does not exist.", canvasId, path: ".", source: "canvas_package" });
+  try {
+    if (!(await optionalStat(workspace.workspaceRoot))) {
+      errors.push({ code: "workspace_missing", message: "PlanWeave workspace does not exist.", canvasId, path: ".", source: "canvas_package" });
+      return { errors, warnings, manifest: null };
+    }
+  } catch (error) {
+    errors.push({
+      code: "workspace_read_failed",
+      message: error instanceof Error ? error.message : String(error),
+      canvasId,
+      path: ".",
+      source: "canvas_package"
+    });
     return { errors, warnings, manifest: null };
   }
-  if (!(await exists(workspace.manifestFile))) {
-    errors.push({ code: "manifest_missing", message: "package/manifest.json does not exist.", canvasId, path: "package/manifest.json", source: "canvas_package" });
+  try {
+    if (!(await optionalStat(workspace.manifestFile))) {
+      errors.push({ code: "manifest_missing", message: "package/manifest.json does not exist.", canvasId, path: "package/manifest.json", source: "canvas_package" });
+      return { errors, warnings, manifest: null };
+    }
+  } catch (error) {
+    errors.push({
+      code: "manifest_read_failed",
+      message: error instanceof Error ? error.message : String(error),
+      canvasId,
+      path: "package/manifest.json",
+      source: "canvas_package"
+    });
     return { errors, warnings, manifest: null };
   }
 

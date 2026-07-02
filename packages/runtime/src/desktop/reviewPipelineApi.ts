@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { optionalReadFile } from "../fs/optionalFile.js";
 import { compileTaskGraph } from "../graph/compileTaskGraph.js";
 import { loadPackage } from "../package/loadPackage.js";
 import { executePlanGraphCommand, type PlanGraphCommandResult } from "../plangraph/index.js";
@@ -15,11 +15,7 @@ import type {
 import type { DesktopReviewPipeline, DesktopReviewPipelineStepInput, DesktopUpdateReviewPipelineInput } from "./types.js";
 
 async function readOptionalFile(path: string): Promise<string> {
-  try {
-    return await readFile(path, "utf8");
-  } catch {
-    return "";
-  }
+  return (await optionalReadFile(path, "utf8")) ?? "";
 }
 
 function reviewRef(taskId: string, blockId: string): string {

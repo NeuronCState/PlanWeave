@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { isNodeFileNotFoundError } from "./fs/optionalFile.js";
 import { readJsonFile, writeJsonFile } from "./json.js";
 import { resolveProjectWorkspace } from "./project.js";
 import type { PackageWorkspaceRef, ProjectWorkspace } from "./types.js";
@@ -37,17 +38,13 @@ function normalizeProjectPromptPolicy(raw: unknown): ProjectPromptPolicy {
   };
 }
 
-function fileErrorCode(error: unknown): string | null {
-  return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string" ? error.code : null;
-}
-
 export async function readProjectPromptPolicy(projectRoot: PackageWorkspaceRef): Promise<ProjectPromptPolicy> {
   const workspace = await resolvePolicyWorkspace(projectRoot);
   const path = projectPromptPolicyPath(workspace);
   try {
     return normalizeProjectPromptPolicy(await readJsonFile<unknown>(path));
   } catch (error) {
-    if (fileErrorCode(error) === "ENOENT") {
+    if (isNodeFileNotFoundError(error)) {
       return defaultProjectPromptPolicy;
     }
     throw error;
@@ -72,7 +69,7 @@ export async function readProjectPrompt(projectRoot: PackageWorkspaceRef): Promi
   try {
     return await readFile(workspace.projectPromptFile, "utf8");
   } catch (error) {
-    if (fileErrorCode(error) === "ENOENT") {
+    if (isNodeFileNotFoundError(error)) {
       return "";
     }
     throw error;

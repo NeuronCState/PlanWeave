@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readdir, readFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { optionalReaddir } from "../fs/optionalFile.js";
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { writeState } from "../state.js";
@@ -45,14 +46,9 @@ async function findPersistedRun(
   if (indexedRunId && (await runHasSubmittedResult(join(runRoot, indexedRunId), ref, indexedRunId, reportHash))) {
     return indexedRunId;
   }
-  let entries;
-  try {
-    entries = await readdir(runRoot, { withFileTypes: true });
-  } catch (error) {
-    if ((error as { code?: string }).code === "ENOENT") {
-      return null;
-    }
-    throw error;
+  const entries = await optionalReaddir(runRoot, { withFileTypes: true });
+  if (!entries) {
+    return null;
   }
   const runIds = entries
     .filter((entry) => entry.isDirectory() && /^RUN-\d+$/.test(entry.name))

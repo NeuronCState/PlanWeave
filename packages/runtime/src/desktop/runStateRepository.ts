@@ -1,5 +1,6 @@
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { isNodeFileNotFoundError } from "../fs/optionalFile.js";
 import { readJsonFile } from "../json.js";
 import { projectWorkspacePaths } from "../project.js";
 import type { ProjectWorkspace } from "../types.js";
@@ -290,10 +291,13 @@ export async function readPersistedAutoRunState(workspace: ProjectWorkspace, run
   try {
     raw = await readJsonFile<unknown>(statePath);
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+    if (isNodeFileNotFoundError(error)) {
       return null;
     }
-    return null;
+    if (error instanceof SyntaxError) {
+      return null;
+    }
+    throw error;
   }
   const state = normalizePersistedAutoRunState(raw, { statePath, eventLogPath });
   return state ? recoverPersistedAutoRunState(state, options.hasActiveLoop ?? false) : null;

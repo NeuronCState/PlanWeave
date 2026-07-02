@@ -1,7 +1,6 @@
-import { constants } from "node:fs";
-import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createExecutorAdapter } from "../autoRun/executors.js";
+import { optionalReadFile, optionalReaddir, optionalStat } from "../fs/optionalFile.js";
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import { readJsonFile } from "../json.js";
 import { loadPackage } from "../package/loadPackage.js";
@@ -31,19 +30,11 @@ type BlockedStep = { kind: "blocked"; claim: ClaimResult };
 type AutoRunExplanationFacts = Omit<AutoRunExplanation, "nextAction"> & { nextClaimableRefs?: string[] };
 
 async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.R_OK);
-    return true;
-  } catch {
-    return false;
-  }
+  return (await optionalStat(path)) !== null;
 }
 
 async function readSummary(path: string): Promise<string> {
-  if (!(await exists(path))) {
-    return "";
-  }
-  return (await readFile(path, "utf8")).trim().slice(0, 400);
+  return ((await optionalReadFile(path, "utf8")) ?? "").trim().slice(0, 400);
 }
 
 function errorMessage(error: unknown): string {
@@ -226,18 +217,14 @@ function autoRunStatusPhase(options: {
 }
 
 async function latestRunId(runRoot: string): Promise<string | null> {
-  try {
-    const entries = await readdir(runRoot, { withFileTypes: true });
-    return (
-      entries
-        .filter((entry) => entry.isDirectory() && /^RUN-\d+$/.test(entry.name))
-        .map((entry) => entry.name)
-        .sort()
-        .at(-1) ?? null
-    );
-  } catch {
-    return null;
-  }
+  const entries = await optionalReaddir(runRoot, { withFileTypes: true });
+  return (
+    entries
+      ?.filter((entry) => entry.isDirectory() && /^RUN-\d+$/.test(entry.name))
+      .map((entry) => entry.name)
+      .sort()
+      .at(-1) ?? null
+  );
 }
 
 function stringField(value: unknown): string | null {

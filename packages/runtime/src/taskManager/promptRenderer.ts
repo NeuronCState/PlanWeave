@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { isNodeFileNotFoundError } from "../fs/optionalFile.js";
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import { resolvePackagePath } from "../package/resolvePackagePath.js";
 import { resolvePlanweaveHome } from "../paths.js";
@@ -34,10 +35,6 @@ function renderNodeList(title: string, lines: string[]): string {
   return [`## ${title}`, "", lines.length > 0 ? lines.map((line) => `- ${line}`).join("\n") : "- None."].join("\n");
 }
 
-function fileErrorCode(error: unknown): string | null {
-  return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string" ? error.code : null;
-}
-
 async function readPromptFile(path: string, options: { allowMissing: boolean }): Promise<{ markdown: string; missing: boolean }> {
   try {
     return {
@@ -45,7 +42,7 @@ async function readPromptFile(path: string, options: { allowMissing: boolean }):
       missing: false
     };
   } catch (error) {
-    if (options.allowMissing && fileErrorCode(error) === "ENOENT") {
+    if (options.allowMissing && isNodeFileNotFoundError(error)) {
       return {
         markdown: "",
         missing: true
@@ -82,8 +79,11 @@ async function latestReportSnippet(path: string): Promise<string> {
   try {
     const content = await readFile(path, "utf8");
     return content.trim().slice(0, 400) || "(empty)";
-  } catch {
-    return "(unavailable)";
+  } catch (error) {
+    if (isNodeFileNotFoundError(error)) {
+      return "(unavailable)";
+    }
+    throw error;
   }
 }
 

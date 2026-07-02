@@ -1,20 +1,16 @@
-import { mkdir, readdir } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { optionalReaddir, optionalStat } from "../fs/optionalFile.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import type { ProjectWorkspace, TaskResultIndex, ValidationIssue } from "../types.js";
-import { exists } from "./runtimeContext.js";
 
 export function nextId(prefix: string, count: number): string {
   return `${prefix}-${String(count + 1).padStart(3, "0")}`;
 }
 
 export async function listDirCount(path: string): Promise<number> {
-  try {
-    const entries = await readdir(path, { withFileTypes: true });
-    return entries.filter((entry) => entry.isDirectory()).length;
-  } catch {
-    return 0;
-  }
+  const entries = await optionalReaddir(path, { withFileTypes: true });
+  return entries?.filter((entry) => entry.isDirectory()).length ?? 0;
 }
 
 function taskIndexPath(workspace: ProjectWorkspace, taskId: string): string {
@@ -23,7 +19,7 @@ function taskIndexPath(workspace: ProjectWorkspace, taskId: string): string {
 
 export async function readTaskIndex(workspace: ProjectWorkspace, taskId: string): Promise<TaskResultIndex> {
   const path = taskIndexPath(workspace, taskId);
-  return (await exists(path)) ? readJsonFile<TaskResultIndex>(path) : {};
+  return (await optionalStat(path)) ? readJsonFile<TaskResultIndex>(path) : {};
 }
 
 async function writeTaskIndex(workspace: ProjectWorkspace, taskId: string, index: TaskResultIndex): Promise<void> {

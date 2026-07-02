@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { mkdir, readdir } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
+import { isNodeFileNotFoundError, optionalReaddir } from "../fs/optionalFile.js";
 import { parseBlockRef } from "../graph/compileTaskGraph.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { writeState } from "../state.js";
@@ -39,6 +40,10 @@ type PersistedReviewAttempt = {
   reviewedWorkRevision: string | null;
   sourceResultPath: string | null;
 };
+
+function isNonMissingNodeFileError(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && !isNodeFileNotFoundError(error));
+}
 
 async function recordReviewAttemptIndexes(options: {
   workspace: ProjectWorkspace;
@@ -117,7 +122,10 @@ async function readMatchingReviewAttempt(options: {
       reviewedWorkRevision: typeof metadata.reviewedWorkRevision === "string" ? metadata.reviewedWorkRevision : null,
       sourceResultPath: typeof metadata.sourceResultPath === "string" ? metadata.sourceResultPath : null
     };
-  } catch {
+  } catch (error) {
+    if (isNonMissingNodeFileError(error)) {
+      throw error;
+    }
     return null;
   }
 }
@@ -129,14 +137,9 @@ async function findPersistedReviewAttempt(options: {
 }): Promise<PersistedReviewAttempt | null> {
   const { taskId, blockId } = parseBlockRef(options.reviewBlockRef);
   const attemptRoot = join(options.workspace.resultsDir, taskId, "reviews", blockId, "attempts");
-  let entries;
-  try {
-    entries = await readdir(attemptRoot, { withFileTypes: true });
-  } catch (error) {
-    if ((error as { code?: string }).code === "ENOENT") {
-      return null;
-    }
-    throw error;
+  const entries = await optionalReaddir(attemptRoot, { withFileTypes: true });
+  if (!entries) {
+    return null;
   }
   const attemptIds = entries
     .filter((entry) => entry.isDirectory() && /^REV-\d+$/.test(entry.name))
@@ -186,14 +189,9 @@ async function findFeedbackForReviewAttempt(options: {
   attemptId: string;
 }): Promise<FeedbackArtifact | null> {
   const feedbackRoot = join(options.workspace.resultsDir, options.taskId, "feedback");
-  let entries;
-  try {
-    entries = await readdir(feedbackRoot, { withFileTypes: true });
-  } catch (error) {
-    if ((error as { code?: string }).code === "ENOENT") {
-      return null;
-    }
-    throw error;
+  const entries = await optionalReaddir(feedbackRoot, { withFileTypes: true });
+  if (!entries) {
+    return null;
   }
   const feedbackIds = entries
     .filter((entry) => entry.isDirectory() && /^FE-\d+$/.test(entry.name))
@@ -209,7 +207,10 @@ async function findFeedbackForReviewAttempt(options: {
       ) {
         return artifact;
       }
-    } catch {
+    } catch (error) {
+      if (isNonMissingNodeFileError(error)) {
+        throw error;
+      }
       continue;
     }
   }
@@ -229,7 +230,7 @@ async function reviewCompletionReasonForAttempt(options: {
     }
     return index.reviewCompletionReasonByBlock?.[options.reviewBlockRef] ?? null;
   } catch (error) {
-    if ((error as { code?: string }).code === "ENOENT") {
+    if (isNodeFileNotFoundError(error)) {
       return null;
     }
     throw error;

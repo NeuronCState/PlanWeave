@@ -1,6 +1,6 @@
-import { constants } from "node:fs";
-import { access, appendFile, mkdir, readdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { optionalReaddir } from "../fs/optionalFile.js";
 import { resolvePackageWorkspace } from "../package/loadPackage.js";
 import { commandCanvasIdForWorkspace } from "../taskManager/canvasCommandScope.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
@@ -45,15 +45,6 @@ function sessionEventsPath(workspace: ProjectWorkspace, sessionId: string): stri
   return join(sessionRoot(workspace, sessionId), "events.ndjson");
 }
 
-async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.R_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function resolveSessionWorkspace(projectRoot: PackageWorkspaceRef): Promise<ProjectWorkspace> {
   return resolvePackageWorkspace(projectRoot);
 }
@@ -64,11 +55,8 @@ async function canvasIdForWorkspace(workspace: ProjectWorkspace): Promise<string
 
 async function listExistingSessionIds(workspace: ProjectWorkspace): Promise<string[]> {
   const root = runSessionsRoot(workspace);
-  if (!(await exists(root))) {
-    return [];
-  }
-  const entries = await readdir(root, { withFileTypes: true });
-  return entries.filter((entry) => entry.isDirectory() && sessionIdPattern.test(entry.name)).map((entry) => entry.name);
+  const entries = await optionalReaddir(root, { withFileTypes: true });
+  return entries?.filter((entry) => entry.isDirectory() && sessionIdPattern.test(entry.name)).map((entry) => entry.name) ?? [];
 }
 
 function nextSessionId(existing: string[]): string {

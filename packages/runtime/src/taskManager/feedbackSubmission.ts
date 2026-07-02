@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readdir, readFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { isNodeFileNotFoundError, optionalReaddir } from "../fs/optionalFile.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { writeState } from "../state.js";
 import type { ExecutionGraphSession, PackageWorkspaceRef, ProjectWorkspace, SubmitFeedbackResult } from "../types.js";
@@ -10,6 +11,10 @@ import { incrementTaskIndexCount, listDirCount, nextId, updateTaskIndex } from "
 
 function withCurrentRef(currentRefs: string[], ref: string): string[] {
   return currentRefs.includes(ref) ? currentRefs : [...currentRefs, ref];
+}
+
+function isNonMissingNodeFileError(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && !isNodeFileNotFoundError(error));
 }
 
 async function fileHash(path: string): Promise<string> {
@@ -33,7 +38,10 @@ async function feedbackSubmissionMatches(options: {
       return false;
     }
     return (await fileHash(join(options.submissionDir, "report.md"))) === options.reportHash;
-  } catch {
+  } catch (error) {
+    if (isNonMissingNodeFileError(error)) {
+      throw error;
+    }
     return false;
   }
 }
@@ -44,14 +52,9 @@ async function findPersistedFeedbackSubmission(options: {
   sourceReviewBlockRef: string;
   reportHash: string;
 }): Promise<string | null> {
-  let entries;
-  try {
-    entries = await readdir(options.submissionRoot, { withFileTypes: true });
-  } catch (error) {
-    if ((error as { code?: string }).code === "ENOENT") {
-      return null;
-    }
-    throw error;
+  const entries = await optionalReaddir(options.submissionRoot, { withFileTypes: true });
+  if (!entries) {
+    return null;
   }
   const submissionIds = entries
     .filter((entry) => entry.isDirectory() && /^FS-\d+$/.test(entry.name))

@@ -229,6 +229,17 @@ export async function renderPromptSurface(options: {
           "```"
         ].join("\n")
       : "";
+  const implementationReportGuidance =
+    block.type === "implementation"
+      ? [
+          "## Suggested Implementation Report Format",
+          "",
+          "- Summary: what changed and why.",
+          "- Changed files: notable files touched and the purpose of each change.",
+          "- Verification: commands, checks, or manual validation performed, including the result.",
+          "- Notes / risks: unverified items, limitations, or follow-up work."
+        ].join("\n")
+      : "";
   const includeSubmissionInstructions = options.includeSubmissionInstructions ?? true;
   const canvasFlag = await canvasCommandFlagForWorkspace(workspace);
   const submitInstruction =
@@ -262,6 +273,7 @@ export async function renderPromptSurface(options: {
     renderNodeList("Latest Implementation / Feedback Summary", latestImplementationReports),
     focusedReviewLines.length > 0 ? renderNodeList("Focused Re-review Context", focusedReviewLines) : "",
     reviewSchema,
+    implementationReportGuidance,
     includeSubmissionInstructions ? "## Submission Instructions" : "",
     includeSubmissionInstructions ? submitInstruction : ""
   ];

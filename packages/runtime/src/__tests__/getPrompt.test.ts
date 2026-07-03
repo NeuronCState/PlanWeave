@@ -20,6 +20,8 @@ describe("renderPrompt", () => {
     expect(prompt).toContain("Project policy");
     expect(prompt).toContain("# T-001 task prompt");
     expect(prompt).toContain("# T-001#B-001 implementation prompt");
+    expect(prompt).toContain("Suggested Implementation Report Format");
+    expect(prompt).toContain("Verification: commands, checks, or manual validation performed, including the result.");
     expect(prompt).toContain("planweave submit-result --canvas default T-001#B-001 --report");
   });
 
@@ -30,6 +32,7 @@ describe("renderPrompt", () => {
 
     expect(prompt).toContain("Required Review Result JSON");
     expect(prompt).toContain('"reviewBlockRef": "T-001#R-001"');
+    expect(prompt).not.toContain("Suggested Implementation Report Format");
     expect(prompt).toContain("planweave submit-review --canvas default T-001#R-001 --result");
   });
 

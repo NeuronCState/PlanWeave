@@ -186,6 +186,7 @@ describe("desktop renderer interface interactions", () => {
         graph={graph}
         handleDeleteProject={vi.fn().mockResolvedValue(undefined)}
         handleDeleteTaskCanvas={vi.fn().mockResolvedValue(undefined)}
+        handleDuplicateTaskCanvas={vi.fn().mockResolvedValue(undefined)}
         handleDeleteTaskNode={vi.fn().mockResolvedValue(undefined)}
         handleOpenProject={vi.fn().mockResolvedValue(undefined)}
         handleProjectNewGraph={vi.fn().mockResolvedValue(undefined)}
@@ -241,6 +242,7 @@ describe("desktop renderer interface interactions", () => {
         graph={graph}
         handleDeleteProject={vi.fn().mockResolvedValue(undefined)}
         handleDeleteTaskCanvas={vi.fn().mockResolvedValue(undefined)}
+        handleDuplicateTaskCanvas={vi.fn().mockResolvedValue(undefined)}
         handleDeleteTaskNode={vi.fn().mockResolvedValue(undefined)}
         handleOpenProject={vi.fn().mockResolvedValue(undefined)}
         handleProjectNewGraph={vi.fn().mockResolvedValue(undefined)}
@@ -291,6 +293,7 @@ describe("desktop renderer interface interactions", () => {
         handleCopyCanvasAgentPrompt={handleCopyCanvasAgentPrompt}
         handleDeleteProject={vi.fn().mockResolvedValue(undefined)}
         handleDeleteTaskCanvas={vi.fn().mockResolvedValue(undefined)}
+        handleDuplicateTaskCanvas={vi.fn().mockResolvedValue(undefined)}
         handleDeleteTaskNode={vi.fn().mockResolvedValue(undefined)}
         handleOpenProject={vi.fn().mockResolvedValue(undefined)}
         handleProjectNewGraph={vi.fn().mockResolvedValue(undefined)}
@@ -318,6 +321,51 @@ describe("desktop renderer interface interactions", () => {
     expect(handleCopyCanvasAgentPrompt).toHaveBeenCalledWith(project, "canvas-main");
   });
 
+  it("duplicates a task canvas from the context menu", async () => {
+    class ResizeObserverMock {
+      disconnect = vi.fn();
+      observe = vi.fn();
+      unobserve = vi.fn();
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    const handleDuplicateTaskCanvas = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <ProjectSidebar
+        activeView="graph"
+        collapsed={false}
+        expandedProjectId={project.projectId}
+        graph={graph}
+        handleDeleteProject={vi.fn().mockResolvedValue(undefined)}
+        handleDeleteTaskCanvas={vi.fn().mockResolvedValue(undefined)}
+        handleDuplicateTaskCanvas={handleDuplicateTaskCanvas}
+        handleDeleteTaskNode={vi.fn().mockResolvedValue(undefined)}
+        handleOpenProject={vi.fn().mockResolvedValue(undefined)}
+        handleProjectNewGraph={vi.fn().mockResolvedValue(undefined)}
+        handleRenameTaskCanvas={vi.fn().mockResolvedValue(undefined)}
+        handleRevealProject={vi.fn().mockResolvedValue(undefined)}
+        handleTaskPanelSelect={vi.fn()}
+        loadProject={vi.fn().mockResolvedValue(undefined)}
+        notificationItems={[]}
+        onToggleSidebar={vi.fn()}
+        onTogglePinnedProject={vi.fn()}
+        pinnedProjectIds={new Set()}
+        projects={[project]}
+        resetLayout={vi.fn().mockResolvedValue(undefined)}
+        selectedProject={project}
+        selectedCanvasId="canvas-main"
+        selectedTaskPanelId={null}
+        setActiveView={vi.fn()}
+        t={t}
+      />
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Main canvas\s*2/ }));
+    await userEvent.click(await screen.findByText("Duplicate task canvas"));
+
+    expect(handleDuplicateTaskCanvas).toHaveBeenCalledWith(project, "canvas-main");
+  });
+
   it("keeps the selected canvas collapse control available while a task is selected", async () => {
     class ResizeObserverMock {
       disconnect = vi.fn();
@@ -334,6 +382,7 @@ describe("desktop renderer interface interactions", () => {
         graph={graph}
         handleDeleteProject={vi.fn().mockResolvedValue(undefined)}
         handleDeleteTaskCanvas={vi.fn().mockResolvedValue(undefined)}
+        handleDuplicateTaskCanvas={vi.fn().mockResolvedValue(undefined)}
         handleDeleteTaskNode={vi.fn().mockResolvedValue(undefined)}
         handleOpenProject={vi.fn().mockResolvedValue(undefined)}
         handleProjectNewGraph={vi.fn().mockResolvedValue(undefined)}
@@ -537,6 +586,7 @@ describe("desktop renderer interface interactions", () => {
         graph={graph}
         handleDeleteProject={vi.fn().mockResolvedValue(undefined)}
         handleDeleteTaskCanvas={vi.fn().mockResolvedValue(undefined)}
+        handleDuplicateTaskCanvas={vi.fn().mockResolvedValue(undefined)}
         handleDeleteTaskNode={vi.fn().mockResolvedValue(undefined)}
         handleOpenProject={vi.fn().mockResolvedValue(undefined)}
         handleProjectNewGraph={vi.fn().mockResolvedValue(undefined)}
@@ -603,6 +653,7 @@ describe("desktop renderer interface interactions", () => {
         graph={null}
         handleDeleteProject={vi.fn().mockResolvedValue(undefined)}
         handleDeleteTaskCanvas={vi.fn().mockResolvedValue(undefined)}
+        handleDuplicateTaskCanvas={vi.fn().mockResolvedValue(undefined)}
         handleDeleteTaskNode={vi.fn().mockResolvedValue(undefined)}
         handleOpenProject={vi.fn().mockResolvedValue(undefined)}
         handleProjectNewGraph={vi.fn().mockResolvedValue(undefined)}

@@ -47,6 +47,7 @@ export function useDesktopProject({
 }: UseDesktopProjectArgs) {
   const [projects, setProjects] = useState<DesktopProjectSummary[]>([]);
   const [projectLoading, setProjectLoading] = useState(Boolean(bridge));
+  const [projectRefreshing, setProjectRefreshing] = useState(false);
   const [selectedProject, setSelectedProject] = useState<DesktopProjectSummary | null>(null);
   const [selectedCanvasId, setSelectedCanvasId] = useState<string | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
@@ -252,6 +253,55 @@ export function useDesktopProject({
     [selectedProject?.rootPath]
   );
 
+  const refreshProjects = useCallback(async () => {
+    if (!bridge) {
+      return;
+    }
+    setProjectRefreshing(true);
+    try {
+      const nextProjects = await bridge.listProjects();
+      setProjects(nextProjects);
+      const currentProject =
+        nextProjects.find((item) => item.projectId === selectedProject?.projectId) ??
+        nextProjects.find((item) => item.rootPath === selectedProject?.rootPath) ??
+        null;
+      if (currentProject) {
+        setSelectedProject(currentProject);
+        setSelectedCanvasId((currentCanvasId) =>
+          currentCanvasId && currentProject.taskCanvases.some((canvas) => canvas.canvasId === currentCanvasId)
+            ? currentCanvasId
+            : resolveProjectCanvasId(currentProject)
+        );
+        setExpandedProjectId((currentExpandedProjectId) =>
+          currentExpandedProjectId === selectedProject?.projectId ? currentProject.projectId : currentExpandedProjectId
+        );
+        setError(null);
+        return;
+      }
+      const nextProject = nextProjects[0] ?? null;
+      if (nextProject) {
+        await loadProject(nextProject);
+        return;
+      }
+      setSelectedProject(null);
+      setSelectedCanvasId(null);
+      setExpandedProjectId(null);
+      setGraph(null);
+      setLayout(null);
+      setTodoGroups(null);
+      setExecutionPlan(null);
+      setStatistics(null);
+      setProjectDiagnostics([]);
+      setProjectPromptMarkdown(null);
+      setProjectPromptPolicy(null);
+      setError(null);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setProjectRefreshing(false);
+    }
+  }, [loadProject, selectedProject?.projectId, selectedProject?.rootPath, setError]);
+
   const handleOpenProject = useCallback(async () => {
     if (!bridge) {
       setError(t("openProjectBridgeUnavailable"));
@@ -313,6 +363,8 @@ export function useDesktopProject({
     projectDiagnostics,
     projectPromptMarkdown,
     projectPromptPolicy,
+    projectRefreshing,
+    refreshProjects,
     refreshProjectSummary,
     refreshGraph,
     refreshGraphAndLayout,

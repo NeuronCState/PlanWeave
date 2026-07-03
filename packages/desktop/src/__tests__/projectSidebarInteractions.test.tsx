@@ -85,9 +85,11 @@ describe("desktop renderer component interactions", () => {
         graph={graph}
         handleDeleteProject={vi.fn().mockResolvedValue(undefined)}
         handleDeleteTaskCanvas={vi.fn().mockResolvedValue(undefined)}
+        handleDuplicateTaskCanvas={vi.fn().mockResolvedValue(undefined)}
         handleDeleteTaskNode={vi.fn().mockResolvedValue(undefined)}
         handleOpenProject={vi.fn().mockResolvedValue(undefined)}
         handleProjectNewGraph={vi.fn().mockResolvedValue(undefined)}
+        handleRefreshProjects={vi.fn().mockResolvedValue(undefined)}
         handleRenameTaskCanvas={vi.fn().mockResolvedValue(undefined)}
         handleRevealProject={vi.fn().mockResolvedValue(undefined)}
         handleTaskPanelSelect={vi.fn()}
@@ -96,6 +98,7 @@ describe("desktop renderer component interactions", () => {
         onToggleSidebar={vi.fn()}
         onTogglePinnedProject={vi.fn()}
         pinnedProjectIds={new Set()}
+        projectRefreshing={false}
         projects={[project]}
         resetLayout={vi.fn().mockResolvedValue(undefined)}
         selectedProject={project}
@@ -118,6 +121,62 @@ describe("desktop renderer component interactions", () => {
     expect(screen.getByRole("button", { name: "展开项目" })).toBeVisible();
     expect(screen.queryByRole("button", { name: /frontend-example\s*2/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /新\s*T-TASK/ })).not.toBeInTheDocument();
+  });
+
+  it("routes project refresh from the sidebar header", async () => {
+    const project: DesktopProjectSummary = {
+      projectId: "P-REFRESH",
+      name: "refresh-example",
+      rootPath: "/tmp/refresh-example",
+      workspaceRoot: "/tmp/refresh-example",
+      activeCanvasId: "default",
+      taskCanvases: [
+        {
+          canvasId: "default",
+          name: "refresh-example",
+          taskCount: 0,
+          createdAt: "2026-05-22T00:00:00.000Z",
+          updatedAt: "2026-05-22T00:00:00.000Z"
+        }
+      ]
+    };
+    const handleRefreshProjects = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <ProjectSidebar
+        activeView="graph"
+        collapsed={false}
+        expandedProjectId={project.projectId}
+        graph={null}
+        handleDeleteProject={vi.fn().mockResolvedValue(undefined)}
+        handleDeleteTaskCanvas={vi.fn().mockResolvedValue(undefined)}
+        handleDuplicateTaskCanvas={vi.fn().mockResolvedValue(undefined)}
+        handleDeleteTaskNode={vi.fn().mockResolvedValue(undefined)}
+        handleOpenProject={vi.fn().mockResolvedValue(undefined)}
+        handleProjectNewGraph={vi.fn().mockResolvedValue(undefined)}
+        handleRefreshProjects={handleRefreshProjects}
+        handleRenameTaskCanvas={vi.fn().mockResolvedValue(undefined)}
+        handleRevealProject={vi.fn().mockResolvedValue(undefined)}
+        handleTaskPanelSelect={vi.fn()}
+        loadProject={vi.fn().mockResolvedValue(undefined)}
+        notificationItems={[]}
+        onToggleSidebar={vi.fn()}
+        onTogglePinnedProject={vi.fn()}
+        pinnedProjectIds={new Set()}
+        projectRefreshing={false}
+        projects={[project]}
+        resetLayout={vi.fn().mockResolvedValue(undefined)}
+        selectedProject={project}
+        selectedCanvasId="default"
+        selectedTaskPanelId={null}
+        setActiveView={vi.fn()}
+        t={createTranslator("zh-CN")}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "刷新项目" }));
+
+    expect(handleRefreshProjects).toHaveBeenCalledTimes(1);
   });
 
   it("orders pinned projects before unpinned projects without changing unpinned order", () => {

@@ -29,6 +29,7 @@ type ProjectTreeItemProps = {
   handleDeleteProject: (project: DesktopProjectSummary) => Promise<void>;
   handleDeleteTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
   handleDeleteTaskNode: (taskId: string) => Promise<void>;
+  handleDuplicateTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
   handleCopyCanvasAgentPrompt?: (project: DesktopProjectSummary, canvasId: string) => void;
   handleDropSourceRoot: (project: DesktopProjectSummary, sourceRoot: string | null) => Promise<void>;
   handleProjectNewGraph: (project: DesktopProjectSummary) => Promise<void>;
@@ -59,6 +60,7 @@ export function ProjectTreeItem({
   handleDeleteProject,
   handleDeleteTaskCanvas,
   handleDeleteTaskNode,
+  handleDuplicateTaskCanvas,
   handleCopyCanvasAgentPrompt,
   handleDropSourceRoot,
   handleProjectNewGraph,
@@ -202,6 +204,7 @@ export function ProjectTreeItem({
                 graph={graph}
                 handleDeleteTaskCanvas={handleDeleteTaskCanvas}
                 handleDeleteTaskNode={handleDeleteTaskNode}
+                handleDuplicateTaskCanvas={handleDuplicateTaskCanvas}
                 handleCopyCanvasAgentPrompt={handleCopyCanvasAgentPrompt}
                 handleProjectNewGraph={handleProjectNewGraph}
                 handleRenameTaskCanvas={handleRenameTaskCanvas}

@@ -105,6 +105,8 @@ export function App() {
     projectDiagnostics,
     projectPromptMarkdown,
     projectPromptPolicy,
+    projectRefreshing,
+    refreshProjects,
     refreshProjectSummary,
     refreshGraph,
     refreshProjectDerivedState,
@@ -156,10 +158,12 @@ export function App() {
   });
 
   const {
+    autoRunDiagnostics,
     autoRunState,
     clearTaskPanelSelection,
     createTaskCanvas: createTaskCanvasInSession,
     deleteTaskCanvas: deleteTaskCanvasInSession,
+    duplicateTaskCanvas: duplicateTaskCanvasInSession,
     openBlockInspector: handleOpenBlockInspector,
     openProject: openProjectInSession,
     openTaskInspector: handleOpenTaskInspector,
@@ -273,8 +277,8 @@ export function App() {
     setError
   });
   const visibleProjectDiagnostics = useMemo(
-    () => uniqueDesktopDiagnostics([...projectDiagnostics, ...searchDiagnostics]),
-    [projectDiagnostics, searchDiagnostics]
+    () => uniqueDesktopDiagnostics([...projectDiagnostics, ...searchDiagnostics, ...autoRunDiagnostics]),
+    [autoRunDiagnostics, projectDiagnostics, searchDiagnostics]
   );
 
   const {
@@ -316,6 +320,7 @@ export function App() {
     handleBindSourceRoot,
     handleDeleteProject,
     handleDeleteTaskCanvas,
+    handleDuplicateTaskCanvas,
     handleDropSourceRoot,
     handleProjectNewGraph,
     handleRevealPathInFinder,
@@ -327,6 +332,7 @@ export function App() {
   } = useDesktopProjectActions({
     createTaskCanvas: createTaskCanvasInSession,
     deleteTaskCanvas: deleteTaskCanvasInSession,
+    duplicateTaskCanvas: duplicateTaskCanvasInSession,
     renameTaskCanvas: renameTaskCanvasInSession,
     refreshProjectSummary,
     removeProject,
@@ -624,9 +630,11 @@ export function App() {
           handleBindSourceRoot={handleBindSourceRoot}
           handleOpenProject={handleOpenProject}
           handleProjectNewGraph={handleProjectNewGraph}
+          handleRefreshProjects={refreshProjects}
           handleCopyCanvasAgentPrompt={handleCopyCanvasAgentPrompt}
           handleDeleteProject={handleDeleteProject}
           handleDeleteTaskCanvas={handleDeleteTaskCanvas}
+          handleDuplicateTaskCanvas={handleDuplicateTaskCanvas}
           handleDeleteTaskNode={handleDeleteTaskNode}
           handleDropSourceRoot={handleDropSourceRoot}
           handleRevealPlanWorkspace={handleRevealPlanWorkspace}
@@ -641,6 +649,7 @@ export function App() {
           onToggleSidebar={() => setLeftSidebarCollapsedPreference((current) => !current)}
           onTogglePinnedProject={handleTogglePinnedProject}
           pinnedProjectIds={pinnedProjectIds}
+          projectRefreshing={projectRefreshing}
           projects={orderedProjects}
           resetLayout={resetLayout}
           selectedProject={selectedProject}

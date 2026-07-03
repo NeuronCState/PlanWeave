@@ -4,7 +4,6 @@ import { MoveIcon, RotateCcwIcon, SquareIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
-import { isDesktopPerformanceDiagnostic } from "../diagnostics";
 import { useExecutorPreflight } from "../hooks/useExecutorPreflight";
 import type { createTranslator } from "../i18n";
 import type { AutoRunNextActionDescriptor } from "./autoRunNextActions";
@@ -121,7 +120,6 @@ export function FloatingAutoRunControl({
   });
   const fileSyncDirtyRefs = uniqueStrings(dirtyPromptRefs);
   const fileSyncAffectedTasks = uniqueStrings(affectedTasks);
-  const performanceDiagnostics = projectDiagnostics.filter(isDesktopPerformanceDiagnostic);
   const fileSyncDirtyCount = Math.max(dirtyPromptCount, fileSyncDirtyRefs.length);
   const fileSyncIssueCount = fileSyncDirtyCount + fileSyncAffectedTasks.length + diagnostics.length;
   const currentFileSyncChangeKey = fileSyncIssueCount > 0
@@ -169,7 +167,7 @@ export function FloatingAutoRunControl({
         watcherChangedPathCount={watcherChangedPathCount}
         watcherRefreshElapsedMs={watcherRefreshElapsedMs}
       />
-      <DesktopDiagnosticsPopover diagnostics={performanceDiagnostics} disabled={!hasProject} t={t} />
+      <DesktopDiagnosticsPopover diagnostics={projectDiagnostics} disabled={!hasProject} t={t} />
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <span>

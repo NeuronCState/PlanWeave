@@ -3,6 +3,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ClipboardIcon,
+  CopyIcon,
   PencilIcon,
   SquarePenIcon,
   Trash2Icon,
@@ -30,6 +31,7 @@ type CanvasTreeItemProps = {
   graph: DesktopGraphViewModel | null;
   handleDeleteTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
   handleDeleteTaskNode: (taskId: string) => Promise<void>;
+  handleDuplicateTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
   handleCopyCanvasAgentPrompt?: (project: DesktopProjectSummary, canvasId: string) => void;
   handleProjectNewGraph: (project: DesktopProjectSummary) => Promise<void>;
   handleRenameTaskCanvas: (project: DesktopProjectSummary, canvasId: string, name: string) => Promise<void>;
@@ -48,6 +50,7 @@ export function CanvasTreeItem({
   graph,
   handleDeleteTaskCanvas,
   handleDeleteTaskNode,
+  handleDuplicateTaskCanvas,
   handleCopyCanvasAgentPrompt,
   handleProjectNewGraph,
   handleRenameTaskCanvas,
@@ -168,6 +171,10 @@ export function CanvasTreeItem({
                   {t("copyAgentPrompt")}
                 </ContextMenuItem>
               ) : null}
+              <ContextMenuItem onSelect={() => void handleDuplicateTaskCanvas(project, canvas.canvasId)}>
+                <CopyIcon data-icon="inline-start" />
+                {t("duplicateTaskCanvas")}
+              </ContextMenuItem>
               <ContextMenuItem onSelect={startRename}>
                 <PencilIcon data-icon="inline-start" />
                 {t("renameTaskCanvas")}

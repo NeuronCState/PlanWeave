@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { DesktopAutoRunState, DesktopBlockDetail, DesktopProjectSummary, DesktopRunRecord } from "@planweave-ai/runtime";
+import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
+import type { DesktopAutoRunState, DesktopBlockDetail, DesktopProjectSummary, DesktopRunRecord, ValidationIssue } from "@planweave-ai/runtime";
 import { bridge, desktopCanvasReference } from "../bridge";
 import type { Language } from "../i18n";
 import type { AppView } from "../types";
@@ -19,6 +19,10 @@ type UseDesktopProjectSessionArgs = {
   setSelectedRunRecord: (record: DesktopRunRecord | null) => void;
 };
 
+function clearDiagnostics(current: ValidationIssue[]) {
+  return current.length === 0 ? current : [];
+}
+
 export function useDesktopProjectSession({
   clearSelectedBlockRecords,
   language,
@@ -31,6 +35,7 @@ export function useDesktopProjectSession({
   setSelectedRunRecord
 }: UseDesktopProjectSessionArgs) {
   const [autoRunState, setAutoRunState] = useState<DesktopAutoRunState | null>(null);
+  const [autoRunDiagnostics, setAutoRunDiagnostics] = useState<ValidationIssue[]>([]);
   const initialSelectionEffectSkipped = useRef(false);
   const [taskFocusRequest, setTaskFocusRequest] = useState<{ taskId: string; version: number } | null>(null);
   const [selectedTaskPanelId, setSelectedTaskPanelId] = useState<string | null>(null);
@@ -48,17 +53,24 @@ export function useDesktopProjectSession({
     clearSelectedBlockRecords();
   }, [clearSelectedBlockRecords, clearTaskPanelSelection, setBlockInspectorOpen, setSelectedBlock, setSelectedRunRecord]);
 
+  const setAutoRunStateFromControl = useCallback((nextState: SetStateAction<DesktopAutoRunState | null>) => {
+    setAutoRunState(nextState);
+    setAutoRunDiagnostics(clearDiagnostics);
+  }, []);
+
   const refreshLatestAutoRunSummary = useCallback(
     async (projectRoot = projectState.selectedProject?.rootPath, canvasId = projectState.selectedCanvasId) => {
       if (!bridge || !projectRoot) {
         setAutoRunState(null);
+        setAutoRunDiagnostics(clearDiagnostics);
         return null;
       }
-      const summary = await bridge.getLatestAutoRunSummary({ projectRoot, canvasId });
-      setAutoRunState(summary);
-      return summary;
+      const summary = await bridge.getLatestAutoRunSummaryWithDiagnostics({ projectRoot, canvasId });
+      setAutoRunState(summary.state);
+      setAutoRunDiagnostics(summary.diagnostics);
+      return summary.state;
     },
-    [projectState.selectedCanvasId, projectState.selectedProject?.rootPath, setAutoRunState]
+    [projectState.selectedCanvasId, projectState.selectedProject?.rootPath, setAutoRunState, setAutoRunDiagnostics]
   );
 
   const selectTaskPanel = useCallback(
@@ -146,6 +158,19 @@ export function useDesktopProjectSession({
     [openProject, projectState.refreshProjectSummary]
   );
 
+  const duplicateTaskCanvas = useCallback(
+    async (project: DesktopProjectSummary, canvasId: string) => {
+      if (!bridge) {
+        return null;
+      }
+      const canvas = await bridge.duplicateTaskCanvas(project.rootPath, canvasId);
+      const refreshed = await projectState.refreshProjectSummary(project.rootPath, canvas.canvasId);
+      await openProject(refreshed ?? project, canvas.canvasId);
+      return canvas;
+    },
+    [openProject, projectState.refreshProjectSummary]
+  );
+
   const deleteTaskCanvas = useCallback(
     async (project: DesktopProjectSummary, canvasId: string) => {
       if (!bridge) {
@@ -190,11 +215,13 @@ export function useDesktopProjectSession({
 
   return {
     ...projectState,
+    autoRunDiagnostics,
     autoRunState,
     clearSelectionForCanvasChange,
     clearTaskPanelSelection,
     createTaskCanvas,
     deleteTaskCanvas,
+    duplicateTaskCanvas,
     openBlockInspector,
     openProject,
     openTaskInspector,
@@ -202,7 +229,7 @@ export function useDesktopProjectSession({
     renameTaskCanvas,
     reloadCurrentCanvas,
     selectedTaskPanelId,
-    setAutoRunState,
+    setAutoRunState: setAutoRunStateFromControl,
     taskFocusRequest,
     selectTaskPanel
   };

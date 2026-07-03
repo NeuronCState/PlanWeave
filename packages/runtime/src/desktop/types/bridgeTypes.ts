@@ -40,6 +40,7 @@ import type {
 } from "./syncTypes.js";
 import type {
   DesktopAutoRunEvent,
+  DesktopLatestAutoRunSummary,
   DesktopAutoRunOptions,
   DesktopAutoRunRetrospectiveSummary,
   DesktopAutoRunScope,
@@ -164,6 +165,7 @@ export type DesktopBridgeApi = {
   linkProjectSourceRoot(projectId: string, sourceRoot: string): Promise<DesktopProjectSummary>;
   unlinkProjectSourceRoot(projectId: string): Promise<DesktopProjectSummary>;
   createTaskCanvas(projectRoot: string, input?: { name?: string | null }): Promise<DesktopTaskCanvasSummary>;
+  duplicateTaskCanvas(projectRoot: string, canvasId: string, input?: { name?: string | null }): Promise<DesktopTaskCanvasSummary>;
   renameTaskCanvas(projectRoot: string, canvasId: string, name: string): Promise<DesktopTaskCanvasSummary>;
   removeTaskCanvas(projectRoot: string, canvasId: string): Promise<DesktopTaskCanvasSummary[]>;
   selectTaskCanvas(projectRoot: string, canvasId: string): Promise<string>;
@@ -246,6 +248,7 @@ export type DesktopBridgeApi = {
   stopAutoRun(runId: string): Promise<DesktopAutoRunState>;
   getAutoRunState(runId: string): Promise<DesktopAutoRunState>;
   getLatestAutoRunSummary(ref: DesktopCanvasReference): Promise<DesktopAutoRunState | null>;
+  getLatestAutoRunSummaryWithDiagnostics(ref: DesktopCanvasReference): Promise<DesktopLatestAutoRunSummary>;
   getAutoRunRetrospective(ref: DesktopCanvasReference, runId: string): Promise<DesktopAutoRunRetrospectiveSummary>;
   getLatestAutoRunRetrospective(ref: DesktopCanvasReference): Promise<DesktopAutoRunRetrospectiveSummary | null>;
   getStatistics(projectRoot: string): Promise<DesktopStatistics>;

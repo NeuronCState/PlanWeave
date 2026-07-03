@@ -21,10 +21,12 @@ type ProjectSidebarProps = {
   handleDeleteProject: (project: DesktopProjectSummary) => Promise<void>;
   handleDeleteTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
   handleDeleteTaskNode: (taskId: string) => Promise<void>;
+  handleDuplicateTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
   handleCopyCanvasAgentPrompt?: (project: DesktopProjectSummary, canvasId: string) => void;
   handleDropSourceRoot: (project: DesktopProjectSummary, sourceRoot: string | null) => Promise<void>;
   handleOpenProject: () => Promise<void>;
   handleProjectNewGraph: (project: DesktopProjectSummary) => Promise<void>;
+  handleRefreshProjects: () => Promise<unknown>;
   handleRevealPlanWorkspace: (project: DesktopProjectSummary) => Promise<void>;
   handleRevealProject: (project: DesktopProjectSummary) => Promise<void>;
   handleRevealSourceRoot: (project: DesktopProjectSummary) => Promise<void>;
@@ -37,6 +39,7 @@ type ProjectSidebarProps = {
   onToggleSidebar: () => void;
   onTogglePinnedProject: (projectId: string) => void;
   pinnedProjectIds: Set<string>;
+  projectRefreshing: boolean;
   projects: DesktopProjectSummary[];
   resetLayout: () => Promise<void>;
   selectedProject: DesktopProjectSummary | null;
@@ -56,10 +59,12 @@ export function ProjectSidebar({
   handleDeleteProject,
   handleDeleteTaskCanvas,
   handleDeleteTaskNode,
+  handleDuplicateTaskCanvas,
   handleCopyCanvasAgentPrompt,
   handleDropSourceRoot,
   handleOpenProject,
   handleProjectNewGraph,
+  handleRefreshProjects,
   handleRevealPlanWorkspace,
   handleRevealProject,
   handleRevealSourceRoot,
@@ -72,6 +77,7 @@ export function ProjectSidebar({
   onToggleSidebar,
   onTogglePinnedProject,
   pinnedProjectIds,
+  projectRefreshing,
   projects,
   resetLayout,
   selectedProject,
@@ -180,10 +186,12 @@ export function ProjectSidebar({
         handleDeleteProject={handleDeleteProject}
         handleDeleteTaskCanvas={handleDeleteTaskCanvas}
         handleDeleteTaskNode={handleDeleteTaskNode}
+        handleDuplicateTaskCanvas={handleDuplicateTaskCanvas}
         handleCopyCanvasAgentPrompt={handleCopyCanvasAgentPrompt}
         handleDropSourceRoot={handleDropSourceRoot}
         handleOpenProject={handleOpenProject}
         handleProjectNewGraph={handleProjectNewGraph}
+        handleRefreshProjects={handleRefreshProjects}
         handleRevealPlanWorkspace={handleRevealPlanWorkspace}
         handleRevealProject={handleRevealProject}
         handleRevealSourceRoot={handleRevealSourceRoot}
@@ -196,6 +204,7 @@ export function ProjectSidebar({
         onProjectToggle={handleProjectToggle}
         onTogglePinnedProject={onTogglePinnedProject}
         pinnedProjectIds={pinnedProjectIds}
+        projectRefreshing={projectRefreshing}
         projects={projects}
         selectedCanvasId={selectedCanvasId}
         selectedProject={selectedProject}

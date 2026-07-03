@@ -8,7 +8,8 @@ import type {
   DesktopProjectSnapshot,
   DesktopProjectSummary,
   DesktopStatistics,
-  DesktopTodoGroups
+  DesktopTodoGroups,
+  ValidationIssue
 } from "@planweave-ai/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDesktopBridgeMock } from "./desktopBridgeMock";
@@ -109,6 +110,61 @@ describe("desktop renderer hook interfaces", () => {
     expect(bridge.getTodoGroups).not.toHaveBeenCalled();
     expect(bridge.watchPackageFiles).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
     expect(updateSettings).toHaveBeenCalledWith({ runtimePath: project.workspaceRoot });
+  });
+
+  it("refreshes project summaries without replacing the current project selection", async () => {
+    const refreshedProject: DesktopProjectSummary = {
+      ...project,
+      name: "Demo project updated",
+      taskCanvases: [
+        ...project.taskCanvases,
+        {
+          canvasId: "canvas-secondary",
+          name: "Secondary canvas",
+          taskCount: 0,
+          createdAt: "2026-05-24T00:00:00.000Z",
+          updatedAt: "2026-05-24T00:00:00.000Z"
+        }
+      ]
+    };
+    const newProject: DesktopProjectSummary = {
+      ...project,
+      projectId: "P-002",
+      name: "Imported project",
+      rootPath: "/tmp/imported",
+      workspaceRoot: "/tmp/imported"
+    };
+    const listProjects = vi.fn().mockResolvedValue([project]);
+    const getDesktopProjectSnapshot = vi.fn().mockResolvedValue(projectSnapshot());
+    const bridge = createDesktopBridgeMock({
+      listProjects,
+      getDesktopProjectSnapshot,
+      refreshPackageFileChanges: vi.fn().mockResolvedValue({ diagnostics: [], dirtyPromptRefs: [] }),
+      watchPackageFiles: vi.fn().mockResolvedValue(undefined)
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
+
+    const { result } = renderHook(() =>
+      useDesktopProject({
+        setError: vi.fn(),
+        t: createTranslator("en"),
+        updateSettings: vi.fn()
+      })
+    );
+
+    await waitFor(() => expect(result.current.selectedProject?.projectId).toBe(project.projectId));
+    listProjects.mockClear();
+    listProjects.mockResolvedValue([refreshedProject, newProject]);
+    await act(async () => {
+      await result.current.refreshProjects();
+    });
+
+    expect(listProjects).toHaveBeenCalled();
+    expect(result.current.projects.map((item) => item.projectId)).toEqual(["P-001", "P-002"]);
+    expect(result.current.selectedProject?.name).toBe("Demo project updated");
+    expect(result.current.selectedCanvasId).toBe("canvas-main");
   });
 
   it("refreshes graph and layout together for same-canvas history updates", async () => {
@@ -559,7 +615,9 @@ describe("desktop renderer hook interfaces", () => {
 
   it("coordinates project/canvas switching through Desktop Project Session actions", async () => {
     const bridge = createDesktopBridgeMock({
-      getLatestAutoRunSummary: vi.fn().mockResolvedValue({
+      getLatestAutoRunSummaryWithDiagnostics: vi.fn().mockResolvedValue({
+        diagnostics: [],
+        state: {
         runId: "RUN-001",
         projectRoot: project.rootPath,
         canvasId: "canvas-main",
@@ -595,6 +653,7 @@ describe("desktop renderer hook interfaces", () => {
         error: null,
         startedAt: "2026-05-23T00:00:00.000Z",
         updatedAt: "2026-05-23T00:00:01.000Z"
+        }
       })
     });
     vi.stubGlobal("planweave", bridge);
@@ -652,8 +711,138 @@ describe("desktop renderer hook interfaces", () => {
     expect(setBlockInspectorOpen).toHaveBeenCalledWith(false);
     expect(clearSelectedBlockRecords).toHaveBeenCalled();
     expect(loadProject).toHaveBeenCalledWith(project, "canvas-main");
-    expect(bridge.getLatestAutoRunSummary).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
+    expect(bridge.getLatestAutoRunSummaryWithDiagnostics).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
     expect(result.current.autoRunState).toEqual(expect.objectContaining({ runId: "RUN-001" }));
+  });
+
+  it("duplicates a canvas and opens the duplicated canvas in the desktop session", async () => {
+    const duplicatedCanvas = {
+      canvasId: "canvas-copy",
+      name: "Main canvas copy",
+      taskCount: 2,
+      createdAt: "2026-05-23T00:00:00.000Z",
+      updatedAt: "2026-05-23T00:00:00.000Z"
+    };
+    const refreshedProject = {
+      ...project,
+      activeCanvasId: duplicatedCanvas.canvasId,
+      taskCanvases: [...project.taskCanvases, duplicatedCanvas]
+    };
+    const bridge = createDesktopBridgeMock({
+      duplicateTaskCanvas: vi.fn().mockResolvedValue(duplicatedCanvas),
+      getLatestAutoRunSummaryWithDiagnostics: vi.fn().mockResolvedValue({ state: null, diagnostics: [] }),
+      selectTaskCanvas: vi.fn().mockResolvedValue(duplicatedCanvas.canvasId)
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDesktopProjectSession } = await import("../renderer/hooks/useDesktopProjectSession");
+
+    const loadProject = vi.fn().mockResolvedValue(undefined);
+    const refreshProjectSummary = vi.fn().mockResolvedValue(refreshedProject);
+    const projectState = {
+      expandedProjectId: null,
+      graph: null,
+      handleOpenProject: vi.fn(),
+      layout: null,
+      loadProject,
+      projectLoading: false,
+      projects: [project],
+      refreshGraph: vi.fn(),
+      refreshGraphAndLayout: vi.fn(),
+      refreshProjectDerivedState: vi.fn(),
+      refreshProjectSummary,
+      removeProject: vi.fn(),
+      selectedCanvasId: "canvas-main",
+      selectedProject: project,
+      setLayout: vi.fn(),
+      statistics: null,
+      todoGroups: null
+    };
+
+    const { result } = renderHook(() =>
+      useDesktopProjectSession({
+        clearSelectedBlockRecords: vi.fn(),
+        language: "zh-CN",
+        projectState,
+        selectBlock: vi.fn().mockResolvedValue(undefined),
+        setActiveView: vi.fn(),
+        setBlockInspectorOpen: vi.fn(),
+        setError: vi.fn(),
+        setSelectedBlock: vi.fn(),
+        setSelectedRunRecord: vi.fn()
+      })
+    );
+
+    await act(async () => {
+      await result.current.duplicateTaskCanvas(project, "canvas-main");
+    });
+
+    expect(bridge.duplicateTaskCanvas).toHaveBeenCalledWith(project.rootPath, "canvas-main");
+    expect(refreshProjectSummary).toHaveBeenCalledWith(project.rootPath, "canvas-copy");
+    expect(bridge.selectTaskCanvas).toHaveBeenCalledWith(project.rootPath, "canvas-copy");
+    expect(loadProject).toHaveBeenCalledWith(refreshedProject, "canvas-copy");
+    expect(bridge.getLatestAutoRunSummaryWithDiagnostics).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-copy" });
+  });
+
+  it("keeps latest Auto Run summary diagnostics for the desktop diagnostics popover", async () => {
+    const autoRunDiagnostics: ValidationIssue[] = [
+      {
+        code: "auto_run_state_invalid_json",
+        message: "Auto Run state could not be parsed.",
+        path: "/tmp/demo/.planweave/results/auto-runs/DESKTOP-RUN-0002/state.json"
+      }
+    ];
+    const bridge = createDesktopBridgeMock({
+      getLatestAutoRunSummaryWithDiagnostics: vi.fn().mockResolvedValue({
+        state: null,
+        diagnostics: autoRunDiagnostics
+      })
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDesktopProjectSession } = await import("../renderer/hooks/useDesktopProjectSession");
+
+    const projectState = {
+      expandedProjectId: null,
+      graph: null,
+      handleOpenProject: vi.fn(),
+      layout: null,
+      loadProject: vi.fn(),
+      projectLoading: false,
+      projects: [project],
+      refreshGraph: vi.fn(),
+      refreshGraphAndLayout: vi.fn(),
+      refreshProjectDerivedState: vi.fn(),
+      refreshProjectSummary: vi.fn(),
+      removeProject: vi.fn(),
+      selectedCanvasId: "canvas-main",
+      selectedProject: project,
+      setLayout: vi.fn(),
+      statistics: null,
+      todoGroups: null
+    };
+
+    const { result } = renderHook(() =>
+      useDesktopProjectSession({
+        clearSelectedBlockRecords: vi.fn(),
+        language: "zh-CN",
+        projectState,
+        selectBlock: vi.fn().mockResolvedValue(undefined),
+        setActiveView: vi.fn(),
+        setBlockInspectorOpen: vi.fn(),
+        setError: vi.fn(),
+        setSelectedBlock: vi.fn(),
+        setSelectedRunRecord: vi.fn()
+      })
+    );
+
+    await act(async () => {
+      await result.current.refreshLatestAutoRunSummary(project.rootPath, "canvas-main");
+    });
+
+    expect(bridge.getLatestAutoRunSummaryWithDiagnostics).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
+    expect(result.current.autoRunState).toBeNull();
+    expect(result.current.autoRunDiagnostics).toEqual(autoRunDiagnostics);
   });
 
   it("coordinates task and inspector opening through Desktop Project Session actions", async () => {

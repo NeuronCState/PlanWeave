@@ -7,6 +7,7 @@ import type { AppView } from "../types";
 type UseDesktopProjectActionsArgs = {
   createTaskCanvas: (project: DesktopProjectSummary) => Promise<unknown>;
   deleteTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
+  duplicateTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<unknown>;
   renameTaskCanvas: (project: DesktopProjectSummary, canvasId: string, name: string) => Promise<unknown>;
   refreshProjectSummary: (projectRoot: string, canvasId?: string | null) => Promise<DesktopProjectSummary | null>;
   removeProject: (project: DesktopProjectSummary) => Promise<void>;
@@ -18,6 +19,7 @@ type UseDesktopProjectActionsArgs = {
 export function useDesktopProjectActions({
   createTaskCanvas,
   deleteTaskCanvas,
+  duplicateTaskCanvas,
   renameTaskCanvas,
   refreshProjectSummary,
   removeProject,
@@ -199,6 +201,22 @@ export function useDesktopProjectActions({
     [deleteTaskCanvas, setError, t]
   );
 
+  const handleDuplicateTaskCanvas = useCallback(
+    async (project: DesktopProjectSummary, canvasId: string) => {
+      if (!bridge) {
+        setError(t("bridgeUnavailable"));
+        return;
+      }
+      try {
+        await duplicateTaskCanvas(project, canvasId);
+        setActiveView("graph");
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    },
+    [duplicateTaskCanvas, setActiveView, setError, t]
+  );
+
   const handleRenameTaskCanvas = useCallback(
     async (project: DesktopProjectSummary, canvasId: string, name: string) => {
       if (!bridge) {
@@ -222,6 +240,7 @@ export function useDesktopProjectActions({
     handleBindSourceRoot,
     handleDeleteProject,
     handleDeleteTaskCanvas,
+    handleDuplicateTaskCanvas,
     handleDropSourceRoot,
     handleProjectNewGraph,
     handleRevealPathInFinder,

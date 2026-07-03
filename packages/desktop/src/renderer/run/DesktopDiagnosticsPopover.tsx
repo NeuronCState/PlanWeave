@@ -1,8 +1,10 @@
 import { useState, type ReactNode } from "react";
 import type { ValidationIssue } from "@planweave-ai/runtime";
-import { AlertTriangleIcon, ChevronDownIcon, ChevronRightIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronRightIcon, GaugeIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
+import { groupDesktopDiagnostics, type DesktopDiagnosticSource } from "../diagnostics";
+import type { TranslationKey } from "../i18n";
 import type { FloatingAutoRunTranslator } from "./floatingAutoRunTypes";
 
 type DesktopDiagnosticsPopoverProps = {
@@ -43,62 +45,85 @@ function DisclosureSection({
 
 function DesktopDiagnosticsList({
   diagnostics,
-  emptyLabel,
-  label
+  itemTestId
 }: {
   diagnostics: ValidationIssue[];
-  emptyLabel: string;
-  label: string;
+  itemTestId: string;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="text-xs font-semibold text-text-strong">{label}</div>
-      {diagnostics.length > 0 ? (
-        <div className="flex max-h-28 flex-col gap-1 overflow-y-auto">
-          {diagnostics.map((diagnostic, index) => (
-            <div
-              className="rounded-md border border-border/70 bg-muted/30 px-2 py-1.5 text-xs"
-              data-testid="desktop-performance-diagnostic"
-              key={`${diagnostic.code}:${diagnostic.path ?? ""}:${index}`}
-            >
-              <div className="font-medium text-text-strong">{diagnostic.code}</div>
-              <div className="break-words text-muted-foreground">{diagnostic.message}</div>
-              {diagnostic.path ? <div className="mt-1 break-all text-text-faint">{diagnostic.path}</div> : null}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-md border border-border/70 bg-muted/30 px-2 py-1.5 text-xs text-muted-foreground">{emptyLabel}</div>
-      )}
+      <div className="flex max-h-28 flex-col overflow-y-auto">
+        {diagnostics.map((diagnostic, index) => (
+          <div
+            className="border-b border-border/70 px-2 py-1.5 text-xs last:border-b-0"
+            data-testid={itemTestId}
+            key={`${diagnostic.code}:${diagnostic.path ?? ""}:${index}`}
+          >
+            <div className="font-medium text-text-strong">{diagnostic.code}</div>
+            <div className="break-words text-muted-foreground">{diagnostic.message}</div>
+            {diagnostic.path ? <div className="mt-1 break-all text-text-faint">{diagnostic.path}</div> : null}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
+const diagnosticTitleKeys = {
+  performance: "performanceDiagnostics",
+  package: "packageDiagnostics",
+  search: "searchDiagnostics",
+  runtime: "runtimeDiagnostics",
+  project: "projectGraphDiagnostics",
+  other: "otherDiagnostics"
+} satisfies Record<DesktopDiagnosticSource, TranslationKey>;
+
 export function DesktopDiagnosticsPopover({ diagnostics, disabled, t }: DesktopDiagnosticsPopoverProps) {
-  const hasPerformanceDiagnostics = diagnostics.length > 0;
+  const groups = groupDesktopDiagnostics(diagnostics);
+  const defaultOpenSource = groups.find((group) => group.source === "performance")?.source ?? groups[0]?.source ?? null;
+  const hasDiagnostics = groups.length > 0;
   return (
     <Popover>
       <PopoverTrigger asChild>
         <Button
           data-testid="desktop-diagnostics-trigger"
           size="icon-sm"
-          variant={hasPerformanceDiagnostics ? "outline" : "ghost"}
+          variant={hasDiagnostics ? "outline" : "ghost"}
           aria-label={t("viewDesktopDiagnostics")}
           title={t("viewDesktopDiagnostics")}
           disabled={disabled}
         >
-          <AlertTriangleIcon data-icon="inline-start" />
+          <GaugeIcon data-icon="inline-start" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80" data-testid="desktop-diagnostics-popover">
         <PopoverHeader>
           <PopoverTitle>{t("desktopDiagnostics")}</PopoverTitle>
-          <PopoverDescription>{hasPerformanceDiagnostics ? t("desktopDiagnosticsHint") : t("desktopDiagnosticsNoIssues")}</PopoverDescription>
+          <PopoverDescription>{t("desktopDiagnosticsHint")}</PopoverDescription>
         </PopoverHeader>
         <div className="flex flex-col gap-3">
-          <DisclosureSection title={t("performanceDiagnostics")} testId="performance-diagnostics-section" defaultOpen={hasPerformanceDiagnostics}>
-            <DesktopDiagnosticsList diagnostics={diagnostics} emptyLabel={t("desktopDiagnosticsNoIssues")} label={t("performanceDiagnostics")} />
-          </DisclosureSection>
+          {hasDiagnostics ? (
+            groups.map((group) => {
+              const label = t(diagnosticTitleKeys[group.source]);
+              return (
+                <DisclosureSection
+                  title={`${label} (${group.diagnostics.length})`}
+                  testId={`${group.source}-diagnostics-section`}
+                  defaultOpen={group.source === defaultOpenSource}
+                  key={group.source}
+                >
+                  <DesktopDiagnosticsList
+                    diagnostics={group.diagnostics}
+                    itemTestId={`desktop-${group.source}-diagnostic`}
+                  />
+                </DisclosureSection>
+              );
+            })
+          ) : (
+            <div className="rounded-md border border-border/70 bg-muted/20 px-2 py-1.5 text-xs text-muted-foreground" data-testid="desktop-diagnostics-empty">
+              {t("desktopDiagnosticsNoIssues")}
+            </div>
+          )}
         </div>
       </PopoverContent>
     </Popover>

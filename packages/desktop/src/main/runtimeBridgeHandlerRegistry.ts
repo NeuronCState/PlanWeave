@@ -8,6 +8,7 @@ import {
   createTaskDraft,
   cloneDesktopGraphEditResult,
   detectDesktopPackageFileChanges,
+  duplicateTaskCanvas,
   getAutoRunRetrospective,
   getAutoRunState,
   getBlockDetail,
@@ -20,6 +21,7 @@ import {
   getGraphViewModel,
   getLatestAutoRunRetrospective,
   getLatestAutoRunSummary,
+  getLatestAutoRunSummaryWithDiagnostics,
   getProjectExecutionPlan,
   getProjectOverview,
   getReviewAttempts,
@@ -294,6 +296,7 @@ export const runtimeBridgeHandlers = {
   linkProjectSourceRoot: (_event, projectId, sourceRoot) => linkProjectSourceRoot(projectId, sourceRoot),
   unlinkProjectSourceRoot: (_event, projectId) => unlinkProjectSourceRoot(projectId),
   createTaskCanvas: (_event, projectRoot, input) => createTaskCanvas(projectRoot, input),
+  duplicateTaskCanvas: (_event, projectRoot, canvasId, input) => duplicateTaskCanvas(projectRoot, canvasId, input),
   renameTaskCanvas: (_event, projectRoot, canvasId, name) => renameTaskCanvas(projectRoot, canvasId, name),
   removeTaskCanvas: (_event, projectRoot, canvasId) => removeTaskCanvas(projectRoot, canvasId),
   selectTaskCanvas: (_event, projectRoot, canvasId) => selectTaskCanvas(projectRoot, canvasId),
@@ -365,6 +368,7 @@ export const runtimeBridgeHandlers = {
   stopAutoRun: (_event, runId) => stopAutoRun(runId),
   getAutoRunState: (_event, runId) => getAutoRunState(runId),
   getLatestAutoRunSummary: (_event, ref) => getLatestAutoRunSummary(ref.projectRoot, ref.canvasId),
+  getLatestAutoRunSummaryWithDiagnostics: (_event, ref) => getLatestAutoRunSummaryWithDiagnostics(ref.projectRoot, ref.canvasId),
   getAutoRunRetrospective: (_event, ref, runId) => getAutoRunRetrospective(ref.projectRoot, ref.canvasId, runId),
   getLatestAutoRunRetrospective: (_event, ref) => getLatestAutoRunRetrospective(ref.projectRoot, ref.canvasId)
 } satisfies RuntimeBridgeHandlerMap;

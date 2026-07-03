@@ -1,4 +1,4 @@
-import { FolderOpenIcon } from "lucide-react";
+import { FolderOpenIcon, RefreshCwIcon } from "lucide-react";
 import type { DesktopGraphViewModel, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -14,10 +14,12 @@ type ProjectTreeProps = {
   handleDeleteProject: (project: DesktopProjectSummary) => Promise<void>;
   handleDeleteTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
   handleDeleteTaskNode: (taskId: string) => Promise<void>;
+  handleDuplicateTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
   handleCopyCanvasAgentPrompt?: (project: DesktopProjectSummary, canvasId: string) => void;
   handleDropSourceRoot: (project: DesktopProjectSummary, sourceRoot: string | null) => Promise<void>;
   handleOpenProject: () => Promise<void>;
   handleProjectNewGraph: (project: DesktopProjectSummary) => Promise<void>;
+  handleRefreshProjects: () => Promise<unknown>;
   handleRevealPlanWorkspace: (project: DesktopProjectSummary) => Promise<void>;
   handleRevealProject: (project: DesktopProjectSummary) => Promise<void>;
   handleRevealSourceRoot: (project: DesktopProjectSummary) => Promise<void>;
@@ -30,6 +32,7 @@ type ProjectTreeProps = {
   onProjectToggle: (project: DesktopProjectSummary, isSelectedProject: boolean) => void;
   onTogglePinnedProject: (projectId: string) => void;
   pinnedProjectIds: Set<string>;
+  projectRefreshing: boolean;
   projects: DesktopProjectSummary[];
   selectedProject: DesktopProjectSummary | null;
   selectedCanvasId: string | null;
@@ -46,10 +49,12 @@ export function ProjectTree({
   handleDeleteProject,
   handleDeleteTaskCanvas,
   handleDeleteTaskNode,
+  handleDuplicateTaskCanvas,
   handleCopyCanvasAgentPrompt,
   handleDropSourceRoot,
   handleOpenProject,
   handleProjectNewGraph,
+  handleRefreshProjects,
   handleRevealPlanWorkspace,
   handleRevealProject,
   handleRevealSourceRoot,
@@ -62,6 +67,7 @@ export function ProjectTree({
   onProjectToggle,
   onTogglePinnedProject,
   pinnedProjectIds,
+  projectRefreshing,
   projects,
   selectedProject,
   selectedCanvasId,
@@ -72,9 +78,14 @@ export function ProjectTree({
     <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs font-semibold uppercase tracking-[0.08em] text-text-faint">{t("projects")}</div>
-        <Button className="text-text-muted hover:bg-surface-muted hover:text-text-strong" size="icon-sm" variant="ghost" onClick={handleOpenProject} aria-label={t("chooseProjectFolder")}>
-          <FolderOpenIcon data-icon="inline-start" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button className="text-text-muted hover:bg-surface-muted hover:text-text-strong" size="icon-sm" variant="ghost" onClick={() => void handleRefreshProjects()} aria-label={t("refreshProjects")} disabled={projectRefreshing}>
+            <RefreshCwIcon className={projectRefreshing ? "animate-spin" : undefined} data-icon="inline-start" />
+          </Button>
+          <Button className="text-text-muted hover:bg-surface-muted hover:text-text-strong" size="icon-sm" variant="ghost" onClick={handleOpenProject} aria-label={t("chooseProjectFolder")}>
+            <FolderOpenIcon data-icon="inline-start" />
+          </Button>
+        </div>
       </div>
       <ScrollArea className="min-h-0 flex-1 overflow-x-hidden" viewportClassName="[&>div]:!block [&>div]:!min-w-0 [&>div]:!w-full">
         <div className="flex w-full min-w-0 max-w-full flex-col gap-1 overflow-x-hidden pr-2">
@@ -90,6 +101,7 @@ export function ProjectTree({
                 handleDeleteProject={handleDeleteProject}
                 handleDeleteTaskCanvas={handleDeleteTaskCanvas}
                 handleDeleteTaskNode={handleDeleteTaskNode}
+                handleDuplicateTaskCanvas={handleDuplicateTaskCanvas}
                 handleCopyCanvasAgentPrompt={handleCopyCanvasAgentPrompt}
                 handleDropSourceRoot={handleDropSourceRoot}
                 handleProjectNewGraph={handleProjectNewGraph}

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AgentSettingsPanel } from "../components/AgentSettingsPanel";
+import { buildExecutorOptionViews } from "../executors/executorOptionViewModel";
 import { useExecutorPreflight } from "../hooks/useExecutorPreflight";
 import type { createTranslator } from "../i18n";
 import type { DesktopSettingsUpdate, DesktopUiSettings } from "../types";
@@ -86,8 +87,16 @@ export function SettingsAgentsSection({
   t,
   updateSettings
 }: SettingsAgentsSectionProps) {
-  const executorOptions = graph?.executorOptions ?? [];
-  const [selectedExecutor, setSelectedExecutor] = useState(executorOptions[0] ?? "");
+  const executorOptions = useMemo(
+    () =>
+      buildExecutorOptionViews({
+        agentDetections: agents,
+        executorOptions: graph?.executorOptions ?? []
+      }),
+    [agents, graph?.executorOptions]
+  );
+  const selectableExecutorOptions = useMemo(() => executorOptions.filter((option) => !option.disabled), [executorOptions]);
+  const [selectedExecutor, setSelectedExecutor] = useState(selectableExecutorOptions[0]?.name ?? "");
   const graphPreflightKey = graph ? `${graph.graphVersion}:${graph.packageFingerprint}` : null;
   const preflight = useExecutorPreflight({
     bridgeUnavailableMessage: t("bridgeUnavailable"),
@@ -95,18 +104,18 @@ export function SettingsAgentsSection({
     canvasRef: canvasRef ?? null,
     executorName: selectedExecutor || null
   });
-  const executorSelectDisabled = executorOptions.length === 0 || !canvasRef;
-  const selectedExecutorAvailable = Boolean(selectedExecutor && canvasRef);
+  const executorSelectDisabled = selectableExecutorOptions.length === 0 || !canvasRef;
+  const selectedExecutorAvailable = Boolean(selectedExecutor && canvasRef && selectableExecutorOptions.some((option) => option.name === selectedExecutor));
   const resultBadgeVariant = preflight.result?.ok ? "secondary" : "destructive";
   const selectedExecutorLabel = selectedExecutor || t("none");
-  const executorOptionsKey = useMemo(() => executorOptions.join("\n"), [executorOptions]);
+  const selectableExecutorOptionsKey = useMemo(() => selectableExecutorOptions.map((option) => option.name).join("\n"), [selectableExecutorOptions]);
 
   useEffect(() => {
-    if (selectedExecutor && executorOptions.includes(selectedExecutor)) {
+    if (selectedExecutor && selectableExecutorOptions.some((option) => option.name === selectedExecutor)) {
       return;
     }
-    setSelectedExecutor(executorOptions[0] ?? "");
-  }, [executorOptions, executorOptionsKey, selectedExecutor]);
+    setSelectedExecutor(selectableExecutorOptions[0]?.name ?? "");
+  }, [selectableExecutorOptions, selectableExecutorOptionsKey, selectedExecutor]);
 
   return (
     <section data-testid="settings-section-agents" className="flex flex-col gap-6">
@@ -153,8 +162,11 @@ export function SettingsAgentsSection({
                 <SelectContent>
                   <SelectGroup>
                     {executorOptions.map((executor) => (
-                      <SelectItem value={executor} key={executor}>
-                        {executor}
+                      <SelectItem disabled={executor.disabled} value={executor.name} key={executor.name}>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span>{executor.label}</span>
+                          {executor.disabled ? <span className="text-xs text-muted-foreground">{t("unavailable")}</span> : null}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectGroup>

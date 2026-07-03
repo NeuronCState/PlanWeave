@@ -65,6 +65,7 @@ function nodeData(patch: Partial<TaskNodeData> = {}): TaskNodeData {
     titleDraft: "Task",
     promptDraft: "# Prompt",
     saveState: "idle",
+    agentDetections: [],
     executorOptions: ["manual"],
     labels: taskNodeLabels(createTranslator("en")),
     selectedBlock: null,
@@ -126,6 +127,33 @@ describe("TaskNodeCard executor options", () => {
     await userEvent.click(screen.getByRole("combobox"));
 
     expect(await screen.findByRole("option", { name: "custom-shell" })).toBeInTheDocument();
+  });
+
+  it("disables detected missing agent executors in the task node dropdown", async () => {
+    stubSelectLayoutApis();
+    renderTaskNode(
+      nodeData({
+        agentDetections: [
+          {
+            kind: "pi",
+            name: "Pi",
+            command: "pi",
+            versionArgs: ["--version"],
+            execArgs: ["-p"],
+            fullAccessArgs: ["-p"],
+            installed: false,
+            version: null,
+            unavailableReason: "not found"
+          }
+        ],
+        executorOptions: ["manual", "pi", "pi-auto"]
+      })
+    );
+
+    await userEvent.click(screen.getByRole("combobox"));
+
+    expect(await screen.findByRole("option", { name: /pi/i })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByRole("option", { name: "pi-auto" })).not.toBeInTheDocument();
   });
 });
 

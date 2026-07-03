@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitl
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { executorOptionNames } from "../executors/executorOptionViewModel";
+import { buildExecutorOptionViews, canonicalExecutorName } from "../executors/executorOptionViewModel";
 import type { TaskFlowNode } from "../types";
 import { BlockPreviewButton } from "./BlockPreviewButton";
 import { taskNodeStatusVisual, TaskNodeStatusMarker } from "./taskNodeStatus";
@@ -30,6 +30,7 @@ export function TaskNodeCard({ data, selected }: NodeProps<TaskFlowNode>) {
     titleDraft,
     promptDraft,
     saveState,
+    agentDetections,
     executorOptions,
     labels,
     selectedBlock,
@@ -48,8 +49,9 @@ export function TaskNodeCard({ data, selected }: NodeProps<TaskFlowNode>) {
     onBlockDelete
   } = data;
   const hasException = task.exceptions.length > 0;
-  const selectedExecutor = task.executorLabel === "Mixed" ? "__custom" : task.executorLabel;
-  const taskExecutorOptions = executorOptionNames({
+  const selectedExecutor = task.executorLabel === "Mixed" ? "__custom" : canonicalExecutorName(task.executorLabel);
+  const taskExecutorOptions = buildExecutorOptionViews({
+    agentDetections,
     currentExecutorNames: selectedExecutor !== "__custom" && selectedExecutor ? [selectedExecutor] : [],
     executorOptions
   });
@@ -117,8 +119,11 @@ export function TaskNodeCard({ data, selected }: NodeProps<TaskFlowNode>) {
                       </SelectItem>
                     ) : null}
                     {taskExecutorOptions.map((executor) => (
-                      <SelectItem value={executor} key={executor}>
-                        {executor}
+                      <SelectItem disabled={executor.disabled} value={executor.name} key={executor.name}>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span>{executor.label}</span>
+                          {executor.disabled ? <span className="text-xs text-muted-foreground">{labels.unavailable}</span> : null}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectGroup>

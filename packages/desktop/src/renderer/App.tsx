@@ -398,6 +398,7 @@ export function App() {
       blockRunRecords
     },
     source: {
+      agentDetections,
       executorOptions: graph?.executorOptions ?? emptyExecutorOptions,
       graph,
       layout,

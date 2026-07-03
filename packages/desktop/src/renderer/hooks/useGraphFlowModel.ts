@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Edge } from "@xyflow/react";
 import type {
+  DesktopAgentDetection,
   DesktopBlockDetail,
   DesktopBlockRunRecordSummary,
   DesktopFeedbackRecord,
@@ -15,6 +16,7 @@ import type { createTranslator } from "../i18n";
 import type { AppFlowNode, TaskNodeData } from "../types";
 
 type GraphFlowSource = {
+  agentDetections: DesktopAgentDetection[];
   executorOptions: string[];
   graph: DesktopGraphViewModel | null;
   layout: DesktopLayout | null;
@@ -80,7 +82,7 @@ export function useGraphFlowModel({
   source,
   taskActions
 }: UseGraphFlowModelArgs) {
-  const { executorOptions, graph, layout, selectedBlock, t } = source;
+  const { agentDetections, executorOptions, graph, layout, selectedBlock, t } = source;
   const { promptDrafts, saveStates, titleDrafts } = drafts;
   const { blockFeedbackRecords, blockReviewAttempts, blockRunRecords } = records;
   const {
@@ -112,6 +114,7 @@ export function useGraphFlowModel({
       graphNodes(
         graph,
         layout,
+        agentDetections,
         executorOptions,
         titleDrafts,
         promptDrafts,
@@ -147,6 +150,7 @@ export function useGraphFlowModel({
     blockFeedbackRecords,
     blockReviewAttempts,
     blockRunRecords,
+    agentDetections,
     executorOptions,
     graph,
     handleDeleteBlock,

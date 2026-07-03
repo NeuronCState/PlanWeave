@@ -18,6 +18,7 @@ export function taskNodeLabels(t: ReturnType<typeof createTranslator>): TaskNode
     taskPrompt: t("taskPrompt"),
     title: t("title"),
     agent: t("agent"),
+    unavailable: t("unavailable"),
     blockExecutionSummary: t("blockExecutionSummary"),
     latestRun: t("latestRun"),
     latestReviewAttempt: t("latestReviewAttempt"),

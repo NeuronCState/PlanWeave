@@ -14,6 +14,18 @@ import { cleanupRendererTestEnvironment, stubSelectLayoutApis } from "./helpers/
 
 afterEach(cleanupRendererTestEnvironment);
 
+const missingPiAgent = {
+  kind: "pi" as const,
+  name: "Pi",
+  command: "pi",
+  versionArgs: ["--version"],
+  execArgs: ["-p"],
+  fullAccessArgs: ["-p"],
+  installed: false,
+  version: null,
+  unavailableReason: "not found"
+};
+
 describe("desktop renderer component interactions", () => {
   it("renders Todo blockers, parallel safety, and locks and jumps to the selected block", async () => {
     const item: DesktopTodoItem = {
@@ -185,6 +197,60 @@ describe("desktop renderer component interactions", () => {
     expect(await screen.findByRole("option", { name: "custom-shell" })).toBeInTheDocument();
   });
 
+  it("folds auto executor aliases and disables missing agents in the block inspector dropdown", async () => {
+    stubSelectLayoutApis();
+    const selectedBlock: DesktopBlockDetail = {
+      ref: "T-001#B-001",
+      taskId: "T-001",
+      blockId: "B-001",
+      type: "implementation",
+      title: "Implement task",
+      status: "ready",
+      executor: "pi-auto",
+      effectiveExecutor: "pi-auto",
+      promptMarkdown: "# Implement",
+      promptMissing: false,
+      promptSurfaceMarkdown: "# Effective",
+      promptSources: [],
+      dependencies: [],
+      latestRunId: null,
+      latestReviewAttemptId: null,
+      activeFeedbackId: null,
+      exceptionReason: null,
+      reviewGate: null
+    };
+
+    render(
+      <BlockInspector
+        agentDetections={[missingPiAgent]}
+        blockFeedbackRecords={[]}
+        blockReviewAttempts={[]}
+        blockRunRecords={[]}
+        error={null}
+        executorOptions={["manual", "pi", "pi-auto"]}
+        graph={null}
+        handleOpenRunRecord={vi.fn()}
+        onBlockSelect={vi.fn()}
+        onClose={vi.fn()}
+        saveSelectedBlockExecutor={vi.fn()}
+        saveSelectedBlockPrompt={vi.fn()}
+        saveSelectedBlockTitle={vi.fn()}
+        selectedBlock={selectedBlock}
+        selectedRunRecord={null}
+        setSelectedBlock={vi.fn()}
+        setSelectedRunRecord={vi.fn()}
+        t={createTranslator("en")}
+      />
+    );
+
+    expect(screen.getByRole("combobox")).toHaveTextContent("pi");
+
+    await userEvent.click(screen.getByRole("combobox"));
+
+    expect(await screen.findByRole("option", { name: /pi/i })).toHaveAttribute("data-disabled");
+    expect(screen.queryByRole("option", { name: "pi-auto" })).not.toBeInTheDocument();
+  });
+
   it("keeps a block custom executor selected when it is absent from graph options", () => {
     const selectedBlock: DesktopBlockDetail = {
       ref: "T-001#B-001",
@@ -289,6 +355,71 @@ describe("desktop renderer component interactions", () => {
     );
 
     expect(screen.getByRole("combobox")).toHaveTextContent("legacy-executor");
+  });
+
+  it("folds auto executor aliases and disables missing agents in the task inspector dropdown", async () => {
+    stubSelectLayoutApis();
+    const selectedTask: DesktopTaskDetail = {
+      taskId: "T-001",
+      graphVersion: "pgv-task",
+      title: "Task",
+      status: "ready",
+      executor: "pi-auto",
+      promptMarkdown: "# Task",
+      promptHash: "hash-task",
+      promptMissing: false,
+      acceptance: [],
+      blockOrder: []
+    };
+    const graph: DesktopGraphViewModel = {
+      projectId: "P-001",
+      projectTitle: "Project",
+      graphVersion: "pgv-test",
+      packageFingerprint: "pkg-test",
+      executorOptions: ["manual", "pi", "pi-auto"],
+      tasks: [
+        {
+          taskId: "T-001",
+          title: "Task",
+          status: "ready",
+          executor: "pi-auto",
+          executorLabel: "pi-auto",
+          promptMarkdown: "# Task",
+          promptPreview: "Task",
+          blocks: [],
+          blockPreview: [],
+          hiddenBlockRefs: [],
+          overflowBlockCount: 0,
+          exceptions: []
+        }
+      ],
+      edges: [],
+      diagnostics: [],
+      dirtyPromptRefs: []
+    };
+
+    render(
+      <TaskInspector
+        agentDetections={[missingPiAgent]}
+        error={null}
+        executorOptions={graph.executorOptions}
+        graph={graph}
+        onClose={vi.fn()}
+        saveSelectedTaskExecutor={vi.fn()}
+        saveSelectedTaskPrompt={vi.fn()}
+        saveSelectedTaskTitle={vi.fn()}
+        selectedTask={selectedTask}
+        setSelectedTask={vi.fn()}
+        t={createTranslator("en")}
+      />
+    );
+
+    expect(screen.getByRole("combobox")).toHaveTextContent("pi");
+
+    await userEvent.click(screen.getByRole("combobox"));
+
+    expect(await screen.findByRole("option", { name: /pi/i })).toHaveAttribute("data-disabled");
+    expect(screen.queryByRole("option", { name: "pi-auto" })).not.toBeInTheDocument();
   });
 
 

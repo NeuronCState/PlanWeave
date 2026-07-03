@@ -1,5 +1,13 @@
 import { MarkerType, type Edge, type EdgeTypes } from "@xyflow/react";
-import type { DesktopBlockDetail, DesktopBlockRunRecordSummary, DesktopFeedbackRecord, DesktopGraphViewModel, DesktopLayout, DesktopReviewAttemptSummary } from "@planweave-ai/runtime";
+import type {
+  DesktopAgentDetection,
+  DesktopBlockDetail,
+  DesktopBlockRunRecordSummary,
+  DesktopFeedbackRecord,
+  DesktopGraphViewModel,
+  DesktopLayout,
+  DesktopReviewAttemptSummary
+} from "@planweave-ai/runtime";
 import type { AppFlowNode, TaskFlowNode, TaskNodeData } from "../types";
 import { TaskNodeCard } from "./TaskNodeCard";
 import { TaskDependencyEdge } from "./TaskDependencyEdge";
@@ -152,6 +160,7 @@ function parentRowWeight(
 export function graphNodes(
   graph: DesktopGraphViewModel,
   layout: DesktopLayout | null,
+  agentDetections: DesktopAgentDetection[],
   executorOptions: string[],
   titleDrafts: Record<string, string>,
   promptDrafts: Record<string, string>,
@@ -198,6 +207,7 @@ export function graphNodes(
         titleDraft: titleDrafts[task.taskId] ?? task.title,
         promptDraft: promptDrafts[task.taskId] ?? task.promptMarkdown,
         saveState: saveStates[task.taskId] ?? "idle",
+        agentDetections,
         executorOptions,
         labels,
         selectedBlock,

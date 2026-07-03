@@ -23,24 +23,32 @@ describe("executor option view model", () => {
 
     expect(options).toEqual([
       {
+        disabled: false,
+        label: "legacy-executor",
         name: "legacy-executor",
         source: "current-value",
         detected: null,
         detectionMessage: null
       },
       {
+        disabled: false,
+        label: "manual",
         name: "manual",
         source: "manifest",
         detected: null,
         detectionMessage: null
       },
       {
+        disabled: false,
+        label: "custom-shell",
         name: "custom-shell",
         source: "manifest",
         detected: null,
         detectionMessage: null
       },
       {
+        disabled: true,
+        label: "codex",
         name: "codex",
         source: "manifest",
         detected: false,
@@ -56,5 +64,14 @@ describe("executor option view model", () => {
         executorOptions: ["manual", "custom-shell"]
       })
     ).toEqual(["manual", "custom-shell"]);
+  });
+
+  it("folds builtin executor aliases into canonical agent names", () => {
+    expect(
+      executorOptionNames({
+        currentExecutorNames: ["pi-auto"],
+        executorOptions: ["default", "manual", "codex", "codex-auto", "claude-code-auto", "pi", "pi-auto"]
+      })
+    ).toEqual(["manual", "codex", "claude-code", "pi"]);
   });
 });

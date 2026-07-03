@@ -15,6 +15,7 @@ import { autoRunEventMatchesCanvas } from "./autoRunEvents";
 import { bridge } from "./bridge";
 import { createTranslator, type Language } from "./i18n";
 import { BlockInspector } from "./inspector/BlockInspector";
+import { useDetectedAgents } from "./hooks/useDetectedAgents";
 
 function supportedLanguage(value: string | null): Language {
   return value === "en" || value === "zh-CN" ? value : "zh-CN";
@@ -48,6 +49,7 @@ export function BlockInspectorWindow() {
   const [tmuxAvailable, setTmuxAvailable] = useState(false);
   const [error, setError] = useState<string | null>(bridge ? null : t("bridgeUnavailable"));
   const [draftDirty, setDraftDirty] = useState(false);
+  const { agentDetections } = useDetectedAgents();
   const draftDirtyRef = useRef(false);
 
   useEffect(() => {
@@ -292,6 +294,7 @@ export function BlockInspectorWindow() {
       blockFeedbackRecords={blockFeedbackRecords}
       blockReviewAttempts={blockReviewAttempts}
       blockRunRecords={blockRunRecords}
+      agentDetections={agentDetections}
       canvasRef={{ projectRoot, canvasId }}
       className="inset-0 h-screen w-screen min-w-0 rounded-none border-0 shadow-none ring-0"
       error={error}

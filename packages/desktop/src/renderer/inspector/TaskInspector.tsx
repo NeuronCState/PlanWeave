@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { CSSProperties, Dispatch, SetStateAction } from "react";
-import type { DesktopBlockPreview, DesktopCanvasReference, DesktopGraphViewModel, DesktopTaskDetail } from "@planweave-ai/runtime";
+import type { DesktopAgentDetection, DesktopBlockPreview, DesktopCanvasReference, DesktopGraphViewModel, DesktopTaskDetail } from "@planweave-ai/runtime";
 import { RefreshCwIcon, XIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { executorOptionNames } from "../executors/executorOptionViewModel";
+import { buildExecutorOptionViews, canonicalExecutorName } from "../executors/executorOptionViewModel";
 import { useExecutorPreflight } from "../hooks/useExecutorPreflight";
 import type { createTranslator } from "../i18n";
 import { statusVariant } from "../viewHelpers";
@@ -19,6 +19,7 @@ type TaskInspectorProps = {
   canvasRef?: DesktopCanvasReference | null;
   className?: string;
   error: string | null;
+  agentDetections?: DesktopAgentDetection[];
   executorOptions: string[];
   graph: DesktopGraphViewModel | null;
   onClose: () => void;
@@ -42,7 +43,7 @@ function selectedTaskExecutorValue(selectedTask: DesktopTaskDetail | null, taskB
   if (blockExecutors.size > 1) {
     return "__custom";
   }
-  return [...blockExecutors][0] ?? selectedTask.executor ?? "manual";
+  return canonicalExecutorName([...blockExecutors][0] ?? selectedTask.executor ?? "manual");
 }
 
 function taskPreflightExecutorValue(selectedTask: DesktopTaskDetail | null, taskBlocks: DesktopBlockPreview[]): string | null {
@@ -51,15 +52,17 @@ function taskPreflightExecutorValue(selectedTask: DesktopTaskDetail | null, task
   }
   const blockExecutors = new Set(taskBlocks.map((block) => block.executor).filter((executor): executor is string => executor !== null));
   if (blockExecutors.size === 1) {
-    return [...blockExecutors][0] ?? null;
+    const executor = [...blockExecutors][0] ?? null;
+    return executor ? canonicalExecutorName(executor) : null;
   }
   if (blockExecutors.size > 1) {
     return null;
   }
-  return selectedTask.executor ?? null;
+  return selectedTask.executor ? canonicalExecutorName(selectedTask.executor) : null;
 }
 
 export function TaskInspector({
+  agentDetections = [],
   canvasRef,
   className,
   error,
@@ -84,7 +87,8 @@ export function TaskInspector({
   }, [graph, selectedTask]);
   const selectedExecutor = selectedTaskExecutorValue(selectedTask, taskBlocks);
   const concreteExecutor = taskPreflightExecutorValue(selectedTask, taskBlocks);
-  const taskExecutorOptions = executorOptionNames({
+  const taskExecutorOptions = buildExecutorOptionViews({
+    agentDetections,
     currentExecutorNames: selectedExecutor !== "__custom" && selectedExecutor ? [selectedExecutor] : [],
     executorOptions
   });
@@ -178,8 +182,11 @@ export function TaskInspector({
                       </SelectItem>
                     ) : null}
                     {taskExecutorOptions.map((executor) => (
-                      <SelectItem value={executor} key={executor}>
-                        {executor}
+                      <SelectItem disabled={executor.disabled} value={executor.name} key={executor.name}>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span>{executor.label}</span>
+                          {executor.disabled ? <span className="text-xs text-muted-foreground">{t("unavailable")}</span> : null}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectGroup>

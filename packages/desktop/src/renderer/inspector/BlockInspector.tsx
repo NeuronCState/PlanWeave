@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { CSSProperties, Dispatch, SetStateAction } from "react";
 import type {
+  DesktopAgentDetection,
   DesktopBlockDetail,
   DesktopBlockRunRecordSummary,
   DesktopCanvasReference,
@@ -21,7 +22,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { executorOptionNames } from "../executors/executorOptionViewModel";
+import { buildExecutorOptionViews, canonicalExecutorName } from "../executors/executorOptionViewModel";
 import { useExecutorPreflight } from "../hooks/useExecutorPreflight";
 import type { createTranslator } from "../i18n";
 import { statusVariant } from "../viewHelpers";
@@ -30,6 +31,7 @@ import { BlockRunRecordCard } from "./BlockRunRecordCard";
 import { TerminalOpenButton } from "./TerminalOpenButton";
 
 type BlockInspectorProps = {
+  agentDetections?: DesktopAgentDetection[];
   blockFeedbackRecords: DesktopFeedbackRecord[];
   blockReviewAttempts: DesktopReviewAttemptSummary[];
   blockRunRecords: DesktopBlockRunRecordSummary[];
@@ -63,6 +65,7 @@ type BlockInspectorProps = {
 const blockPromptAutosaveDelayMs = 700;
 
 export function BlockInspector({
+  agentDetections = [],
   blockFeedbackRecords,
   blockReviewAttempts,
   blockRunRecords,
@@ -100,10 +103,12 @@ export function BlockInspector({
     ? t("tmuxTerminalNoLiveBlockSession")
     : t("tmuxTerminalNoBlockSession");
   const latestReviewAttempt = blockReviewAttempts[0];
-  const selectedExecutor = selectedBlock?.executor ?? "__inherit";
+  const selectedExecutor = selectedBlock?.executor ? canonicalExecutorName(selectedBlock.executor) : "__inherit";
   const concreteExecutor = selectedBlock?.executor ?? selectedBlock?.effectiveExecutor ?? null;
+  const concreteExecutorLabel = concreteExecutor ? canonicalExecutorName(concreteExecutor) : null;
   const preflightUsesInheritedExecutor = Boolean(!selectedBlock?.executor && concreteExecutor);
-  const blockExecutorOptions = executorOptionNames({
+  const blockExecutorOptions = buildExecutorOptionViews({
+    agentDetections,
     currentExecutorNames: selectedBlock?.executor ? [selectedBlock.executor] : [],
     executorOptions
   });
@@ -111,7 +116,7 @@ export function BlockInspector({
     bridgeUnavailableMessage: t("bridgeUnavailable"),
     cacheKey: graph ? `${graph.graphVersion}:${graph.packageFingerprint}` : null,
     canvasRef: canvasRef ?? null,
-    executorName: concreteExecutor
+    executorName: concreteExecutorLabel
   });
   const blockPromptBaselineRef = useRef<{ promptMarkdown: string; ref: string } | null>(null);
   const taskBlocks = useMemo(() => {
@@ -211,15 +216,18 @@ export function BlockInspector({
                   <SelectGroup>
                     <SelectItem value="__inherit">{t("inheritExecutor")}</SelectItem>
                     {blockExecutorOptions.map((executor) => (
-                      <SelectItem value={executor} key={executor}>
-                        {executor}
+                      <SelectItem disabled={executor.disabled} value={executor.name} key={executor.name}>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span>{executor.label}</span>
+                          {executor.disabled ? <span className="text-xs text-muted-foreground">{t("unavailable")}</span> : null}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>
               <div className="flex min-h-7 items-center gap-2 text-xs text-muted-foreground">
-                {!concreteExecutor ? (
+                {!concreteExecutorLabel ? (
                   <span>{t("executorPreflightSelectConcrete")}</span>
                 ) : preflight.result ? (
                   <Badge data-testid="block-executor-preflight-status" variant={preflight.result.ok ? "secondary" : "destructive"}>
@@ -229,14 +237,14 @@ export function BlockInspector({
                   <span className="min-w-0 truncate text-destructive">{preflight.error}</span>
                 ) : preflightUsesInheritedExecutor ? (
                   <span>
-                    {t("inheritExecutor")}: {concreteExecutor}
+                    {t("inheritExecutor")}: {concreteExecutorLabel}
                   </span>
                 ) : (
                   <span>{t("executorPreflightNotRun")}</span>
                 )}
                 <Button
                   data-testid="block-executor-preflight"
-                  disabled={!canvasRef || !concreteExecutor || preflight.loading}
+                  disabled={!canvasRef || !concreteExecutorLabel || preflight.loading}
                   size="icon-sm"
                   variant="ghost"
                   aria-label={t("runPreflight")}

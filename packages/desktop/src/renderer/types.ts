@@ -1,5 +1,6 @@
 import type { Node } from "@xyflow/react";
 import type {
+  DesktopAgentDetection,
   DesktopAutoRunScope,
   DesktopBlockDetail,
   DesktopBlockRunRecordSummary,
@@ -37,6 +38,7 @@ export type TaskNodeLabels = {
   taskPrompt: string;
   title: string;
   agent: string;
+  unavailable: string;
   blockExecutionSummary: string;
   latestRun: string;
   latestReviewAttempt: string;
@@ -55,6 +57,7 @@ export type TaskNodeData = {
   titleDraft: string;
   promptDraft: string;
   saveState: "idle" | "saving" | "saved" | "error";
+  agentDetections: DesktopAgentDetection[];
   executorOptions: string[];
   labels: TaskNodeLabels;
   selectedBlock: DesktopBlockDetail | null;

@@ -2,6 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { DesktopAgentDetection } from "@planweave-ai/runtime";
 import { bridge } from "../bridge";
 
+function normalizeAgentDetections(value: DesktopAgentDetection[] | null | undefined): DesktopAgentDetection[] {
+  return Array.isArray(value) ? value : [];
+}
+
 export function useDetectedAgents() {
   const [agentDetections, setAgentDetections] = useState<DesktopAgentDetection[]>([]);
   const [agentDetectionRefreshing, setAgentDetectionRefreshing] = useState(false);
@@ -13,7 +17,7 @@ export function useDetectedAgents() {
     setAgentDetectionRefreshing(true);
     try {
       const detectedAgents = await bridge.detectAgentTools();
-      setAgentDetections(detectedAgents);
+      setAgentDetections(normalizeAgentDetections(detectedAgents));
     } finally {
       setAgentDetectionRefreshing(false);
     }
@@ -27,7 +31,7 @@ export function useDetectedAgents() {
       }
       const detectedAgents = await bridge.detectAgentTools();
       if (!cancelled) {
-        setAgentDetections(detectedAgents);
+        setAgentDetections(normalizeAgentDetections(detectedAgents));
       }
     };
 

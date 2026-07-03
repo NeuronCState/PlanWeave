@@ -41,6 +41,7 @@ describe("desktop graph flow model", () => {
       graph,
       layout,
       [],
+      [],
       {},
       {},
       {},
@@ -101,7 +102,8 @@ const labels: TaskNodeLabels = {
   sourcePrompt: "Source prompt",
   taskException: "Task exception",
   taskPrompt: "Task Prompt",
-  title: "Title"
+  title: "Title",
+  unavailable: "Unavailable"
 };
 
 function graphView(taskIds: string[], edges: DesktopGraphViewModel["edges"]): DesktopGraphViewModel {

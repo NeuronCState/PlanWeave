@@ -1,9 +1,10 @@
-import { access, chmod, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addTaskNode,
   createTaskCanvas,
+  duplicateTaskCanvas,
   getDesktopLayout,
   getGraphViewModel,
   getProjectOverview,
@@ -21,6 +22,7 @@ import { readJsonFile, writeJsonFile } from "../json.js";
 import { readProjectPaths } from "../paths.js";
 import { commitCanvasWorkspaceWrite, stageCanvasWorkspaceWrite } from "../projectGraph/canvasWorkspaceRecovery.js";
 import { canonicalProjectCanvasNode, loadProjectGraph, projectGraphPath, writeProjectGraph } from "../projectGraph/index.js";
+import { readState } from "../state.js";
 import { claimNext, getCurrentWork, getExecutionStatus } from "../taskManager/index.js";
 import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
 
@@ -165,6 +167,73 @@ describe("desktop task canvas API", () => {
       blockTotal: 4,
       estimatedRemainingBlocks: 4
     });
+  });
+
+  it("duplicates formal project graph canvases with package prompts and fresh runtime state", async () => {
+    const { root, init } = await createTestWorkspace();
+    const sourceWorkspace = await resolveTaskCanvasWorkspace(root, "default");
+    await saveDesktopLayout(sourceWorkspace, {
+      version: "desktop-layout/v1",
+      projectId: "ignored",
+      nodes: [{ nodeId: "T-001", x: 120, y: 80 }],
+      updatedAt: new Date(0).toISOString()
+    });
+    await claimNext({ projectRoot: sourceWorkspace });
+    await mkdir(join(sourceWorkspace.resultsDir, "manual"), { recursive: true });
+    await writeFile(join(sourceWorkspace.resultsDir, "manual", "source-result.md"), "source result\n", "utf8");
+
+    const duplicated = await duplicateTaskCanvas(root, "default");
+    const duplicatedWorkspace = await resolveTaskCanvasWorkspace(root, duplicated.canvasId);
+    const loaded = await loadProjectGraph(root);
+    const duplicatedManifest = await readJsonFile<{ project: { title: string } }>(duplicatedWorkspace.manifestFile);
+
+    expect(duplicated).toMatchObject({
+      canvasId: duplicated.canvasId,
+      name: "Test Plan copy",
+      taskCount: 1
+    });
+    expect(loaded.manifest.canvases.map((canvas) => canvas.id)).toEqual(["default", duplicated.canvasId]);
+    expect(loaded.manifest.canvases.find((canvas) => canvas.id === duplicated.canvasId)?.title).toBe("Test Plan copy");
+    expect(duplicatedManifest.project.title).toBe("Test Plan copy");
+    await expect(readFile(join(duplicatedWorkspace.packageDir, "nodes", "T-001", "prompt.md"), "utf8")).resolves.toBe(
+      await readFile(join(sourceWorkspace.packageDir, "nodes", "T-001", "prompt.md"), "utf8")
+    );
+    await expect(readState(duplicatedWorkspace.stateFile)).resolves.toEqual({
+      currentRefs: [],
+      currentFeedbackId: null,
+      currentReviewBlockRef: null,
+      tasks: {},
+      blocks: {},
+      feedback: {}
+    });
+    await expect(readdir(duplicatedWorkspace.resultsDir)).resolves.toEqual([]);
+    await expect(getDesktopLayout(duplicatedWorkspace)).resolves.toMatchObject({
+      nodes: [{ nodeId: "T-001", x: 120, y: 80 }]
+    });
+  });
+
+  it("duplicates legacy registry canvases and records the new canvas", async () => {
+    const { root, init } = await createTestWorkspace();
+    await rm(projectGraphPath(init.workspace));
+
+    const duplicated = await duplicateTaskCanvas(root, "default", { name: "Legacy duplicate" });
+    const duplicatedWorkspace = await resolveTaskCanvasWorkspace(root, duplicated.canvasId);
+    const registry = await readJsonFile<{ canvases: Array<{ canvasId: string; name: string }> }>(join(init.workspace.workspaceRoot, "desktop", "canvases.json"));
+    const duplicatedManifest = await readJsonFile<{ project: { title: string } }>(duplicatedWorkspace.manifestFile);
+
+    expect(duplicated).toMatchObject({
+      canvasId: duplicated.canvasId,
+      name: "Legacy duplicate",
+      taskCount: 1
+    });
+    expect(registry.canvases.map((canvas) => canvas.canvasId)).toEqual(["default", duplicated.canvasId]);
+    expect(registry.canvases.find((canvas) => canvas.canvasId === duplicated.canvasId)?.name).toBe("Legacy duplicate");
+    expect(duplicatedManifest.project.title).toBe("Legacy duplicate");
+    await expect(readFile(join(duplicatedWorkspace.packageDir, "nodes", "T-001", "blocks", "B-001.prompt.md"), "utf8")).resolves.toBe(
+      await readFile(join(init.workspace.packageDir, "nodes", "T-001", "blocks", "B-001.prompt.md"), "utf8")
+    );
+    await expect(readState(duplicatedWorkspace.stateFile)).resolves.toMatchObject({ currentRefs: [], blocks: {} });
+    await expect(readdir(duplicatedWorkspace.resultsDir)).resolves.toEqual([]);
   });
 
   it("summarizes canvas package health diagnostics", async () => {

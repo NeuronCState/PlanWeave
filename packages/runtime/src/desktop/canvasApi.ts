@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { ZodError } from "zod";
@@ -22,6 +22,7 @@ import { readActiveTaskCanvasSelection } from "./canvasSelectionStore.js";
 import {
   commitCanvasWorkspaceWrite,
   quarantineCanvasWorkspace,
+  removeCanvasStagingWorkspace,
   restoreQuarantinedCanvasWorkspace,
   stageCanvasWorkspaceWrite
 } from "../projectGraph/canvasWorkspaceRecovery.js";
@@ -248,6 +249,24 @@ function nextCanvasName(existing: TaskCanvasRecord[]): string {
   return `新任务画布 ${index}`;
 }
 
+function nextDuplicatedCanvasName(existingNames: string[], sourceName: string, requestedName?: string | null): string {
+  const trimmedRequestedName = requestedName?.trim();
+  if (trimmedRequestedName) {
+    return trimmedRequestedName;
+  }
+  const baseName = sourceName.trim() || "任务画布";
+  const copyName = `${baseName} copy`;
+  const names = new Set(existingNames);
+  if (!names.has(copyName)) {
+    return copyName;
+  }
+  let index = 2;
+  while (names.has(`${copyName} ${index}`)) {
+    index += 1;
+  }
+  return `${copyName} ${index}`;
+}
+
 function newCanvasId(): string {
   return `canvas-${randomUUID().slice(0, 8)}`;
 }
@@ -291,6 +310,34 @@ async function restoreQuarantineAfterFailedRemoval(
       `Task canvas '${canvasId}' removal failed, and its quarantined workspace could not be restored: ${errorMessage(removalError)}; rollback failed: ${errorMessage(rollbackError)}`
     );
   }
+}
+
+async function copyOptionalCanvasLayout(sourceWorkspace: ProjectWorkspace, targetWorkspace: ProjectWorkspace): Promise<void> {
+  const sourceLayoutFile = join(sourceWorkspace.workspaceRoot, "desktop", "layout.json");
+  const sourceLayoutStat = await optionalStat(sourceLayoutFile);
+  if (!sourceLayoutStat?.isFile()) {
+    return;
+  }
+  const targetLayoutFile = join(targetWorkspace.workspaceRoot, "desktop", "layout.json");
+  await mkdir(dirname(targetLayoutFile), { recursive: true });
+  await cp(sourceLayoutFile, targetLayoutFile);
+}
+
+async function populateDuplicatedCanvasWorkspace(sourceWorkspace: ProjectWorkspace, targetWorkspace: ProjectWorkspace, title: string): Promise<void> {
+  await cp(sourceWorkspace.packageDir, targetWorkspace.packageDir, { recursive: true });
+  await writeManifestTitle(targetWorkspace, title);
+  await writeJsonFile(targetWorkspace.stateFile, createEmptyState());
+  await mkdir(targetWorkspace.resultsDir, { recursive: true });
+  await copyOptionalCanvasLayout(sourceWorkspace, targetWorkspace);
+}
+
+async function cleanupFailedDuplicateStaging(projectWorkspace: ProjectWorkspace, stagingRoot: string, error: unknown): Promise<never> {
+  try {
+    await removeCanvasStagingWorkspace(projectWorkspace, stagingRoot);
+  } catch (cleanupError) {
+    throw new Error(`Task canvas duplication failed: ${errorMessage(error)}; staging cleanup failed: ${errorMessage(cleanupError)}`);
+  }
+  throw error;
 }
 
 export async function listTaskCanvases(projectRoot: string): Promise<DesktopTaskCanvasSummary[]> {
@@ -403,6 +450,70 @@ export async function createTaskCanvas(projectRoot: string, input: { name?: stri
   await writeRegistry(projectWorkspace, nextRegistry);
   invalidateDesktopProjectProjection(projectRoot);
   return summarizeCanvas(projectWorkspace, record);
+}
+
+export async function duplicateTaskCanvas(projectRoot: string, canvasId: string, input: { name?: string | null } = {}): Promise<DesktopTaskCanvasSummary> {
+  const loaded = await loadProjectGraph(projectRoot);
+  if (loaded.source === "project_graph") {
+    const sourceCanvas = loaded.manifest.canvases.find((candidate) => candidate.id === canvasId);
+    if (!sourceCanvas) {
+      throw new Error(`Project canvas '${canvasId}' does not exist.`);
+    }
+    const duplicatedCanvasId = newCanvasId();
+    const duplicatedCanvas = canonicalProjectCanvasNode({
+      id: duplicatedCanvasId,
+      title: nextDuplicatedCanvasName(
+        loaded.manifest.canvases.map((canvas) => canvas.title),
+        sourceCanvas.title,
+        input.name
+      )
+    });
+    const sourceWorkspace = workspaceForProjectCanvas(loaded.workspace, sourceCanvas);
+    const targetWorkspace = workspaceForProjectCanvas(loaded.workspace, duplicatedCanvas);
+    const staged = await stageCanvasWorkspaceWrite(loaded.workspace, { canvasId: duplicatedCanvasId, finalRoot: targetWorkspace.workspaceRoot });
+    try {
+      await populateDuplicatedCanvasWorkspace(sourceWorkspace, staged.workspace, duplicatedCanvas.title);
+      await commitCanvasWorkspaceWrite(loaded.workspace, staged);
+    } catch (error) {
+      await cleanupFailedDuplicateStaging(loaded.workspace, staged.stagingRoot, error);
+    }
+    await writeProjectGraph(loaded.workspace, {
+      ...loaded.manifest,
+      canvases: [...loaded.manifest.canvases, duplicatedCanvas]
+    });
+    invalidateDesktopProjectProjection(projectRoot);
+    return summarizeProjectCanvas(loaded.workspace, duplicatedCanvas);
+  }
+
+  const { projectWorkspace, registry } = await readRegistry(projectRoot);
+  const sourceRecord = requireCanvasRecord(registry, canvasId);
+  const duplicatedCanvasId = newCanvasId();
+  const duplicatedRecord: TaskCanvasRecord = {
+    canvasId: duplicatedCanvasId,
+    name: nextDuplicatedCanvasName(
+      registry.canvases.map((canvas) => canvas.name),
+      sourceRecord.name,
+      input.name
+    ),
+    packageDir: `canvases/${duplicatedCanvasId}/package`,
+    stateFile: `canvases/${duplicatedCanvasId}/state.json`,
+    resultsDir: `canvases/${duplicatedCanvasId}/results`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  const sourceWorkspace = canvasWorkspace(projectWorkspace, sourceRecord);
+  const targetWorkspace = canvasWorkspace(projectWorkspace, duplicatedRecord);
+  const staged = await stageCanvasWorkspaceWrite(projectWorkspace, { canvasId: duplicatedCanvasId, finalRoot: targetWorkspace.workspaceRoot });
+  try {
+    await populateDuplicatedCanvasWorkspace(sourceWorkspace, staged.workspace, duplicatedRecord.name);
+    await commitCanvasWorkspaceWrite(projectWorkspace, staged);
+  } catch (error) {
+    await cleanupFailedDuplicateStaging(projectWorkspace, staged.stagingRoot, error);
+  }
+  const nextRegistry = { ...registry, canvases: [...registry.canvases, duplicatedRecord] };
+  await writeRegistry(projectWorkspace, nextRegistry);
+  invalidateDesktopProjectProjection(projectRoot);
+  return summarizeCanvas(projectWorkspace, duplicatedRecord);
 }
 
 export async function renameTaskCanvas(projectRoot: string, canvasId: string, name: string): Promise<DesktopTaskCanvasSummary> {

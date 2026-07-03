@@ -18,6 +18,7 @@ export {
 export type { SourceDefaultProjectCandidate, SourceDefaultProjectEntry } from "./sourceDefaultProject.js";
 export {
   createTaskCanvas,
+  duplicateTaskCanvas,
   listTaskCanvases,
   renameTaskCanvas,
   removeTaskCanvas,
@@ -90,6 +91,7 @@ export {
 export {
   getAutoRunState,
   getLatestAutoRunSummary,
+  getLatestAutoRunSummaryWithDiagnostics,
   listAutoRunEvents,
   pauseAutoRun,
   resetDesktopRuntimeState,

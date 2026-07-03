@@ -190,6 +190,25 @@ describe("desktop project projection cache", () => {
     ]);
   });
 
+  it("reuses one projection context during search while keeping body hydration lazy", async () => {
+    const { root, init } = await createTestWorkspace();
+    const taskPromptPath = join(init.workspace.packageDir, "nodes", "T-001", "prompt.md");
+    await writeFile(taskPromptPath, "# Task prompt\n\nsingle projection body needle\n", "utf8");
+    fsMockState.statErrorPath = init.workspace.stateFile;
+    fsMockState.statErrorAfterMatches = 100;
+
+    vi.mocked(fsPromises.readFile).mockClear();
+    const search = await searchProjectWithDiagnostics(root, "single projection body needle", { kinds: ["prompt"], includeBodies: false });
+
+    expect(fsMockState.statMatchCount).toBe(3);
+    expect(search.diagnostics.map((diagnostic) => diagnostic.code)).not.toContain("desktop_canvas_runtime_input_failed");
+    expect(search.results).toEqual([]);
+    expect(promptReadPaths(init.workspace.packageDir)).toEqual([]);
+    await expect(searchProjectWithDiagnostics(root, "needle", { canvasId: "missing-canvas" })).rejects.toThrow(
+      "Task canvas 'missing-canvas' does not exist."
+    );
+  });
+
   it("invalidates body search when prompt or result content changes with the same size and mtime", async () => {
     const { root, init } = await createTestWorkspace();
     const taskPromptPath = join(init.workspace.packageDir, "nodes", "T-001", "prompt.md");

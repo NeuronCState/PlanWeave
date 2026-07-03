@@ -44,6 +44,11 @@ export type DesktopProjectProjection = {
   diagnostics: ValidationIssue[];
 };
 
+export type DesktopProjectProjectionContext = {
+  key: string;
+  projection: DesktopProjectProjection;
+};
+
 type CachedProjectProjection = {
   version: number;
   projection: DesktopProjectProjection;
@@ -66,6 +71,7 @@ type CanvasProjectionCacheEntry = {
 
 const desktopProjectProjectionCacheVersion = 2;
 const projectProjectionCache = new Map<string, CachedProjectProjection>();
+const projectionContextCache = new WeakMap<DesktopProjectProjectionContext, CachedProjectProjection>();
 
 type FileStatFingerprint = {
   path: string;
@@ -597,12 +603,21 @@ async function buildDesktopProjectProjection(projectRoot: string, cached: Cached
   };
 }
 
-export async function readDesktopProjectProjection(projectRoot: string): Promise<DesktopProjectProjection> {
+export async function readDesktopProjectProjectionContext(projectRoot: string): Promise<DesktopProjectProjectionContext> {
   const key = projectProjectionKey(projectRoot);
   const cached = projectProjectionCache.get(key);
   const next = await buildDesktopProjectProjection(projectRoot, cached);
   projectProjectionCache.set(key, next);
-  return next.projection;
+  const context = {
+    key,
+    projection: next.projection
+  };
+  projectionContextCache.set(context, next);
+  return context;
+}
+
+export async function readDesktopProjectProjection(projectRoot: string): Promise<DesktopProjectProjection> {
+  return (await readDesktopProjectProjectionContext(projectRoot)).projection;
 }
 
 async function buildCanvasBodySearchIndex(input: {
@@ -700,15 +715,30 @@ export async function readDesktopProjectSearchIndex(
   projectRoot: string,
   options: { includeBodies?: boolean } = {}
 ): Promise<DesktopSearchIndex> {
-  const key = projectProjectionKey(projectRoot);
-  const projection = await readDesktopProjectProjection(projectRoot);
-  const cached = projectProjectionCache.get(key);
-  const diagnostics = [...projection.diagnostics];
-  const summaryIndex = await buildProjectSummarySearchIndex({ cached, projection, projectRoot, diagnostics });
+  return readDesktopProjectSearchIndexFromContext(await readDesktopProjectProjectionContext(projectRoot), options);
+}
+
+export async function readDesktopProjectSearchIndexFromContext(
+  context: DesktopProjectProjectionContext,
+  options: { includeBodies?: boolean } = {}
+): Promise<DesktopSearchIndex> {
+  const cached = projectionContextCache.get(context) ?? projectProjectionCache.get(context.key);
+  const diagnostics = [...context.projection.diagnostics];
+  const summaryIndex = await buildProjectSummarySearchIndex({
+    cached,
+    projection: context.projection,
+    projectRoot: context.projection.projectRoot,
+    diagnostics
+  });
   if (!options.includeBodies || !cached) {
     return summaryIndex;
   }
-  const bodyIndex = await buildProjectBodySearchIndex({ cached, projection, projectRoot, diagnostics });
+  const bodyIndex = await buildProjectBodySearchIndex({
+    cached,
+    projection: context.projection,
+    projectRoot: context.projection.projectRoot,
+    diagnostics
+  });
   return mergeSearchIndexBodies(summaryIndex, bodyIndex);
 }
 

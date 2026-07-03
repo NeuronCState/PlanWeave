@@ -3,7 +3,7 @@ import type { ProjectWorkspace, ValidationIssue } from "../types.js";
 import { resolveTaskCanvasWorkspace } from "./canvasApi.js";
 import { getReviewAttempts, getRunRecord } from "./recordsApi.js";
 import { cloneAutoRunState } from "./runStateStore.js";
-import { listPersistedAutoRunStates, readPersistedAutoRunEventLog, readPersistedAutoRunState } from "./runStateRepository.js";
+import { readLatestPersistedAutoRunState, readPersistedAutoRunEventLog, readPersistedAutoRunStateWithDiagnostics } from "./runStateRepository.js";
 import type {
   DesktopAutoRunLogEvent,
   DesktopAutoRunRetrospectiveSummary,
@@ -167,14 +167,25 @@ function refreshedExplanation(state: DesktopAutoRunState): DesktopAutoRunState["
   });
 }
 
-async function buildAutoRunRetrospective(workspace: ProjectWorkspace, state: DesktopAutoRunState): Promise<DesktopAutoRunRetrospectiveSummary> {
+function diagnosticMessage(diagnostic: ValidationIssue): string {
+  return diagnostic.path ? `${diagnostic.code}: ${diagnostic.path}: ${diagnostic.message}` : `${diagnostic.code}: ${diagnostic.message}`;
+}
+
+async function buildAutoRunRetrospective(
+  workspace: ProjectWorkspace,
+  state: DesktopAutoRunState,
+  stateReadDiagnostics: ValidationIssue[] = []
+): Promise<DesktopAutoRunRetrospectiveSummary> {
   const clonedState = cloneAutoRunState(state);
   const eventLog = await readPersistedAutoRunEventLog(workspace, clonedState.runId);
-  const diagnostics: ValidationIssue[] = eventLog.diagnostics.map((diagnostic) => ({
-    code: diagnostic.code,
-    message: diagnostic.message,
-    path: diagnostic.path
-  }));
+  const diagnostics: ValidationIssue[] = [
+    ...stateReadDiagnostics,
+    ...eventLog.diagnostics.map((diagnostic) => ({
+      code: diagnostic.code,
+      message: diagnostic.message,
+      path: diagnostic.path
+    }))
+  ];
   const explanation = refreshedExplanation(clonedState);
   return {
     runId: clonedState.runId,
@@ -204,9 +215,12 @@ export async function getAutoRunRetrospective(
   runId: string
 ): Promise<DesktopAutoRunRetrospectiveSummary> {
   const workspace = await resolveTaskCanvasWorkspace(projectRoot, canvasId);
-  const state = await readPersistedAutoRunState(workspace, runId);
-  if (!state) {
+  const { state, diagnostics } = await readPersistedAutoRunStateWithDiagnostics(workspace, runId);
+  if (!state && diagnostics.length === 0) {
     throw new Error(`Auto Run '${runId}' does not exist.`);
+  }
+  if (!state) {
+    throw new Error(`Auto Run '${runId}' could not be read: ${diagnostics.map(diagnosticMessage).join("; ")}`);
   }
   return buildAutoRunRetrospective(workspace, state);
 }
@@ -214,8 +228,8 @@ export async function getAutoRunRetrospective(
 export async function getLatestAutoRunRetrospective(projectRoot: string, canvasId?: string | null): Promise<DesktopAutoRunRetrospectiveSummary | null> {
   const workspace = await resolveTaskCanvasWorkspace(projectRoot, canvasId);
   const normalizedCanvasId = canvasId ?? null;
-  const [state] = (await listPersistedAutoRunStates(workspace)).filter(
-    (candidate) => candidate.projectRoot === projectRoot && candidate.canvasId === normalizedCanvasId
-  );
-  return state ? buildAutoRunRetrospective(workspace, state) : null;
+  const { state, diagnostics } = await readLatestPersistedAutoRunState(workspace, {
+    matches: (candidate) => candidate.projectRoot === projectRoot && candidate.canvasId === normalizedCanvasId
+  });
+  return state ? buildAutoRunRetrospective(workspace, state, diagnostics) : null;
 }

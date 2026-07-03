@@ -10,13 +10,14 @@ import type {
   DesktopAutoRunEventListener,
   DesktopAutoRunOptions,
   DesktopAutoRunPhase,
+  DesktopLatestAutoRunSummary,
   DesktopAutoRunScope,
   DesktopAutoRunState,
   DesktopRuntimeResetOptions,
   DesktopRuntimeResetResult
 } from "./types.js";
 import { appendAutoRunEvent, autoRunRoot, cloneAutoRunState, createAutoRunEvent, now } from "./runStateStore.js";
-import { listPersistedAutoRunStates, nextPersistedAutoRunId, readPersistedAutoRunEventLog, writePersistedAutoRunState } from "./runStateRepository.js";
+import { nextPersistedAutoRunId, readLatestPersistedAutoRunState, readPersistedAutoRunEventLog, writePersistedAutoRunState } from "./runStateRepository.js";
 import { claimRef, claimRefs, claimScope, completedRefs, executorName, latestStatus, outputSummary, phaseAfterStep, reviewAttemptId, reviewVerdict, terminalPatch } from "./runStepState.js";
 import { invalidateDesktopProjectProjection } from "./graph/projectProjectionModel.js";
 import { appendRunSessionEvent, createRunSession, getRunSession, resetRuntimeState, updateRunSession } from "../runSessions/index.js";
@@ -562,26 +563,31 @@ export async function getAutoRunState(runId: string): Promise<DesktopAutoRunStat
   return cloneAutoRunState(state);
 }
 
-export async function getLatestAutoRunSummary(projectRoot: string, canvasId?: string | null): Promise<DesktopAutoRunState | null> {
+export async function getLatestAutoRunSummaryWithDiagnostics(projectRoot: string, canvasId?: string | null): Promise<DesktopLatestAutoRunSummary> {
   const normalizedCanvasId = canvasId ?? null;
   const workspace = await resolveTaskCanvasWorkspace(projectRoot, normalizedCanvasId);
   const latest = [...runs.values()]
     .filter((run) => run.projectRoot === projectRoot && run.canvasId === normalizedCanvasId)
     .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
     .at(-1);
+  const { state: persistedLatest, diagnostics } = await readLatestPersistedAutoRunState(workspace, {
+    hasActiveLoop: (runId) => activeLoops.has(runId),
+    matches: (run) => (run.projectRoot === projectRoot || run.projectRoot === workspace.rootPath) && run.canvasId === normalizedCanvasId
+  });
   if (latest) {
-    return cloneAutoRunState(latest);
+    return { state: cloneAutoRunState(latest), diagnostics };
   }
-  const persistedLatest = (await listPersistedAutoRunStates(workspace, { hasActiveLoop: (runId) => activeLoops.has(runId) }))
-    .filter((run) => (run.projectRoot === projectRoot || run.projectRoot === workspace.rootPath) && run.canvasId === normalizedCanvasId)
-    .at(0);
   if (!persistedLatest) {
-    return null;
+    return { state: null, diagnostics };
   }
   const state = canRehydratePersistedRun(persistedLatest)
     ? rehydratePersistedRun(persistedLatest, workspace)
     : persistedLatest;
-  return cloneAutoRunState(state);
+  return { state: cloneAutoRunState(state), diagnostics };
+}
+
+export async function getLatestAutoRunSummary(projectRoot: string, canvasId?: string | null): Promise<DesktopAutoRunState | null> {
+  return (await getLatestAutoRunSummaryWithDiagnostics(projectRoot, canvasId)).state;
 }
 
 export async function listAutoRunEvents(projectRoot: string, canvasId: string | null | undefined, runId: string): Promise<DesktopAutoRunEventLog> {

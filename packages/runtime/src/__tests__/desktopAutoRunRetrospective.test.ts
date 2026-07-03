@@ -249,6 +249,37 @@ describe("desktop auto run retrospective API", () => {
     );
   });
 
+  it("reports corrupt requested Auto Run state diagnostics", async () => {
+    const { root, init } = await createTestWorkspace(manifestTestBuilder().build());
+    const state = persistedState(init.workspace, { runId: "DESKTOP-RUN-2001", projectRoot: root });
+    await mkdir(dirname(state.statePath), { recursive: true });
+    await writeFile(state.statePath, "{", "utf8");
+
+    await expect(getAutoRunRetrospective(root, null, state.runId)).rejects.toThrow("auto_run_state_invalid_json");
+  });
+
+  it("includes skipped corrupt latest state diagnostics in latest retrospective", async () => {
+    const { root, init } = await createTestWorkspace(manifestTestBuilder().build());
+    const valid = persistedState(init.workspace, { runId: "DESKTOP-RUN-2002", projectRoot: root });
+    const corrupt = persistedState(init.workspace, { runId: "DESKTOP-RUN-2003", projectRoot: root });
+    await writeAutoRunState(valid);
+    await writeAutoRunEvents(valid, []);
+    await mkdir(dirname(corrupt.statePath), { recursive: true });
+    await writeFile(corrupt.statePath, "{", "utf8");
+
+    const summary = await getLatestAutoRunRetrospective(root, null);
+
+    expect(summary).toMatchObject({
+      runId: valid.runId,
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "auto_run_state_invalid_json",
+          path: corrupt.statePath
+        })
+      ])
+    });
+  });
+
   it("does not count feedback-only or needs-changes review steps as completed blocks", async () => {
     const { root, init } = await createTestWorkspace(manifestTestBuilder().build());
     const state = persistedState(init.workspace, {

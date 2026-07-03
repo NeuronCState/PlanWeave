@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createTaskCanvas,
   getAutoRunState,
+  getLatestAutoRunSummaryWithDiagnostics,
   getLatestAutoRunSummary,
   listAutoRunEvents,
   resolveTaskCanvasWorkspace,
@@ -13,8 +14,9 @@ import {
   stopAutoRun
 } from "../desktop/index.js";
 import type { DesktopAutoRunState } from "../desktop/index.js";
+import { readLatestPersistedAutoRunState, writePersistedAutoRunState as writeRepositoryPersistedAutoRunState } from "../desktop/runStateRepository.js";
 import { initWorkspace } from "../initWorkspace.js";
-import { writeJsonFile } from "../json.js";
+import { readJsonFile, writeJsonFile } from "../json.js";
 import { canonicalProjectCanvasNode } from "../projectGraph/index.js";
 import { writeProjectGraph } from "../projectGraph/loadProjectGraph.js";
 import type { PlanPackageManifest, ProjectWorkspace } from "../types.js";
@@ -471,5 +473,242 @@ describe("desktop auto run persistence", () => {
       runId: "DESKTOP-RUN-0002",
       phase: "completed"
     });
+    await expect(readLatestPersistedAutoRunState(init.workspace)).resolves.toMatchObject({
+      state: expect.objectContaining({ runId: "DESKTOP-RUN-0002" }),
+      diagnostics: [
+        expect.objectContaining({
+          code: "auto_run_state_invalid_json",
+          path: corrupt.statePath
+        })
+      ]
+    });
+    await expect(getLatestAutoRunSummaryWithDiagnostics(root, null)).resolves.toMatchObject({
+      state: expect.objectContaining({ runId: "DESKTOP-RUN-0002" }),
+      diagnostics: [
+        expect.objectContaining({
+          code: "auto_run_state_invalid_json",
+          path: corrupt.statePath
+        })
+      ]
+    });
+  });
+
+  it("reports diagnostics when every persisted Auto Run summary state is corrupt", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { root, init } = await createTestWorkspace(manifest);
+    const corrupt = persistedAutoRunState(init.workspace, { runId: "DESKTOP-RUN-0001" });
+    await mkdir(dirname(corrupt.statePath), { recursive: true });
+    await writeFile(corrupt.statePath, "{", "utf8");
+
+    await expect(getLatestAutoRunSummaryWithDiagnostics(root, null)).resolves.toMatchObject({
+      state: null,
+      diagnostics: [
+        expect.objectContaining({
+          code: "auto_run_state_invalid_json",
+          path: corrupt.statePath
+        })
+      ]
+    });
+  });
+
+  it("keeps corrupt latest diagnostics after rehydrating a persisted manual run", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { root, init } = await createTestWorkspace(manifest);
+    const manual = persistedAutoRunState(init.workspace, {
+      runId: "DESKTOP-RUN-9202",
+      phase: "manual",
+      error: "Manual result required.",
+      updatedAt: "2026-05-23T00:00:02.000Z"
+    });
+    const corrupt = persistedAutoRunState(init.workspace, {
+      runId: "DESKTOP-RUN-9203",
+      updatedAt: "2026-05-23T00:00:03.000Z"
+    });
+    await writePersistedAutoRunState(manual);
+    await mkdir(dirname(corrupt.statePath), { recursive: true });
+    await writeFile(corrupt.statePath, "{", "utf8");
+
+    await expect(getLatestAutoRunSummaryWithDiagnostics(root, null)).resolves.toMatchObject({
+      state: expect.objectContaining({ runId: "DESKTOP-RUN-9202", phase: "manual" }),
+      diagnostics: [
+        expect.objectContaining({
+          code: "auto_run_state_invalid_json",
+          path: corrupt.statePath
+        })
+      ]
+    });
+    await expect(getAutoRunState(manual.runId)).resolves.toMatchObject({
+      runId: manual.runId,
+      phase: "manual"
+    });
+    await expect(getLatestAutoRunSummaryWithDiagnostics(root, null)).resolves.toMatchObject({
+      state: expect.objectContaining({ runId: "DESKTOP-RUN-9202", phase: "manual" }),
+      diagnostics: [
+        expect.objectContaining({
+          code: "auto_run_state_invalid_json",
+          path: corrupt.statePath
+        })
+      ]
+    });
+  });
+
+  it("keeps updatedAt ordering while omitting older corrupt persisted Auto Run diagnostics", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { root, init } = await createTestWorkspace(manifest);
+    await writePersistedAutoRunState(persistedAutoRunState(init.workspace, {
+      runId: "DESKTOP-RUN-0025",
+      updatedAt: "2026-05-23T00:00:25.000Z"
+    }));
+    await writePersistedAutoRunState(persistedAutoRunState(init.workspace, {
+      runId: "DESKTOP-RUN-0020",
+      updatedAt: "2026-05-23T00:00:30.000Z"
+    }));
+    const olderCorrupt = persistedAutoRunState(init.workspace, { runId: "DESKTOP-RUN-0019" });
+    await mkdir(dirname(olderCorrupt.statePath), { recursive: true });
+    await writeFile(olderCorrupt.statePath, "{", "utf8");
+
+    await expect(getLatestAutoRunSummary(root, null)).resolves.toMatchObject({
+      runId: "DESKTOP-RUN-0020"
+    });
+    await expect(readLatestPersistedAutoRunState(init.workspace)).resolves.toMatchObject({
+      state: expect.objectContaining({ runId: "DESKTOP-RUN-0020" }),
+      diagnostics: []
+    });
+  });
+
+  it("writes a latest summary pointer when persisting Auto Run state", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { init } = await createTestWorkspace(manifest);
+    const state = persistedAutoRunState(init.workspace, {
+      runId: "DESKTOP-RUN-0002",
+      updatedAt: "2026-05-23T00:00:02.000Z"
+    });
+
+    await writeRepositoryPersistedAutoRunState(state);
+
+    await expect(readJsonFile(join(init.workspace.resultsDir, "auto-runs", "latest-state.json"))).resolves.toMatchObject({
+      version: 1,
+      selectedRunId: "DESKTOP-RUN-0002",
+      selectedUpdatedAt: "2026-05-23T00:00:02.000Z",
+      highestRunId: "DESKTOP-RUN-0002",
+      diagnostics: []
+    });
+  });
+
+  it("migrates legacy Auto Run histories to a latest pointer without losing newer corrupt diagnostics", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { root, init } = await createTestWorkspace(manifest);
+    await writePersistedAutoRunState(persistedAutoRunState(init.workspace, {
+      runId: "DESKTOP-RUN-0025",
+      updatedAt: "2026-05-23T00:00:25.000Z"
+    }));
+    await writePersistedAutoRunState(persistedAutoRunState(init.workspace, {
+      runId: "DESKTOP-RUN-0020",
+      updatedAt: "2026-05-23T00:00:30.000Z"
+    }));
+    const corrupt = persistedAutoRunState(init.workspace, { runId: "DESKTOP-RUN-0026" });
+    await mkdir(dirname(corrupt.statePath), { recursive: true });
+    await writeFile(corrupt.statePath, "{", "utf8");
+
+    await expect(getLatestAutoRunSummaryWithDiagnostics(root, null)).resolves.toMatchObject({
+      state: expect.objectContaining({ runId: "DESKTOP-RUN-0020" }),
+      diagnostics: [
+        expect.objectContaining({
+          code: "auto_run_state_invalid_json",
+          path: corrupt.statePath
+        })
+      ]
+    });
+    await expect(readJsonFile(join(init.workspace.resultsDir, "auto-runs", "latest-state.json"))).resolves.toMatchObject({
+      selectedRunId: "DESKTOP-RUN-0020",
+      highestRunId: "DESKTOP-RUN-0026",
+      diagnostics: [
+        expect.objectContaining({
+          runId: "DESKTOP-RUN-0026",
+          diagnostic: expect.objectContaining({ code: "auto_run_state_invalid_json" })
+        })
+      ]
+    });
+    await expect(getLatestAutoRunSummaryWithDiagnostics(root, null)).resolves.toMatchObject({
+      state: expect.objectContaining({ runId: "DESKTOP-RUN-0020" }),
+      diagnostics: [
+        expect.objectContaining({
+          code: "auto_run_state_invalid_json",
+          path: corrupt.statePath
+        })
+      ]
+    });
+  });
+
+  it("does not let a filtered latest read overwrite the workspace latest pointer", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { init } = await createTestWorkspace(manifest);
+    await writePersistedAutoRunState(persistedAutoRunState(init.workspace, {
+      runId: "DESKTOP-RUN-0031",
+      updatedAt: "2026-05-23T00:00:31.000Z"
+    }));
+
+    await expect(readLatestPersistedAutoRunState(init.workspace, { matches: () => false })).resolves.toMatchObject({
+      state: null,
+      diagnostics: []
+    });
+    await expect(readLatestPersistedAutoRunState(init.workspace)).resolves.toMatchObject({
+      state: expect.objectContaining({ runId: "DESKTOP-RUN-0031" }),
+      diagnostics: []
+    });
+    await expect(readJsonFile(join(init.workspace.resultsDir, "auto-runs", "latest-state.json"))).resolves.toMatchObject({
+      selectedRunId: "DESKTOP-RUN-0031",
+      highestRunId: "DESKTOP-RUN-0031"
+    });
+  });
+
+  it("repairs the latest pointer when its selected state becomes corrupt during a filtered read", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { init } = await createTestWorkspace(manifest);
+    const older = persistedAutoRunState(init.workspace, {
+      runId: "DESKTOP-RUN-0040",
+      updatedAt: "2026-05-23T00:00:40.000Z"
+    });
+    const latest = persistedAutoRunState(init.workspace, {
+      runId: "DESKTOP-RUN-0042",
+      updatedAt: "2026-05-23T00:00:42.000Z"
+    });
+    await writeRepositoryPersistedAutoRunState(older);
+    await writeRepositoryPersistedAutoRunState(latest);
+    await writeFile(latest.statePath, "{", "utf8");
+
+    const matchesWorkspace = (state: DesktopAutoRunState) => state.projectRoot === init.workspace.rootPath && state.canvasId === null;
+
+    await expect(readLatestPersistedAutoRunState(init.workspace, { matches: matchesWorkspace })).resolves.toMatchObject({
+      state: expect.objectContaining({ runId: "DESKTOP-RUN-0040" }),
+      diagnostics: [
+        expect.objectContaining({
+          code: "auto_run_state_invalid_json",
+          path: latest.statePath
+        })
+      ]
+    });
+    await expect(readJsonFile(join(init.workspace.resultsDir, "auto-runs", "latest-state.json"))).resolves.toMatchObject({
+      selectedRunId: "DESKTOP-RUN-0040",
+      highestRunId: "DESKTOP-RUN-0042",
+      diagnostics: [
+        expect.objectContaining({
+          runId: "DESKTOP-RUN-0042",
+          diagnostic: expect.objectContaining({ code: "auto_run_state_invalid_json" })
+        })
+      ]
+    });
+    const middleCorrupt = persistedAutoRunState(init.workspace, { runId: "DESKTOP-RUN-0041" });
+    await mkdir(dirname(middleCorrupt.statePath), { recursive: true });
+    await writeFile(middleCorrupt.statePath, "{", "utf8");
+
+    const secondRead = await readLatestPersistedAutoRunState(init.workspace, { matches: matchesWorkspace });
+    expect(secondRead.state).toMatchObject({ runId: "DESKTOP-RUN-0040" });
+    expect(secondRead.diagnostics).toEqual([
+      expect.objectContaining({
+        code: "auto_run_state_invalid_json",
+        path: latest.statePath
+      })
+    ]);
   });
 });

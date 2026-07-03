@@ -1,5 +1,4 @@
-import { constants } from "node:fs";
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { writeJsonFile } from "../json.js";
 import { resolvePackageWorkspace } from "../package/loadPackage.js";
@@ -18,7 +17,7 @@ import {
   type FeedbackClaim,
   type StreamingCommandResult
 } from "./executorShared.js";
-import { appendReviewResultFileInstruction, reviewResultEnvironment } from "./reviewResultContract.js";
+import { appendReviewResultFileInstruction, assertReviewResultJsonReadable, reviewResultEnvironment } from "./reviewResultContract.js";
 import { createTmuxSessionInfo, tmuxMetadataPatch } from "./tmuxExecutor.js";
 
 type TerminalAgentProfile = ClaudeCodeExecExecutorProfile | PiExecExecutorProfile;
@@ -123,11 +122,7 @@ export async function runTerminalAgentBlock(options: {
     if (!reviewResultPath) {
       throw new Error(`Executor '${options.executorName}' did not prepare a review result path.`);
     }
-    try {
-      await access(reviewResultPath, constants.R_OK);
-    } catch {
-      throw new Error(`Executor '${options.executorName}' did not create review result JSON at ${reviewResultPath}.`);
-    }
+    await assertReviewResultJsonReadable({ executorName: options.executorName, resultPath: reviewResultPath });
     return { kind: "review", resultPath: reviewResultPath, runId: run.runId, executor: options.executorName, adapter: options.profile.adapter, agentSessionId: null, ...result };
   }
   const reportPath = join(run.runDir, "report.md");

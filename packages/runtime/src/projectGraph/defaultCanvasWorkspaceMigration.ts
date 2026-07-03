@@ -1,6 +1,6 @@
 import { cp, mkdir, readFile, rename } from "node:fs/promises";
 import { basename, dirname, extname, join, relative } from "node:path";
-import { optionalReaddir, optionalStat } from "../fs/optionalFile.js";
+import { isNodeFileNotFoundError, optionalReaddir, optionalStat } from "../fs/optionalFile.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import type { ProjectWorkspace, ValidationIssue } from "../types.js";
 import { normalizeRegistry } from "../desktop/canvasRegistry.js";
@@ -215,19 +215,23 @@ export async function detectDefaultCanvasWorkspaceMigration(projectWorkspace: Pr
 }
 
 async function defaultCanvasTitle(paths: DefaultCanvasWorkspacePaths): Promise<string> {
+  let raw: unknown;
   try {
-    const raw = await readJsonFile<unknown>(join(paths.packageDir, "manifest.json"));
-    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-      const project = (raw as { project?: unknown }).project;
-      if (project && typeof project === "object" && !Array.isArray(project)) {
-        const title = (project as { title?: unknown }).title;
-        if (typeof title === "string" && title.trim()) {
-          return title.trim();
-        }
+    raw = await readJsonFile<unknown>(join(paths.packageDir, "manifest.json"));
+  } catch (error) {
+    if (isNodeFileNotFoundError(error)) {
+      return "任务画布";
+    }
+    throw error;
+  }
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const project = (raw as { project?: unknown }).project;
+    if (project && typeof project === "object" && !Array.isArray(project)) {
+      const title = (project as { title?: unknown }).title;
+      if (typeof title === "string" && title.trim()) {
+        return title.trim();
       }
     }
-  } catch {
-    return "任务画布";
   }
   return "任务画布";
 }

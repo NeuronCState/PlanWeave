@@ -1,7 +1,7 @@
-import { access, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
-import { constants } from "node:fs";
+import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { isNodeFileNotFoundError, optionalStat } from "../fs/optionalFile.js";
 import { readJsonFile } from "../json.js";
 import { manifestSchema } from "../schema/manifest.js";
 import type { ProjectWorkspace } from "../types.js";
@@ -34,19 +34,7 @@ export type CanvasWorkspaceAnomalyOptions = {
 };
 
 export async function canvasRecoveryPathExists(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.F_OK);
-    return true;
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      return false;
-    }
-    throw error;
-  }
-}
-
-function isNotFoundError(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
+  return (await optionalStat(path)) !== null;
 }
 
 function toPosixPath(path: string): string {
@@ -190,14 +178,14 @@ async function listChildDirectories(root: string): Promise<CanvasWorkspaceDirect
         const metadata = await stat(path);
         directories.push({ name: entry.name, path, mtimeMs: metadata.mtimeMs });
       } catch (error) {
-        if (!isNotFoundError(error)) {
+        if (!isNodeFileNotFoundError(error)) {
           throw error;
         }
       }
     }
     return directories;
   } catch (error) {
-    if (isNotFoundError(error)) {
+    if (isNodeFileNotFoundError(error)) {
       return [];
     }
     throw error;
@@ -208,7 +196,7 @@ async function isRegularFile(path: string): Promise<boolean> {
   try {
     return (await stat(path)).isFile();
   } catch (error) {
-    if (isNotFoundError(error)) {
+    if (isNodeFileNotFoundError(error)) {
       return false;
     }
     throw error;
@@ -219,7 +207,7 @@ async function isDirectory(path: string): Promise<boolean> {
   try {
     return (await stat(path)).isDirectory();
   } catch (error) {
-    if (isNotFoundError(error)) {
+    if (isNodeFileNotFoundError(error)) {
       return false;
     }
     throw error;
@@ -233,7 +221,7 @@ async function isRecognizedCanvasWorkspaceRoot(path: string): Promise<boolean> {
       return false;
     }
   } catch (error) {
-    if (isNotFoundError(error) || error instanceof SyntaxError) {
+    if (isNodeFileNotFoundError(error) || error instanceof SyntaxError) {
       return false;
     }
     throw error;

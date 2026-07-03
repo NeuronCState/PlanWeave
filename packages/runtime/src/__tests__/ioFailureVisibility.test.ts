@@ -1,22 +1,22 @@
 import type { PathLike } from "node:fs";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fsFailures = vi.hoisted(() => ({
-  access: new Map<string, NodeJS.ErrnoException[]>(),
-  open: new Map<string, NodeJS.ErrnoException[]>(),
-  readdir: new Map<string, NodeJS.ErrnoException[]>(),
-  readFile: new Map<string, NodeJS.ErrnoException[]>(),
-  stat: new Map<string, NodeJS.ErrnoException[]>()
+  access: new Map<string, Array<NodeJS.ErrnoException | null>>(),
+  open: new Map<string, Array<NodeJS.ErrnoException | null>>(),
+  readdir: new Map<string, Array<NodeJS.ErrnoException | null>>(),
+  readFile: new Map<string, Array<NodeJS.ErrnoException | null>>(),
+  stat: new Map<string, Array<NodeJS.ErrnoException | null>>()
 }));
 
 function pathKey(path: PathLike): string {
   return path.toString();
 }
 
-function shiftFailure(map: Map<string, NodeJS.ErrnoException[]>, path: PathLike): NodeJS.ErrnoException | null {
+function shiftFailure(map: Map<string, Array<NodeJS.ErrnoException | null>>, path: PathLike): NodeJS.ErrnoException | null {
   const failures = map.get(pathKey(path));
   if (!failures || failures.length === 0) {
     return null;
@@ -75,16 +75,19 @@ import { getReviewPipeline } from "../desktop/reviewPipelineApi.js";
 import { nextPersistedAutoRunId, readPersistedAutoRunEventLog, readPersistedAutoRunState } from "../desktop/runStateRepository.js";
 import { initWorkspace } from "../initWorkspace.js";
 import { readProjectPrompt, readProjectPromptPolicy } from "../projectPromptPolicy.js";
-import { canonicalProjectCanvasNode, projectCanvasWorkspace, projectGraphPath } from "../projectGraph/index.js";
+import { applyDefaultCanvasWorkspaceMigration, canonicalProjectCanvasNode, loadProjectGraph, projectCanvasWorkspace, projectGraphPath } from "../projectGraph/index.js";
+import { canvasRecoveryPathExists } from "../projectGraph/canvasWorkspaceRecovery.js";
 import { writeJsonFile } from "../json.js";
 import { resolvePlanweaveHome } from "../paths.js";
 import { nextRunId } from "../autoRun/executorShared.js";
+import { assertReviewResultJsonReadable } from "../autoRun/reviewResultContract.js";
 import { readNewTmuxText, tmuxPathExists } from "../autoRun/tmuxExecutor.js";
 import { createRunSession } from "../runSessions/index.js";
+import { commandCanvasIdForWorkspace } from "../taskManager/canvasCommandScope.js";
 import { validateCanvasPackageForDoctor } from "../taskManager/projectDoctorCanvas.js";
 import { getAutoRunStatus } from "../taskManager/autoRun.js";
 import { renderPrompt, runDoctor, submitBlockResult, submitFeedback, submitReviewResult, claimNext } from "../taskManager/index.js";
-import { createTestWorkspace, writeReport, writeReviewResult } from "./promptTestHelpers.js";
+import { basicManifest, createTestWorkspace, writePromptFiles, writeReport, writeReviewResult } from "./promptTestHelpers.js";
 
 function nodeFileError(code: string, path?: string): NodeJS.ErrnoException {
   const error = new Error(`${code} failure${path ? `: ${path}` : ""}`) as NodeJS.ErrnoException;
@@ -105,6 +108,12 @@ function failSequence(kind: keyof typeof fsFailures, path: string, codes: string
   const failures = codes.map((code) => nodeFileError(code, path));
   fsFailures[kind].set(path, [...(fsFailures[kind].get(path) ?? []), ...failures]);
   return failures;
+}
+
+function failAfterSuccesses(kind: keyof typeof fsFailures, path: string, successes: number, code: string): NodeJS.ErrnoException {
+  const failure = nodeFileError(code, path);
+  fsFailures[kind].set(path, [...(fsFailures[kind].get(path) ?? []), ...Array.from({ length: successes }, () => null), failure]);
+  return failure;
 }
 
 async function completeImplementation(root: string): Promise<void> {
@@ -397,5 +406,67 @@ describe("filesystem I/O failure visibility", () => {
 
     const expected = failOnce("open", outputPath, "EACCES");
     await expect(readNewTmuxText(outputPath, 0)).rejects.toBe(expected);
+  });
+
+  it("does not render canvas command scope as default when the project graph cannot be inspected", async () => {
+    const { init } = await createTestWorkspace();
+    const expected = failOnce("stat", projectGraphPath(init.workspace), "EIO");
+
+    await expect(commandCanvasIdForWorkspace(init.workspace)).rejects.toBe(expected);
+  });
+
+  it("does not fall back to a default project graph title when the package manifest cannot be read", async () => {
+    const { root, init } = await createTestWorkspace();
+    await rm(projectGraphPath(init.workspace), { force: true });
+    await rm(join(init.workspace.workspaceRoot, "desktop", "canvases.json"), { force: true });
+    const expected = failOnce("readFile", init.workspace.manifestFile, "EACCES");
+
+    await expect(loadProjectGraph(root)).rejects.toBe(expected);
+  });
+
+  it("does not fall back to a default project graph title when the package manifest is invalid JSON", async () => {
+    const { root, init } = await createTestWorkspace();
+    await rm(projectGraphPath(init.workspace), { force: true });
+    await rm(join(init.workspace.workspaceRoot, "desktop", "canvases.json"), { force: true });
+    await writeFile(init.workspace.manifestFile, "{invalid json", "utf8");
+
+    await expect(loadProjectGraph(root)).rejects.toBeInstanceOf(SyntaxError);
+  });
+
+  it("does not fall back to a default migration title when the canonical manifest read fails after verification", async () => {
+    const { init } = await createTestWorkspace();
+    await rm(projectGraphPath(init.workspace), { force: true });
+    await rm(join(init.workspace.workspaceRoot, "canvases"), { recursive: true, force: true });
+    const manifest = basicManifest();
+    const legacyPackageDir = join(init.workspace.workspaceRoot, "package");
+    await writeJsonFile(join(legacyPackageDir, "manifest.json"), manifest);
+    await writePromptFiles(legacyPackageDir, manifest);
+    const canonicalManifestPath = join(init.workspace.workspaceRoot, "canvases", "default", "package", "manifest.json");
+    const expected = failAfterSuccesses("readFile", canonicalManifestPath, 1, "EIO");
+
+    await expect(applyDefaultCanvasWorkspaceMigration(init.workspace)).rejects.toBe(expected);
+  });
+
+  it("keeps missing review result JSON classified as missing but surfaces access failures", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "planweave-review-result-"));
+    const resultPath = join(dir, "review-result.json");
+    failOnce("access", resultPath, "ENOENT");
+    await expect(assertReviewResultJsonReadable({ executorName: "fake-review", resultPath })).rejects.toThrow(
+      `Executor 'fake-review' did not create review result JSON at ${resultPath}.`
+    );
+
+    const expected = failOnce("access", resultPath, "EACCES");
+    await expect(assertReviewResultJsonReadable({ executorName: "fake-review", resultPath })).rejects.toThrow(
+      `Executor 'fake-review' could not read review result JSON at ${resultPath}: ${expected.message}`
+    );
+  });
+
+  it("treats ENOTDIR canvas recovery paths as missing while surfacing access failures", async () => {
+    const path = join(await mkdtemp(join(tmpdir(), "planweave-canvas-recovery-")), "staging");
+    failOnce("stat", path, "ENOTDIR");
+    await expect(canvasRecoveryPathExists(path)).resolves.toBe(false);
+
+    const expected = failOnce("stat", path, "EACCES");
+    await expect(canvasRecoveryPathExists(path)).rejects.toBe(expected);
   });
 });

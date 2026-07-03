@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { optionalStat } from "../fs/optionalFile.js";
+import { isNodeFileNotFoundError, optionalStat } from "../fs/optionalFile.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { projectWorkspacePaths, resolveProjectWorkspace } from "../project.js";
 import type { ProjectWorkspace, ValidationIssue } from "../types.js";
@@ -31,17 +31,20 @@ function projectGraphWorkspace(workspace: ProjectWorkspace): ProjectWorkspace {
 }
 
 async function manifestTitle(manifestFile: string): Promise<string> {
+  let raw: unknown;
   try {
-    const raw = await readJsonFile<unknown>(manifestFile);
-    if (raw && typeof raw === "object" && !Array.isArray(raw) && "project" in raw) {
-      const project = (raw as { project?: unknown }).project;
-      if (project && typeof project === "object" && !Array.isArray(project) && typeof (project as { title?: unknown }).title === "string") {
-        return (project as { title: string }).title.trim() || "任务画布";
-      }
-    }
+    raw = await readJsonFile<unknown>(manifestFile);
   } catch (error) {
-    void error;
-    return "任务画布";
+    if (isNodeFileNotFoundError(error)) {
+      return "任务画布";
+    }
+    throw error;
+  }
+  if (raw && typeof raw === "object" && !Array.isArray(raw) && "project" in raw) {
+    const project = (raw as { project?: unknown }).project;
+    if (project && typeof project === "object" && !Array.isArray(project) && typeof (project as { title?: unknown }).title === "string") {
+      return (project as { title: string }).title.trim() || "任务画布";
+    }
   }
   return "任务画布";
 }

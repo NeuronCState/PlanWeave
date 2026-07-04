@@ -27,7 +27,11 @@ import { basicManifest, createTestWorkspace, writePromptFiles, writeReport, writ
 import { manifestSchema } from "../schema/manifest.js";
 import { manifestTestBuilder } from "./manifestTestBuilder.js";
 
-const noTmux = { tmuxEnabled: false } as const;
+type AutoRunStepOptions = Parameters<typeof runAutoRunStep>[0];
+
+function runContractAutoRunStep(options: AutoRunStepOptions) {
+  return runAutoRunStep({ tmuxEnabled: false, ...options });
+}
 
 function adapter(): AutoRunExecutorAdapter {
   return {
@@ -298,7 +302,7 @@ describe("Auto Run contract", () => {
 
   it("manual adapter claims a block, writes the rendered prompt artifact, and waits for manual submission", async () => {
     const { root, init } = await createTestWorkspace();
-    const step = await runAutoRunStep({
+    const step = await runContractAutoRunStep({
       projectRoot: root,
       executor: createManualExecutorAdapter({
         projectRoot: root,
@@ -327,7 +331,7 @@ describe("Auto Run contract", () => {
 
   it("exposes tmux metadata in Auto Run status latest run summaries", async () => {
     const { root, init } = await createTestWorkspace();
-    await runAutoRunStep({
+    await runContractAutoRunStep({
       projectRoot: root,
       executor: createManualExecutorAdapter({
         projectRoot: root,
@@ -374,7 +378,7 @@ describe("Auto Run contract", () => {
       resultPath: await writeReviewResult(root, "needs_changes", "Fix with the implementation executor.")
     });
 
-    const feedbackStep = await runAutoRunStep({ projectRoot: root });
+    const feedbackStep = await runContractAutoRunStep({ projectRoot: root });
 
     expect(feedbackStep).toMatchObject({
       kind: "manual",
@@ -395,7 +399,7 @@ describe("Auto Run contract", () => {
       executorName: "manual"
     });
 
-    const implementationStep = await runAutoRunStep({
+    const implementationStep = await runContractAutoRunStep({
       projectRoot: workspace,
       executor
     });
@@ -407,7 +411,7 @@ describe("Auto Run contract", () => {
       }
     });
     await submitBlockResult({ projectRoot: workspace, ref: "T-001#B-001", reportPath: await writeReport(root, "b.md") });
-    await runAutoRunStep({
+    await runContractAutoRunStep({
       projectRoot: workspace,
       executor
     });
@@ -417,7 +421,7 @@ describe("Auto Run contract", () => {
       resultPath: await writeReviewResult(root, "needs_changes", "Fix formal canvas work.")
     });
 
-    const feedbackStep = await runAutoRunStep({
+    const feedbackStep = await runContractAutoRunStep({
       projectRoot: workspace,
       executor
     });
@@ -490,7 +494,7 @@ describe("Auto Run contract", () => {
       .build();
     const { root, init } = await createTestWorkspace(manifest);
 
-    const step = await runAutoRunStep({
+    const step = await runContractAutoRunStep({
       projectRoot: root,
       executor: createCodexExecAdapter({
         projectRoot: root,
@@ -548,7 +552,7 @@ describe("Auto Run contract", () => {
     await writeJsonFile(init.workspace.manifestFile, manifest);
     await writePromptFiles(init.workspace.packageDir, manifest);
 
-    const step = await runAutoRunStep({
+    const step = await runContractAutoRunStep({
       projectRoot: init.workspace.rootPath,
       executor: createCodexExecAdapter({
         projectRoot: init.workspace.rootPath,
@@ -590,7 +594,7 @@ describe("Auto Run contract", () => {
       .build();
     const { root, init } = await createTestWorkspace(manifest);
 
-    const step = await runAutoRunStep({
+    const step = await runContractAutoRunStep({
       projectRoot: root,
       executor: createOpencodeExecAdapter({
         projectRoot: root,
@@ -647,7 +651,7 @@ describe("Auto Run contract", () => {
     const expected =
       "Executor 'failing-opencode' failed: OpenCode error UnknownError: Unexpected server error. Check server logs for details. (ref: err_1e659774)";
 
-    const step = await runAutoRunStep({
+    const step = await runContractAutoRunStep({
       projectRoot: root,
       executor: createOpencodeExecAdapter({
         projectRoot: root,
@@ -698,7 +702,7 @@ describe("Auto Run contract", () => {
       .build();
     const { root, init } = await createTestWorkspace(manifest);
 
-    const step = await runAutoRunStep({
+    const step = await runContractAutoRunStep({
       projectRoot: root,
       executor: createCodexExecAdapter({
         projectRoot: root,
@@ -770,7 +774,7 @@ describe("Auto Run contract", () => {
       .build();
     const { root, init } = await createTestWorkspace(manifest);
 
-    const step = await runAutoRunStep({
+    const step = await runContractAutoRunStep({
       projectRoot: root,
       executor: createCodexExecAdapter({
         projectRoot: root,
@@ -816,7 +820,7 @@ describe("Auto Run contract", () => {
       .build();
     const { root } = await createTestWorkspace(manifest);
 
-    const step = await runAutoRunStep({
+    const step = await runContractAutoRunStep({
       projectRoot: root,
       executor: createCodexExecAdapter({
         projectRoot: root,
@@ -863,7 +867,7 @@ describe("Auto Run contract", () => {
       .build();
     await writeFile(init.workspace.manifestFile, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
-    const step = await runAutoRunStep({
+    const step = await runContractAutoRunStep({
       projectRoot: root,
       executor: createCodexExecAdapter({
         projectRoot: root,
@@ -910,7 +914,7 @@ describe("Auto Run contract", () => {
       .withDefaultExecutor("fake-reviewer")
       .build();
     const { root, init } = await createTestWorkspace(manifest);
-    await runAutoRunStep({
+    await runContractAutoRunStep({
       projectRoot: root,
       executor: {
         async runBlock() {
@@ -923,7 +927,7 @@ describe("Auto Run contract", () => {
         }
       }
     });
-    const step = await runAutoRunStep({
+    const step = await runContractAutoRunStep({
       projectRoot: root,
       executor: createCodexExecAdapter({
         projectRoot: root,
@@ -963,7 +967,7 @@ describe("Auto Run contract", () => {
       .withDefaultExecutor("fake-local-review")
       .build();
     const { root, init } = await createTestWorkspace(manifest);
-    await runAutoRunStep({
+    await runContractAutoRunStep({
       projectRoot: root,
       executor: {
         async runBlock() {
@@ -976,7 +980,7 @@ describe("Auto Run contract", () => {
         }
       }
     });
-    const step = await runAutoRunStep({
+    const step = await runContractAutoRunStep({
       projectRoot: root,
       executor: createLocalReviewAdapter({
         projectRoot: root,
@@ -1026,7 +1030,7 @@ describe("Auto Run contract", () => {
 
   it("dispatches and submits every block in a parallel batch", async () => {
     const { root } = await createTestWorkspace(basicManifest({ parallel: true, maxConcurrent: 2, includeSecondTask: true }));
-    const step = await runAutoRunStep({
+    const step = await runContractAutoRunStep({
       projectRoot: root,
       parallel: true,
       executor: {
@@ -1072,11 +1076,11 @@ describe("Auto Run contract", () => {
       }
     };
 
-    await expect(runAutoRunStep({ projectRoot: root, parallel: true, executor })).resolves.toMatchObject({
+    await expect(runContractAutoRunStep({ projectRoot: root, parallel: true, executor })).resolves.toMatchObject({
       kind: "batch_submitted",
       claim: { refs: ["T-001#B-001", "T-002#B-001"] }
     });
-    await expect(runAutoRunStep({ projectRoot: root, parallel: true, executor })).resolves.toMatchObject({
+    await expect(runContractAutoRunStep({ projectRoot: root, parallel: true, executor })).resolves.toMatchObject({
       kind: "submitted",
       claim: { kind: "block", ref: "T-001#R-001", blockType: "review" },
       submitResult: { verdict: "passed", status: "completed" }
@@ -1115,7 +1119,7 @@ describe("Auto Run contract", () => {
       .build();
     const { root } = await createTestWorkspace(manifest);
 
-    await runAutoRunStep({ projectRoot: root });
+    await runContractAutoRunStep({ projectRoot: root });
 
     const implementationStatus = await getAutoRunStatus({ projectRoot: root });
     expect(implementationStatus).toMatchObject({
@@ -1155,7 +1159,7 @@ describe("Auto Run contract", () => {
     });
 
     await new Promise((resolve) => setTimeout(resolve, 10));
-    await runAutoRunStep({ projectRoot: root });
+    await runContractAutoRunStep({ projectRoot: root });
 
     const reviewStatus = await getAutoRunStatus({ projectRoot: root });
     expect(reviewStatus.latestRuns.map((run) => run.ref)).toEqual(["T-001#B-001", "T-001#R-001"]);
@@ -1208,11 +1212,11 @@ describe("Auto Run contract", () => {
       .build();
     const { root } = await createTestWorkspace(manifest);
 
-    await runAutoRunStep({ projectRoot: root, ...noTmux });
+    await runContractAutoRunStep({ projectRoot: root });
     await new Promise((resolve) => setTimeout(resolve, 10));
-    await runAutoRunStep({ projectRoot: root, ...noTmux });
+    await runContractAutoRunStep({ projectRoot: root });
     await new Promise((resolve) => setTimeout(resolve, 10));
-    await runAutoRunStep({ projectRoot: root, ...noTmux });
+    await runContractAutoRunStep({ projectRoot: root });
 
     const status = await waitForAutoRunStatus(
       root,

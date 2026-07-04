@@ -25,6 +25,7 @@
   "scripts": {
     "build": "pnpm --filter @planweave-ai/runtime build && pnpm --filter @planweave-ai/mcp build && tsc -p tsconfig.json && tsc -p tsconfig.main.json --noEmit && node scripts/build-electron.mjs && vite build",
     "dev": "vite --host 127.0.0.1",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.main.json --noEmit",
     "dist:all": "pnpm build && electron-builder --mac dmg zip --linux AppImage deb tar.gz --win nsis zip --publish never",
     "dist:linux": "pnpm build && electron-builder --linux AppImage deb tar.gz --publish never",
     "dist:mac": "pnpm build && electron-builder --mac dmg zip --publish never",

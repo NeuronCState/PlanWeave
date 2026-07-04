@@ -43,6 +43,7 @@
     "dev": "tsx src/index.ts",
     "mcp": "tsx src/index.ts",
     "test": "cd ../.. && vitest run packages/mcp/src/__tests__/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepack": "pnpm build"
   },
   "dependencies": {

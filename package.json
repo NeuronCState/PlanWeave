@@ -9,6 +9,8 @@
     "build": "pnpm -r build",
     "check:dom-boundaries": "node scripts/check-renderer-dom-boundaries.mjs",
     "check:versions": "node scripts/sync-version-metadata.mjs --check",
+    "lint": "pnpm check:versions && pnpm check:dom-boundaries && pnpm typecheck",
+    "typecheck": "pnpm -r --if-present typecheck",
     "desktop:build": "pnpm --dir packages/desktop build",
     "desktop:dist:all": "pnpm --dir packages/desktop dist:all",
     "desktop:dist:linux": "pnpm --dir packages/desktop dist:linux",

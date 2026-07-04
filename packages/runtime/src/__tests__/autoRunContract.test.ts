@@ -41,6 +41,20 @@ function adapter(): AutoRunExecutorAdapter {
   };
 }
 
+async function waitForAutoRunStatus(
+  projectRoot: string,
+  predicate: (status: Awaited<ReturnType<typeof getAutoRunStatus>>) => boolean
+): Promise<Awaited<ReturnType<typeof getAutoRunStatus>>> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const status = await getAutoRunStatus({ projectRoot });
+    if (predicate(status)) {
+      return status;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return getAutoRunStatus({ projectRoot });
+}
+
 async function createFormalManualCanvasWorkspace() {
   const { root, init } = await createTestWorkspace();
   const packageDir = join(init.workspace.workspaceRoot, "manual-canvas", "package");
@@ -1195,7 +1209,13 @@ describe("Auto Run contract", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     await runAutoRunStep({ projectRoot: root });
 
-    const status = await getAutoRunStatus({ projectRoot: root });
+    const status = await waitForAutoRunStatus(
+      root,
+      (currentStatus) =>
+        currentStatus.latestRuns.some(
+          (run) => run.kind === "feedback" && run.feedbackId === "FE-001" && run.sourceReviewBlockRef === "T-001#R-001" && run.status === "resolved"
+        )
+    );
     expect(status.latestRuns).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

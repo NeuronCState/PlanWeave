@@ -33,6 +33,18 @@ function runContractAutoRunStep(options: AutoRunStepOptions) {
   return runAutoRunStep({ tmuxEnabled: false, ...options });
 }
 
+function createContractCodexExecAdapter(options: Parameters<typeof createCodexExecAdapter>[0]) {
+  return createCodexExecAdapter({ ...options, runtime: { ...options.runtime, tmuxEnabled: false } });
+}
+
+function createContractOpencodeExecAdapter(options: Parameters<typeof createOpencodeExecAdapter>[0]) {
+  return createOpencodeExecAdapter({ ...options, runtime: { ...options.runtime, tmuxEnabled: false } });
+}
+
+function createContractLocalReviewAdapter(options: Parameters<typeof createLocalReviewAdapter>[0]) {
+  return createLocalReviewAdapter({ ...options, runtime: { ...options.runtime, tmuxEnabled: false } });
+}
+
 function adapter(): AutoRunExecutorAdapter {
   return {
     executeBlock: async (claim) => ({
@@ -496,7 +508,7 @@ describe("Auto Run contract", () => {
 
     const step = await runContractAutoRunStep({
       projectRoot: root,
-      executor: createCodexExecAdapter({
+      executor: createContractCodexExecAdapter({
         projectRoot: root,
         executorName: "fake-codex"
       })
@@ -554,7 +566,7 @@ describe("Auto Run contract", () => {
 
     const step = await runContractAutoRunStep({
       projectRoot: init.workspace.rootPath,
-      executor: createCodexExecAdapter({
+      executor: createContractCodexExecAdapter({
         projectRoot: init.workspace.rootPath,
         executorName: "fake-codex"
       })
@@ -596,7 +608,7 @@ describe("Auto Run contract", () => {
 
     const step = await runContractAutoRunStep({
       projectRoot: root,
-      executor: createOpencodeExecAdapter({
+      executor: createContractOpencodeExecAdapter({
         projectRoot: root,
         executorName: "fake-opencode"
       })
@@ -653,7 +665,7 @@ describe("Auto Run contract", () => {
 
     const step = await runContractAutoRunStep({
       projectRoot: root,
-      executor: createOpencodeExecAdapter({
+      executor: createContractOpencodeExecAdapter({
         projectRoot: root,
         executorName: "failing-opencode"
       })
@@ -704,7 +716,7 @@ describe("Auto Run contract", () => {
 
     const step = await runContractAutoRunStep({
       projectRoot: root,
-      executor: createCodexExecAdapter({
+      executor: createContractCodexExecAdapter({
         projectRoot: root,
         executorName: "failing-codex"
       })
@@ -776,7 +788,7 @@ describe("Auto Run contract", () => {
 
     const step = await runContractAutoRunStep({
       projectRoot: root,
-      executor: createCodexExecAdapter({
+      executor: createContractCodexExecAdapter({
         projectRoot: root,
         executorName: "slow-codex"
       })
@@ -822,7 +834,7 @@ describe("Auto Run contract", () => {
 
     const step = await runContractAutoRunStep({
       projectRoot: root,
-      executor: createCodexExecAdapter({
+      executor: createContractCodexExecAdapter({
         projectRoot: root,
         executorName: "fake-codex"
       })
@@ -869,7 +881,7 @@ describe("Auto Run contract", () => {
 
     const step = await runContractAutoRunStep({
       projectRoot: root,
-      executor: createCodexExecAdapter({
+      executor: createContractCodexExecAdapter({
         projectRoot: root,
         executorName: "fake-codex",
         runtime: { tmuxEnabled: false }
@@ -929,7 +941,7 @@ describe("Auto Run contract", () => {
     });
     const step = await runContractAutoRunStep({
       projectRoot: root,
-      executor: createCodexExecAdapter({
+      executor: createContractCodexExecAdapter({
         projectRoot: root,
         executorName: "fake-reviewer"
       })
@@ -982,7 +994,7 @@ describe("Auto Run contract", () => {
     });
     const step = await runContractAutoRunStep({
       projectRoot: root,
-      executor: createLocalReviewAdapter({
+      executor: createContractLocalReviewAdapter({
         projectRoot: root,
         executorName: "fake-local-review"
       })

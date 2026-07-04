@@ -9,6 +9,13 @@ export const maxIndexedResultFileBytes = 256_000;
 export const maxIndexedResultFileCount = 2_000;
 export const maxIndexedResultTotalBodyBytes = 16_000_000;
 
+const resultsIndexConcurrency = {
+  directoryReads: 8,
+  fileStats: 16,
+  metadataReads: 8,
+  bodyReads: 4
+};
+
 export type ResultsIndexLimits = {
   maxFiles: number;
   maxTotalBodyBytes: number;
@@ -66,6 +73,19 @@ type CachedResultsFileIndex = {
   bodiesByRelativePath: Map<string, CachedResultFileBody>;
 };
 
+type ResultFingerprintSelection = {
+  selected: ResultFileFingerprint[];
+  observedFileCount: number;
+  observedReadableBodyBytes: number;
+  observedReadableBodyFileCount: number;
+};
+
+type CollectedResultDirectory = {
+  directories: string[];
+  files: string[];
+  diagnostics: ValidationIssue[];
+};
+
 const resultsFileIndexCacheByResultsDir = new Map<string, CachedResultsFileIndex>();
 
 function toPosixPath(path: string): string {
@@ -77,26 +97,76 @@ function resultPath(resultsDir: string, path: string): string {
   return resultRelativePath ? `results/${resultRelativePath}` : "results";
 }
 
-async function collectResultFiles(resultsDir: string, root: string, diagnostics: ValidationIssue[], files: string[]): Promise<void> {
+async function runBounded<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) {
+    return [];
+  }
+  const boundedConcurrency = Math.max(1, Math.floor(concurrency));
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function runWorker(): Promise<void> {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index], index);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(boundedConcurrency, items.length) }, runWorker));
+  return results;
+}
+
+async function readResultDirectory(resultsDir: string, root: string): Promise<CollectedResultDirectory> {
   try {
     const entries = await readdir(root, { withFileTypes: true });
+    const directories: string[] = [];
+    const files: string[] = [];
     for (const entry of entries) {
       const path = join(root, entry.name);
       if (entry.isDirectory()) {
-        await collectResultFiles(resultsDir, path, diagnostics, files);
+        directories.push(path);
       } else if (entry.isFile() && resultFilePattern.test(entry.name)) {
         files.push(path);
       }
     }
+    return { directories, files, diagnostics: [] };
   } catch (caught) {
-    appendDesktopDiagnostic(
-      diagnostics,
-      desktopDiagnostic(
-        "desktop_results_read_failed",
-        `Result files could not be listed: ${errorMessage(caught)}`,
-        resultPath(resultsDir, root)
-      )
+    return {
+      directories: [],
+      files: [],
+      diagnostics: [
+        desktopDiagnostic(
+          "desktop_results_read_failed",
+          `Result files could not be listed: ${errorMessage(caught)}`,
+          resultPath(resultsDir, root)
+        )
+      ]
+    };
+  }
+}
+
+async function collectResultFiles(resultsDir: string, root: string, diagnostics: ValidationIssue[], files: string[]): Promise<void> {
+  let directories = [root];
+  while (directories.length > 0) {
+    const collectedDirectories = await runBounded(
+      directories,
+      resultsIndexConcurrency.directoryReads,
+      (directory) => readResultDirectory(resultsDir, directory)
     );
+    const nextDirectories: string[] = [];
+    for (const collected of collectedDirectories) {
+      for (const diagnostic of collected.diagnostics) {
+        appendDesktopDiagnostic(diagnostics, diagnostic);
+      }
+      files.push(...collected.files);
+      nextDirectories.push(...collected.directories);
+    }
+    directories = nextDirectories;
   }
 }
 
@@ -154,20 +224,65 @@ function newestResultFirst(left: ResultFileFingerprint, right: ResultFileFingerp
   return mtimeOrder !== 0 ? mtimeOrder : left.path.localeCompare(right.path);
 }
 
-export function selectIndexedResultFingerprints(
-  fingerprints: ResultFileFingerprint[],
+function createResultFingerprintSelection(): ResultFingerprintSelection {
+  return {
+    selected: [],
+    observedFileCount: 0,
+    observedReadableBodyBytes: 0,
+    observedReadableBodyFileCount: 0
+  };
+}
+
+function insertSelectedResultFingerprint(
+  selected: ResultFileFingerprint[],
+  fingerprint: ResultFileFingerprint,
+  maxFiles: number
+): void {
+  if (maxFiles <= 0) {
+    return;
+  }
+  let low = 0;
+  let high = selected.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (newestResultFirst(fingerprint, selected[middle]) < 0) {
+      high = middle;
+    } else {
+      low = middle + 1;
+    }
+  }
+  if (low >= maxFiles) {
+    return;
+  }
+  selected.splice(low, 0, fingerprint);
+  if (selected.length > maxFiles) {
+    selected.pop();
+  }
+}
+
+function observeResultFingerprint(
+  selection: ResultFingerprintSelection,
+  fingerprint: ResultFileFingerprint,
+  limits: ResultsIndexLimits
+): void {
+  selection.observedFileCount += 1;
+  if (fingerprint.size <= limits.maxSingleFileBytes) {
+    selection.observedReadableBodyBytes += fingerprint.size;
+    selection.observedReadableBodyFileCount += 1;
+  }
+  insertSelectedResultFingerprint(selection.selected, fingerprint, limits.maxFiles);
+}
+
+function finalizeResultFingerprintSelection(
+  selection: ResultFingerprintSelection,
   limits: ResultsIndexLimits
 ): { files: ResultFileFingerprint[]; diagnostics: ValidationIssue[] } {
-  const sorted = [...fingerprints].sort(newestResultFirst);
-  const fileLimited = sorted.slice(0, limits.maxFiles);
   const files: ResultFileFingerprint[] = [];
-  const totalBodyBytes = sorted
-    .filter((fingerprint) => fingerprint.size <= limits.maxSingleFileBytes)
-    .reduce((total, fingerprint) => total + fingerprint.size, 0);
   let indexedBodyBytes = 0;
+  let indexedReadableBodyFileCount = 0;
   let bodyBudgetExhausted = false;
 
-  for (const fingerprint of fileLimited) {
+  for (const fingerprint of selection.selected) {
     if (fingerprint.size <= limits.maxSingleFileBytes && (bodyBudgetExhausted || indexedBodyBytes + fingerprint.size > limits.maxTotalBodyBytes)) {
       bodyBudgetExhausted = true;
       continue;
@@ -175,23 +290,24 @@ export function selectIndexedResultFingerprints(
     files.push(fingerprint);
     if (fingerprint.size <= limits.maxSingleFileBytes) {
       indexedBodyBytes += fingerprint.size;
+      indexedReadableBodyFileCount += 1;
     }
   }
 
   const diagnostics: ValidationIssue[] = [];
-  if (sorted.length > limits.maxFiles) {
+  if (selection.observedFileCount > limits.maxFiles) {
     diagnostics.push(desktopDiagnostic(
       "desktop_results_index_file_limit_exceeded",
-      `Results index file limit exceeded: total=${sorted.length}, indexed=${files.length}, skipped=${sorted.length - files.length}, limit=${limits.maxFiles}.`,
+      `Results index file limit exceeded: total=${selection.observedFileCount}, indexed=${files.length}, skipped=${selection.observedFileCount - files.length}, limit=${limits.maxFiles}.`,
       "results"
     ));
   }
-  if (totalBodyBytes > limits.maxTotalBodyBytes) {
-    const skippedBodyBytes = totalBodyBytes - indexedBodyBytes;
-    const skippedBodyFiles = sorted.filter((fingerprint) => fingerprint.size <= limits.maxSingleFileBytes && !files.includes(fingerprint)).length;
+  if (selection.observedReadableBodyBytes > limits.maxTotalBodyBytes) {
+    const skippedBodyBytes = selection.observedReadableBodyBytes - indexedBodyBytes;
+    const skippedBodyFiles = selection.observedReadableBodyFileCount - indexedReadableBodyFileCount;
     diagnostics.push(desktopDiagnostic(
       "desktop_results_index_byte_limit_exceeded",
-      `Results index body byte limit exceeded: total=${totalBodyBytes}, indexed=${indexedBodyBytes}, skipped=${skippedBodyBytes}, limit=${limits.maxTotalBodyBytes}; skippedFiles=${skippedBodyFiles}.`,
+      `Results index body byte limit exceeded: total=${selection.observedReadableBodyBytes}, indexed=${indexedBodyBytes}, skipped=${skippedBodyBytes}, limit=${limits.maxTotalBodyBytes}; skippedFiles=${skippedBodyFiles}.`,
       "results"
     ));
   }
@@ -199,32 +315,51 @@ export function selectIndexedResultFingerprints(
   return { files, diagnostics };
 }
 
+export function selectIndexedResultFingerprints(
+  fingerprints: ResultFileFingerprint[],
+  limits: ResultsIndexLimits
+): { files: ResultFileFingerprint[]; diagnostics: ValidationIssue[] } {
+  const selection = createResultFingerprintSelection();
+  for (const fingerprint of fingerprints) {
+    observeResultFingerprint(selection, fingerprint, limits);
+  }
+  return finalizeResultFingerprintSelection(selection, limits);
+}
+
 async function fingerprintResultFiles(resultsDir: string): Promise<ResultsFileFingerprintSnapshot> {
   const diagnostics: ValidationIssue[] = [];
   const files: string[] = [];
   await collectResultFiles(resultsDir, resultsDir, diagnostics, files);
-  const fingerprints: ResultFileFingerprint[] = [];
-  for (const absolutePath of files) {
+  const limits = {
+    maxFiles: maxIndexedResultFileCount,
+    maxTotalBodyBytes: maxIndexedResultTotalBodyBytes,
+    maxSingleFileBytes: maxIndexedResultFileBytes
+  };
+  const selection = createResultFingerprintSelection();
+  const statDiagnosticsByPath = new Map<string, ValidationIssue>();
+  await runBounded(files, resultsIndexConcurrency.fileStats, async (absolutePath) => {
     try {
       const metadata = await stat(absolutePath);
-      fingerprints.push({
+      observeResultFingerprint(selection, {
         path: toPosixPath(relative(resultsDir, absolutePath)),
         ctimeMs: metadata.ctimeMs,
         mtimeMs: metadata.mtimeMs,
         size: metadata.size
-      });
+      }, limits);
     } catch (caught) {
-      appendDesktopDiagnostic(
-        diagnostics,
+      statDiagnosticsByPath.set(
+        absolutePath,
         desktopDiagnostic("desktop_result_file_read_failed", `Result file metadata could not be read: ${errorMessage(caught)}`, resultPath(resultsDir, absolutePath))
       );
     }
-  }
-  const selected = selectIndexedResultFingerprints(fingerprints, {
-    maxFiles: maxIndexedResultFileCount,
-    maxTotalBodyBytes: maxIndexedResultTotalBodyBytes,
-    maxSingleFileBytes: maxIndexedResultFileBytes
   });
+  for (const absolutePath of files) {
+    const diagnostic = statDiagnosticsByPath.get(absolutePath);
+    if (diagnostic) {
+      appendDesktopDiagnostic(diagnostics, diagnostic);
+    }
+  }
+  const selected = finalizeResultFingerprintSelection(selection, limits);
   for (const diagnostic of selected.diagnostics) {
     appendDesktopDiagnostic(diagnostics, diagnostic);
   }
@@ -321,13 +456,17 @@ export async function buildResultsFileIndexFromFingerprintSnapshot(
   const diagnostics: ValidationIssue[] = [...snapshot.diagnostics];
   const entries: ResultsFileIndexEntry[] = [];
   const nextEntriesByRelativePath = new Map<string, CachedResultsFileIndexEntry>();
-  for (const fingerprint of snapshot.files) {
-    const cachedEntry = await reuseOrReadResultIndexEntry(workspace, fingerprint, cachedIndex);
+  const cachedEntries = await runBounded(
+    snapshot.files,
+    resultsIndexConcurrency.metadataReads,
+    (fingerprint) => reuseOrReadResultIndexEntry(workspace, fingerprint, cachedIndex)
+  );
+  for (const cachedEntry of cachedEntries) {
     for (const diagnostic of cachedEntry.diagnostics) {
       appendDesktopDiagnostic(diagnostics, diagnostic);
     }
     entries.push(cachedEntry.entry);
-    nextEntriesByRelativePath.set(fingerprint.path, cachedEntry);
+    nextEntriesByRelativePath.set(cachedEntry.fingerprint.path, cachedEntry);
   }
 
   resultsFileIndexCacheByResultsDir.set(cacheKey, {
@@ -385,22 +524,31 @@ export async function hydrateResultsFileIndexBodies(index: ResultsFileIndex): Pr
 
   appendResultBodyLimitDiagnostic(diagnostics, index.diagnostics);
 
-  for (const entry of index.entries) {
+  const hydratedEntries = await runBounded(index.entries, resultsIndexConcurrency.bodyReads, async (entry) => {
     if (entry.bodyLoaded || entry.bodyTruncated) {
-      entries.push(entry);
-      continue;
+      return { entry, body: null };
     }
     const body = await readCachedResultBody(index.workspace, entry, cachedIndex);
-    for (const diagnostic of body.diagnostics) {
-      appendDesktopDiagnostic(diagnostics, diagnostic);
+    return {
+      entry: {
+        ...entry,
+        body: body.body,
+        bodyLoaded: body.diagnostics.length === 0,
+        bodyTruncated: entry.bodyTruncated
+      },
+      body
+    };
+  });
+
+  for (const hydrated of hydratedEntries) {
+    const body = hydrated.body;
+    if (body) {
+      for (const diagnostic of body.diagnostics) {
+        appendDesktopDiagnostic(diagnostics, diagnostic);
+      }
+      nextBodiesByRelativePath.set(hydrated.entry.relativePath, body);
     }
-    nextBodiesByRelativePath.set(entry.relativePath, body);
-    entries.push({
-      ...entry,
-      body: body.body,
-      bodyLoaded: body.diagnostics.length === 0,
-      bodyTruncated: entry.bodyTruncated
-    });
+    entries.push(hydrated.entry);
   }
 
   resultsFileIndexCacheByResultsDir.set(cacheKey, {

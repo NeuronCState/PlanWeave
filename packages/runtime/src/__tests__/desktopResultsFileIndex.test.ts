@@ -10,7 +10,9 @@ import {
   maxIndexedResultTotalBodyBytes,
   selectIndexedResultFingerprints,
   snapshotResultsFileFingerprints,
-  type ResultFileFingerprint
+  type ResultFileFingerprint,
+  type ResultsFileIndex,
+  type ResultsFileIndexEntry
 } from "../desktop/graph/resultsFileIndex.js";
 import { writeJsonFile } from "../json.js";
 import { createTestWorkspace } from "./promptTestHelpers.js";
@@ -19,7 +21,9 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   return {
     ...actual,
-    readFile: vi.fn(actual.readFile)
+    readdir: vi.fn(actual.readdir),
+    readFile: vi.fn(actual.readFile),
+    stat: vi.fn(actual.stat)
   };
 });
 
@@ -44,6 +48,23 @@ function sizedBody(needle: string, size: number): string {
     throw new Error("Needle exceeds requested body size.");
   }
   return needle + " ".repeat(size - needle.length);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function resultIndexEntry(workspace: ResultsFileIndex["workspace"], relativePath: string, size: number): ResultsFileIndexEntry {
+  const entryFingerprint = fingerprint(relativePath, 1000, size);
+  return {
+    absolutePath: join(workspace.resultsDir, relativePath),
+    relativePath,
+    fingerprint: entryFingerprint,
+    body: "",
+    bodyLoaded: false,
+    bodyTruncated: false,
+    metadata: null
+  };
 }
 
 describe("desktop results file index", () => {
@@ -158,6 +179,178 @@ describe("desktop results file index", () => {
     vi.mocked(fsPromises.readFile).mockClear();
     await hydrateResultsFileIndexBodies(index);
     expect(resultReadPaths(init.workspace.resultsDir)).toEqual([]);
+  });
+
+  it("reads result directories with bounded concurrency and keeps indexing after one directory read failure", async () => {
+    const actualFs = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    const { init } = await createTestWorkspace();
+    const runsDir = join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs");
+    const failedRunDir = join(runsDir, "RUN-DIR-05");
+    for (let index = 0; index < 12; index += 1) {
+      const runDir = join(runsDir, `RUN-DIR-${String(index).padStart(2, "0")}`);
+      await mkdir(runDir, { recursive: true });
+      await writeFile(join(runDir, "report.md"), `directory concurrency ${index}\n`, "utf8");
+    }
+
+    let inFlight = 0;
+    let peakInFlight = 0;
+    await vi.mocked(fsPromises.readdir).withImplementation(async (...args: Parameters<typeof fsPromises.readdir>) => {
+      const pathString = typeof args[0] === "string" ? args[0] : args[0].toString();
+      if (pathString.includes("RUN-DIR-")) {
+        inFlight += 1;
+        peakInFlight = Math.max(peakInFlight, inFlight);
+        await delay(5);
+        inFlight -= 1;
+        if (pathString === failedRunDir) {
+          throw new Error("directory unavailable");
+        }
+      }
+      return actualFs.readdir(...args);
+    }, async () => {
+      const snapshot = await snapshotResultsFileFingerprints(init.workspace);
+      const paths = snapshot.files.map((file) => file.path);
+
+      expect(peakInFlight).toBeGreaterThan(1);
+      expect(peakInFlight).toBeLessThanOrEqual(8);
+      expect(paths).toEqual(expect.arrayContaining([
+        "T-001/blocks/B-001/runs/RUN-DIR-00/report.md",
+        "T-001/blocks/B-001/runs/RUN-DIR-11/report.md"
+      ]));
+      expect(paths).not.toContain("T-001/blocks/B-001/runs/RUN-DIR-05/report.md");
+      expect(snapshot.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: "desktop_results_read_failed",
+          path: "results/T-001/blocks/B-001/runs/RUN-DIR-05"
+        })
+      ]));
+    });
+  });
+
+  it("stats result files with bounded concurrency and keeps indexing after one stat failure", async () => {
+    const actualFs = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    const { init } = await createTestWorkspace();
+    const runDir = join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-STAT-CONCURRENCY");
+    await mkdir(runDir, { recursive: true });
+    const failedPath = join(runDir, "report-05.md");
+    for (let index = 0; index < 24; index += 1) {
+      await writeFile(join(runDir, `report-${String(index).padStart(2, "0")}.md`), `stat concurrency ${index}\n`, "utf8");
+    }
+
+    let inFlight = 0;
+    let peakInFlight = 0;
+    const statMock = vi.mocked(fsPromises.stat);
+    await statMock.withImplementation(async (path: Parameters<typeof fsPromises.stat>[0]) => {
+      const pathString = typeof path === "string" ? path : path.toString();
+      if (pathString.startsWith(init.workspace.resultsDir)) {
+        inFlight += 1;
+        peakInFlight = Math.max(peakInFlight, inFlight);
+        await delay(5);
+        inFlight -= 1;
+        if (pathString === failedPath) {
+          throw new Error("stat unavailable");
+        }
+      }
+      return actualFs.stat(path);
+    }, async () => {
+      const snapshot = await snapshotResultsFileFingerprints(init.workspace);
+
+      expect(peakInFlight).toBeGreaterThan(1);
+      expect(peakInFlight).toBeLessThanOrEqual(16);
+      expect(snapshot.files.map((file) => file.path)).not.toContain("T-001/blocks/B-001/runs/RUN-STAT-CONCURRENCY/report-05.md");
+      expect(snapshot.files.map((file) => file.path)).toEqual(expect.arrayContaining([
+        "T-001/blocks/B-001/runs/RUN-STAT-CONCURRENCY/report-00.md",
+        "T-001/blocks/B-001/runs/RUN-STAT-CONCURRENCY/report-23.md"
+      ]));
+      expect(snapshot.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: "desktop_result_file_read_failed",
+          path: "results/T-001/blocks/B-001/runs/RUN-STAT-CONCURRENCY/report-05.md"
+        })
+      ]));
+    });
+  });
+
+  it("reads metadata entries concurrently while preserving snapshot order", async () => {
+    const actualFs = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    const { init } = await createTestWorkspace();
+    const relativePaths = Array.from(
+      { length: 10 },
+      (_, index) => `T-001/blocks/B-001/runs/RUN-ORDER-${index + 1}/metadata.json`
+    );
+    const snapshot = {
+      diagnostics: [],
+      files: relativePaths.map((path, index) => fingerprint(path, 10_000 - index, 20))
+    };
+    let inFlight = 0;
+    let peakInFlight = 0;
+
+    await vi.mocked(fsPromises.readFile).withImplementation(async (...args: Parameters<typeof fsPromises.readFile>) => {
+      const pathString = typeof args[0] === "string" ? args[0] : args[0].toString();
+      if (pathString.startsWith(init.workspace.resultsDir) && pathString.endsWith("metadata.json")) {
+        const orderIndex = relativePaths.findIndex((relativePath) => pathString.endsWith(relativePath));
+        inFlight += 1;
+        peakInFlight = Math.max(peakInFlight, inFlight);
+        await delay((relativePaths.length - orderIndex) * 2);
+        inFlight -= 1;
+        return JSON.stringify({ orderIndex });
+      }
+      return actualFs.readFile(...args);
+    }, async () => {
+      const index = await buildResultsFileIndexFromFingerprintSnapshot(init.workspace, snapshot);
+
+      expect(peakInFlight).toBeGreaterThan(1);
+      expect(peakInFlight).toBeLessThanOrEqual(8);
+      expect(index.entries.map((entry) => entry.relativePath)).toEqual(relativePaths);
+      expect(index.entries.map((entry) => entry.metadata)).toEqual(relativePaths.map((_, orderIndex) => ({ orderIndex })));
+    });
+  });
+
+  it("hydrates result bodies concurrently, keeps entry order, and keeps going after a read failure", async () => {
+    const actualFs = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    const { init } = await createTestWorkspace();
+    const relativePaths = Array.from(
+      { length: 6 },
+      (_, index) => `T-001/blocks/B-001/runs/RUN-BODY-${index + 1}/report.md`
+    );
+    const failedRelativePath = relativePaths[2];
+    const index: ResultsFileIndex = {
+      workspace: init.workspace,
+      entries: relativePaths.map((path) => resultIndexEntry(init.workspace, path, 30)),
+      diagnostics: []
+    };
+    let inFlight = 0;
+    let peakInFlight = 0;
+
+    await vi.mocked(fsPromises.readFile).withImplementation(async (...args: Parameters<typeof fsPromises.readFile>) => {
+      const pathString = typeof args[0] === "string" ? args[0] : args[0].toString();
+      if (pathString.startsWith(init.workspace.resultsDir) && pathString.endsWith("report.md")) {
+        const orderIndex = relativePaths.findIndex((relativePath) => pathString.endsWith(relativePath));
+        inFlight += 1;
+        peakInFlight = Math.max(peakInFlight, inFlight);
+        await delay((relativePaths.length - orderIndex) * 2);
+        inFlight -= 1;
+        if (pathString.endsWith(failedRelativePath)) {
+          throw new Error("body unavailable");
+        }
+        return `body ${orderIndex}`;
+      }
+      return actualFs.readFile(...args);
+    }, async () => {
+      const hydrated = await hydrateResultsFileIndexBodies(index);
+
+      expect(peakInFlight).toBeGreaterThan(1);
+      expect(peakInFlight).toBeLessThanOrEqual(4);
+      expect(hydrated.entries.map((entry) => entry.relativePath)).toEqual(relativePaths);
+      expect(hydrated.entries[0]).toMatchObject({ body: "body 0", bodyLoaded: true });
+      expect(hydrated.entries[2]).toMatchObject({ body: "", bodyLoaded: false });
+      expect(hydrated.entries[5]).toMatchObject({ body: "body 5", bodyLoaded: true });
+      expect(hydrated.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: "desktop_result_file_read_failed",
+          path: `results/${failedRelativePath}`
+        })
+      ]));
+    });
   });
 
   it("searches indexed new result files and reports skipped old result files when the byte limit is exceeded", async () => {

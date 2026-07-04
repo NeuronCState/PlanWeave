@@ -44,6 +44,19 @@ function withWorkingDirectory(args: string[], cwd: string): string[] {
   return next;
 }
 
+function withSandbox(args: string[], sandbox?: OpencodeExecExecutorProfile["sandbox"]): string[] {
+  if (sandbox !== "danger-full-access" || hasOption(args, "--auto")) {
+    return args;
+  }
+  const runIndex = args.indexOf("run");
+  if (runIndex === -1) {
+    return args;
+  }
+  const next = [...args];
+  next.splice(runIndex + 1, 0, "--auto");
+  return next;
+}
+
 function isDirectOpencodeRun(profile: OpencodeExecExecutorProfile): boolean {
   return basename(profile.command) === "opencode" && profile.args.includes("run");
 }
@@ -53,7 +66,7 @@ export function opencodeInvocation(profile: OpencodeExecExecutorProfile, prompt:
     return { args: profile.args, stdin: prompt, jsonMode: false, sessionId: null };
   }
 
-  const args = withWorkingDirectory(profile.args, cwd);
+  const args = withSandbox(withWorkingDirectory(profile.args, cwd), profile.sandbox);
   const sessionId = optionValue(args, "--session") ?? shortOptionValue(args, "-s");
   const runIndex = args.indexOf("run");
   const promptPlaceholderIndex = args.lastIndexOf("-");

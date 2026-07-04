@@ -11,6 +11,7 @@ import type {
 } from "../types.js";
 import { claudeCodeIntegration } from "./claudeCodeIntegration.js";
 import { codexIntegration } from "./codexIntegration.js";
+import { applyDesktopAgentSettingsToBuiltinProfiles } from "./desktopAgentSettings.js";
 import { execWithStdin, executorLimitFailureMessage, executorRuntimeLimits, workspaceExecutionCwd, type BlockClaim } from "./executorShared.js";
 import type { ExecutorIntegration, ExecutorRuntimeOptions } from "./executorIntegration.js";
 import { localReviewIntegration } from "./localReviewIntegration.js";
@@ -61,7 +62,7 @@ function resolveBlockExecutorName(manifest: PlanPackageManifest, claim: BlockCla
 
 function profilesByName(manifest: PlanPackageManifest): Record<string, ExecutorProfile> {
   return {
-    ...builtinExecutors,
+    ...applyDesktopAgentSettingsToBuiltinProfiles(builtinExecutors),
     ...(manifest.executors ?? {})
   };
 }
@@ -157,7 +158,7 @@ export function createExecutorAdapter(options: { projectRoot: PackageWorkspaceRe
 
 export function listExecutorProfilesForManifest(manifest: PlanPackageManifest): ExecutorProfileSummary[] {
   const packageProfiles = manifest.executors ?? {};
-  const summaries: ExecutorProfileSummary[] = Object.entries(builtinExecutors).map(([name, profile]) => ({
+  const summaries: ExecutorProfileSummary[] = Object.entries(applyDesktopAgentSettingsToBuiltinProfiles(builtinExecutors)).map(([name, profile]) => ({
     name,
     source: "builtin",
     ...profile

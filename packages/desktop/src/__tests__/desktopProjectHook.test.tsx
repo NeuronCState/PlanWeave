@@ -42,7 +42,7 @@ describe("desktop renderer hook interfaces", () => {
           command: "opencode",
           versionArgs: ["--version"],
           execArgs: ["run", "-"],
-          fullAccessArgs: ["run", "--permission", "full-access", "-"],
+          fullAccessArgs: ["run", "--auto", "-"],
           installed: true,
           version: "opencode 1.0.0",
           unavailableReason: null

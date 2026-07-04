@@ -218,6 +218,208 @@ describe("OpenCode executor", () => {
     });
   });
 
+  it("passes danger-full-access sandbox to direct OpenCode runs as --auto", async () => {
+    const manifest = manifestTestBuilder()
+      .withExecutor("fake-opencode-sandbox", {
+        adapter: "opencode-exec",
+        command: "./opencode",
+        args: ["run", "-"],
+        sandbox: "danger-full-access"
+      })
+      .withDefaultExecutor("fake-opencode-sandbox")
+      .build();
+    const { root, init } = await createTestWorkspace(manifest);
+    await writeFile(
+      join(root, "opencode"),
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "const argv = process.argv.slice(2);",
+        "fs.writeFileSync('opencode-sandbox-argv.json', JSON.stringify(argv));",
+        "const prompt = argv.at(-1) || '';",
+        "console.log('sandbox report:' + prompt.includes('Implement task'));"
+      ].join("\n"),
+      "utf8"
+    );
+    await chmod(join(root, "opencode"), 0o755);
+
+    const step = await runAutoRunStep({
+      projectRoot: init.workspace,
+      executor: createOpencodeExecAdapter({
+        projectRoot: init.workspace,
+        executorName: "fake-opencode-sandbox",
+        runtime: { tmuxEnabled: false }
+      })
+    });
+
+    const expectedRoot = await realpath(root);
+    expect(step).toMatchObject({
+      kind: "submitted",
+      claim: { kind: "block", ref: "T-001#B-001" },
+      adapterResult: { kind: "block", adapter: "opencode-exec" }
+    });
+    await expect(readJsonFile(join(root, "opencode-sandbox-argv.json"))).resolves.toEqual([
+      "run",
+      "--auto",
+      "--dir",
+      expectedRoot,
+      expect.stringContaining("Implement task")
+    ]);
+    await expect(readJsonFile(join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-001", "metadata.json"))).resolves.toMatchObject({
+      executor: "fake-opencode-sandbox",
+      adapter: "opencode-exec",
+      sandbox: "danger-full-access",
+      exitCode: 0
+    });
+  });
+
+  it("applies desktop full-access settings to the builtin OpenCode executor", async () => {
+    const manifest = manifestTestBuilder().withDefaultExecutor("opencode").build();
+    const { root, init } = await createTestWorkspace(manifest);
+    const oldPath = process.env.PATH;
+    const oldSettingsFile = process.env.PLANWEAVE_DESKTOP_SETTINGS_FILE;
+    process.env.PATH = [root, oldPath].filter(Boolean).join(":");
+    process.env.PLANWEAVE_DESKTOP_SETTINGS_FILE = join(root, "desktop-settings.json");
+    await writeFile(
+      process.env.PLANWEAVE_DESKTOP_SETTINGS_FILE,
+      JSON.stringify({
+        agents: {
+          opencode: {
+            enabled: true,
+            fullAccess: true
+          }
+        }
+      }),
+      "utf8"
+    );
+    await writeFile(
+      join(root, "opencode"),
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "const argv = process.argv.slice(2);",
+        "fs.writeFileSync('builtin-opencode-argv.json', JSON.stringify(argv));",
+        "const prompt = argv.at(-1) || '';",
+        "console.log('builtin report:' + prompt.includes('Implement task'));"
+      ].join("\n"),
+      "utf8"
+    );
+    await chmod(join(root, "opencode"), 0o755);
+
+    try {
+      const step = await runAutoRunStep({
+        projectRoot: init.workspace,
+        tmuxEnabled: false
+      });
+
+      const expectedRoot = await realpath(root);
+      expect(step).toMatchObject({
+        kind: "submitted",
+        claim: { kind: "block", ref: "T-001#B-001" },
+        adapterResult: { kind: "block", adapter: "opencode-exec" }
+      });
+      await expect(readJsonFile(join(root, "builtin-opencode-argv.json"))).resolves.toEqual([
+        "run",
+        "--auto",
+        "--dir",
+        expectedRoot,
+        expect.stringContaining("Implement task")
+      ]);
+      await expect(readJsonFile(join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-001", "metadata.json"))).resolves.toMatchObject({
+        executor: "opencode",
+        adapter: "opencode-exec",
+        sandbox: "danger-full-access",
+        exitCode: 0
+      });
+    } finally {
+      if (oldPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = oldPath;
+      }
+      if (oldSettingsFile === undefined) {
+        delete process.env.PLANWEAVE_DESKTOP_SETTINGS_FILE;
+      } else {
+        process.env.PLANWEAVE_DESKTOP_SETTINGS_FILE = oldSettingsFile;
+      }
+    }
+  });
+
+  it("does not apply desktop full-access settings to package-defined OpenCode profiles", async () => {
+    const manifest = manifestTestBuilder()
+      .withExecutor("opencode", {
+        adapter: "opencode-exec",
+        command: "./opencode",
+        args: ["run", "-"]
+      })
+      .withDefaultExecutor("opencode")
+      .build();
+    const { root, init } = await createTestWorkspace(manifest);
+    const oldSettingsFile = process.env.PLANWEAVE_DESKTOP_SETTINGS_FILE;
+    process.env.PLANWEAVE_DESKTOP_SETTINGS_FILE = join(root, "desktop-settings.json");
+    await writeFile(
+      process.env.PLANWEAVE_DESKTOP_SETTINGS_FILE,
+      JSON.stringify({
+        agents: {
+          opencode: {
+            enabled: true,
+            fullAccess: true
+          }
+        }
+      }),
+      "utf8"
+    );
+    await writeFile(
+      join(root, "opencode"),
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "const argv = process.argv.slice(2);",
+        "fs.writeFileSync('package-opencode-argv.json', JSON.stringify(argv));",
+        "const prompt = argv.at(-1) || '';",
+        "console.log('package report:' + prompt.includes('Implement task'));"
+      ].join("\n"),
+      "utf8"
+    );
+    await chmod(join(root, "opencode"), 0o755);
+
+    try {
+      const step = await runAutoRunStep({
+        projectRoot: init.workspace,
+        executor: createOpencodeExecAdapter({
+          projectRoot: init.workspace,
+          executorName: "opencode",
+          runtime: { tmuxEnabled: false }
+        })
+      });
+
+      const expectedRoot = await realpath(root);
+      expect(step).toMatchObject({
+        kind: "submitted",
+        claim: { kind: "block", ref: "T-001#B-001" },
+        adapterResult: { kind: "block", adapter: "opencode-exec" }
+      });
+      await expect(readJsonFile(join(root, "package-opencode-argv.json"))).resolves.toEqual([
+        "run",
+        "--dir",
+        expectedRoot,
+        expect.stringContaining("Implement task")
+      ]);
+      await expect(readJsonFile(join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-001", "metadata.json"))).resolves.toMatchObject({
+        executor: "opencode",
+        adapter: "opencode-exec",
+        sandbox: null,
+        exitCode: 0
+      });
+    } finally {
+      if (oldSettingsFile === undefined) {
+        delete process.env.PLANWEAVE_DESKTOP_SETTINGS_FILE;
+      } else {
+        process.env.PLANWEAVE_DESKTOP_SETTINGS_FILE = oldSettingsFile;
+      }
+    }
+  });
+
   it("treats OpenCode JSON error events as executor failures", async () => {
     const manifest = manifestTestBuilder()
       .withDefaultExecutor("fake-opencode-error")

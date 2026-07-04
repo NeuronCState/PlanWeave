@@ -16,7 +16,7 @@ import {
   type FeedbackClaim
 } from "./executorShared.js";
 import { opencodeInvocation } from "./opencodeInvocation.js";
-import { extractOpencodeSessionId, opencodeReport, parseOpencodeJsonOutput } from "./opencodeOutput.js";
+import { extractOpencodeSessionId, formatOpencodeErrorOutput, opencodeReport, parseOpencodeJsonOutput } from "./opencodeOutput.js";
 import { appendReviewResultFileInstruction, assertReviewResultJsonReadable, reviewResultEnvironment } from "./reviewResultContract.js";
 import { runStreamingCommandWithSessionCapture, type StreamedCommandResult } from "./streamingExecutor.js";
 import { createTmuxSessionInfo, tmuxMetadataPatch, type TmuxSessionInfo } from "./tmuxExecutor.js";
@@ -55,6 +55,10 @@ async function runOpencodeStreamingCommand(options: {
 function executorFailureMessage(input: { executorName: string; result: StreamedCommandResult; limits: ExecutorRuntimeLimits }): string {
   if (input.result.limitExceeded) {
     return executorLimitFailureMessage({ executorName: input.executorName, limitExceeded: input.result.limitExceeded });
+  }
+  const opencodeError = formatOpencodeErrorOutput(input.result.stdout, input.result.stderr);
+  if (opencodeError) {
+    return `Executor '${input.executorName}' failed: ${opencodeError}`;
   }
   return input.result.timedOut
     ? `Executor '${input.executorName}' timed out after ${input.limits.timeoutMs}ms.`
@@ -140,6 +144,13 @@ export async function runOpencodeBlock(options: {
   if (jsonOutput.parsedAny || invocation.jsonMode) {
     await writeFile(join(run.runDir, "events.ndjson"), result.stdout, "utf8");
   }
+  const structuredError = formatOpencodeErrorOutput(result.stdout, result.stderr) ?? jsonOutput.error;
+  const failureReason =
+    result.exitCode !== 0
+      ? executorFailureMessage({ executorName: options.executorName, result, limits })
+      : structuredError
+        ? `Executor '${options.executorName}' returned an OpenCode error event: ${structuredError}`
+        : null;
   await finishRunMetadata(run.metadataPath, {
     finishedAt: new Date().toISOString(),
     exitCode: result.exitCode,
@@ -154,13 +165,14 @@ export async function runOpencodeBlock(options: {
     timedOut: result.timedOut,
     agentSessionId,
     opencodeSessionId: agentSessionId,
-    resumed: false
+    resumed: false,
+    failureReason
   });
   if (result.exitCode !== 0) {
-    throw new Error(executorFailureMessage({ executorName: options.executorName, result, limits }));
+    throw new Error(failureReason ?? `Executor '${options.executorName}' exited with code ${result.exitCode}.`);
   }
-  if (jsonOutput.error) {
-    throw new Error(`Executor '${options.executorName}' returned an OpenCode error event: ${jsonOutput.error}`);
+  if (structuredError) {
+    throw new Error(failureReason ?? `Executor '${options.executorName}' returned an OpenCode error event: ${structuredError}`);
   }
   if (options.claim.blockType === "review") {
     if (!reviewResultPath) {
@@ -259,6 +271,13 @@ export async function runOpencodeFeedback(options: {
   if (jsonOutput.parsedAny || invocation.jsonMode) {
     await writeFile(join(runDir, "events.ndjson"), result.stdout, "utf8");
   }
+  const structuredError = formatOpencodeErrorOutput(result.stdout, result.stderr) ?? jsonOutput.error;
+  const failureReason =
+    result.exitCode !== 0
+      ? executorFailureMessage({ executorName: options.executorName, result, limits })
+      : structuredError
+        ? `Executor '${options.executorName}' returned an OpenCode error event: ${structuredError}`
+        : null;
   await finishRunMetadata(metadataPath, {
     finishedAt: new Date().toISOString(),
     exitCode: result.exitCode,
@@ -269,13 +288,14 @@ export async function runOpencodeFeedback(options: {
     maxStderrBytes: limits.maxStderrBytes,
     timedOut: result.timedOut,
     agentSessionId,
-    opencodeSessionId: agentSessionId
+    opencodeSessionId: agentSessionId,
+    failureReason
   });
   if (result.exitCode !== 0) {
-    throw new Error(executorFailureMessage({ executorName: options.executorName, result, limits }));
+    throw new Error(failureReason ?? `Executor '${options.executorName}' exited with code ${result.exitCode}.`);
   }
-  if (jsonOutput.error) {
-    throw new Error(`Executor '${options.executorName}' returned an OpenCode error event: ${jsonOutput.error}`);
+  if (structuredError) {
+    throw new Error(failureReason ?? `Executor '${options.executorName}' returned an OpenCode error event: ${structuredError}`);
   }
   const reportPath = join(runDir, "report.md");
   await writeFile(reportPath, opencodeReport(jsonOutput, result.stdout, result.stderr, agentSessionId), "utf8");

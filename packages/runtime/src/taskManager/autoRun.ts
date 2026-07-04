@@ -276,6 +276,7 @@ async function latestFeedbackRunSummary(options: {
   const hasReport = await exists(reportPath);
   const exitCode = typeof metadata.exitCode === "number" ? metadata.exitCode : null;
   const stderrSummary = await readSummary(join(runDir, "stderr.log"));
+  const metadataFailureReason = stringField(metadata.failureReason);
   return {
     kind: "feedback",
     ref: feedbackId ?? "feedback",
@@ -290,7 +291,7 @@ async function latestFeedbackRunSummary(options: {
     finishedAt: stringField(metadata.finishedAt),
     stdoutSummary: stringField(metadata.nextCommand) ?? (await readSummary(join(runDir, "stdout.md"))),
     stderrSummary,
-    failureReason: exitCode !== null && exitCode !== 0 ? stderrSummary || null : null,
+    failureReason: metadataFailureReason ?? (exitCode !== null && exitCode !== 0 ? stderrSummary || null : null),
     promptPath: hasPrompt ? promptPath : feedbackPromptPath,
     reportPath: hasReport ? reportPath : null,
     metadataPath
@@ -482,6 +483,7 @@ export async function getAutoRunStatus(options: { projectRoot: PackageWorkspaceR
     const metadata = (await exists(metadataPath)) ? await readJsonFile<Record<string, unknown>>(metadataPath) : {};
     const exitCode = typeof metadata.exitCode === "number" ? metadata.exitCode : null;
     const stderrSummary = await readSummary(join(runDir, "stderr.log"));
+    const metadataFailureReason = stringField(metadata.failureReason);
     latestRuns.push({
       kind: "block",
       ref: block.ref,
@@ -495,7 +497,7 @@ export async function getAutoRunStatus(options: { projectRoot: PackageWorkspaceR
       finishedAt: typeof metadata.finishedAt === "string" ? metadata.finishedAt : null,
       stdoutSummary: await readSummary(join(runDir, "stdout.md")),
       stderrSummary,
-      failureReason: exitCode !== null && exitCode !== 0 ? ((stderrSummary || block.reason) ?? null) : block.reason ?? null,
+      failureReason: metadataFailureReason ?? (exitCode !== null && exitCode !== 0 ? ((stderrSummary || block.reason) ?? null) : block.reason ?? null),
       promptPath: join(runDir, "prompt.md"),
       reportPath: (await exists(join(runDir, "report.md"))) ? join(runDir, "report.md") : null,
       metadataPath

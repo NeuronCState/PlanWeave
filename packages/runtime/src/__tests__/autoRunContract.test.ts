@@ -458,6 +458,77 @@ describe("Auto Run contract", () => {
     });
   });
 
+  it("opencode-exec adapter exposes structured OpenCode stderr failures", async () => {
+    const opencodeErrorPayload = JSON.stringify(
+      {
+        name: "UnknownError",
+        data: {
+          message: "Unexpected server error. Check server logs for details.",
+          ref: "err_1e659774"
+        }
+      },
+      null,
+      2
+    );
+    const manifest = manifestTestBuilder()
+      .withExecutor("failing-opencode", {
+        adapter: "opencode-exec",
+        command: process.execPath,
+        args: [
+          "-e",
+          [
+            "process.stdin.resume();",
+            `process.stderr.write('\\u001b[91m\\u001b[1mError: \\u001b[0m' + ${JSON.stringify(opencodeErrorPayload + "\n")});`,
+            "process.exit(1);"
+          ].join("")
+        ]
+      })
+      .withDefaultExecutor("failing-opencode")
+      .build();
+    const { root, init } = await createTestWorkspace(manifest);
+    const expected =
+      "Executor 'failing-opencode' failed: OpenCode error UnknownError: Unexpected server error. Check server logs for details. (ref: err_1e659774)";
+
+    const step = await runAutoRunStep({
+      projectRoot: root,
+      executor: createOpencodeExecAdapter({
+        projectRoot: root,
+        executorName: "failing-opencode"
+      })
+    });
+
+    expect(step).toMatchObject({
+      kind: "blocked",
+      claim: {
+        kind: "blocked",
+        ref: "T-001#B-001",
+        reason: expect.stringContaining(expected)
+      }
+    });
+    await expect(readJsonFile(join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-001", "metadata.json"))).resolves.toMatchObject({
+      executor: "failing-opencode",
+      adapter: "opencode-exec",
+      exitCode: 1,
+      failureReason: expected
+    });
+    await expect(getAutoRunStatus({ projectRoot: root })).resolves.toMatchObject({
+      explanation: {
+        phase: "blocked",
+        currentExecutor: "failing-opencode",
+        latestOutputSummary: expected,
+        error: expected
+      },
+      latestRuns: [
+        expect.objectContaining({
+          ref: "T-001#B-001",
+          status: "blocked",
+          stderrSummary: expect.stringContaining("UnknownError"),
+          failureReason: expected
+        })
+      ]
+    });
+  });
+
   it("blocks the current block when the configured executor exits unsuccessfully", async () => {
     const manifest = manifestTestBuilder()
       .withExecutor("failing-codex", {

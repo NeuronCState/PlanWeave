@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createOpencodeExecAdapter, getExecutionStatus, runAutoRunStep } from "../index.js";
 import { readJsonFile } from "../json.js";
+import { formatOpencodeErrorOutput, parseOpencodeJsonOutput } from "../autoRun/opencodeOutput.js";
 import { createTestWorkspace } from "./promptTestHelpers.js";
 import { manifestTestBuilder } from "./manifestTestBuilder.js";
 
@@ -34,6 +35,40 @@ async function waitForMetadataSession(metadataPath: string, expectedSessionId: s
 }
 
 describe("OpenCode executor", () => {
+  it("does not treat ordinary JSON message fields as OpenCode errors", () => {
+    const ordinaryEvent = JSON.stringify({
+      type: "message",
+      name: "Progress",
+      message: "Still working.",
+      ref: "note_123"
+    });
+
+    expect(parseOpencodeJsonOutput(`${ordinaryEvent}\n`)).toMatchObject({
+      parsedAny: true,
+      error: null
+    });
+    expect(formatOpencodeErrorOutput(ordinaryEvent, "")).toBeNull();
+    expect(formatOpencodeErrorOutput("", ordinaryEvent)).toBeNull();
+  });
+
+  it("formats terminal Error-prefixed OpenCode JSON blocks", () => {
+    const payload = JSON.stringify(
+      {
+        name: "UnknownError",
+        data: {
+          message: "Unexpected server error. Check server logs for details.",
+          ref: "err_1e659774"
+        }
+      },
+      null,
+      2
+    );
+
+    expect(formatOpencodeErrorOutput("", `\u001b[91m\u001b[1mError: \u001b[0m${payload}`)).toBe(
+      "OpenCode error UnknownError: Unexpected server error. Check server logs for details. (ref: err_1e659774)"
+    );
+  });
+
   it("parses OpenCode JSON events into a session id and run report", async () => {
     const manifest = manifestTestBuilder()
       .withExecutor("fake-opencode-json", {

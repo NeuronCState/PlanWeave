@@ -6,6 +6,12 @@ export type OpencodeJsonOutput = {
   toolSummaries: string[];
 };
 
+type OpencodeErrorDetails = {
+  name: string | null;
+  message: string | null;
+  ref: string | null;
+};
+
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
@@ -142,13 +148,108 @@ function toolSummary(value: unknown): string | null {
   return [`- ${tool}`, title ? ` ${title}` : "", status ? ` (${status})` : "", output ? `: ${output}` : ""].join("");
 }
 
-function errorMessage(value: unknown): string | null {
-  if (!isRecord(value) || value.type !== "error") {
+function errorDetails(value: unknown, options: { allowBareErrorObject?: boolean } = {}): OpencodeErrorDetails | null {
+  if (!isRecord(value)) {
     return null;
   }
-  const error = isRecord(value.error) ? value.error : {};
+  let error: Record<string, unknown> | null = null;
+  if (isRecord(value.error)) {
+    error = value.error;
+  } else if (value.type === "error" || options.allowBareErrorObject) {
+    error = value;
+  }
+  if (!error) {
+    return null;
+  }
   const data = isRecord(error.data) ? error.data : {};
-  return stringValue(data.message) ?? stringValue(error.message) ?? stringValue(error.name) ?? "OpenCode returned an error event.";
+  const name = stringValue(error.name);
+  const message = stringValue(data.message) ?? stringValue(error.message);
+  const ref = stringValue(data.ref) ?? stringValue(error.ref);
+  return name || message || ref ? { name, message, ref } : null;
+}
+
+function formatErrorDetails(details: OpencodeErrorDetails): string {
+  const label = details.name ? `OpenCode error ${details.name}` : "OpenCode error";
+  const message = details.message && details.message !== details.name ? `: ${details.message}` : "";
+  const ref = details.ref ? ` (ref: ${details.ref})` : "";
+  return `${label}${message}${ref}`;
+}
+
+function jsonObjectCandidates(input: string): Array<{ json: string; start: number }> {
+  const candidates: Array<{ json: string; start: number }> = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === "{") {
+      if (depth === 0) {
+        start = index;
+      }
+      depth += 1;
+      continue;
+    }
+    if (char !== "}" || depth === 0) {
+      continue;
+    }
+    depth -= 1;
+    if (depth === 0 && start >= 0) {
+      candidates.push({ json: input.slice(start, index + 1), start });
+      start = -1;
+    }
+  }
+  return candidates;
+}
+
+function hasTerminalErrorPrefix(input: string, jsonStart: number): boolean {
+  const prefix = input.slice(Math.max(0, jsonStart - 80), jsonStart);
+  return /(?:^|\s)(?:Error|OpenCode error)\s*:\s*$/i.test(prefix);
+}
+
+export function formatOpencodeErrorOutput(stdout: string, stderr: string): string | null {
+  const combined = `${stdout}\n${stderr}`.replace(ansiEscapePattern, "");
+  for (const line of combined.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    try {
+      const details = errorDetails(JSON.parse(trimmed));
+      if (details) {
+        return formatErrorDetails(details);
+      }
+    } catch {
+      // Fall through to JSON object extraction below.
+    }
+  }
+  for (const candidate of jsonObjectCandidates(combined)) {
+    try {
+      const details = errorDetails(JSON.parse(candidate.json), {
+        allowBareErrorObject: hasTerminalErrorPrefix(combined, candidate.start)
+      });
+      if (details) {
+        return formatErrorDetails(details);
+      }
+    } catch {
+      // Ignore non-error JSON fragments in mixed terminal output.
+    }
+  }
+  return null;
 }
 
 export function parseOpencodeJsonOutput(output: string): OpencodeJsonOutput {
@@ -171,7 +272,8 @@ export function parseOpencodeJsonOutput(output: string): OpencodeJsonOutput {
     }
     parsedAny = true;
     sessionId = sessionId ?? extractSessionIdFromObject(parsed);
-    error = error ?? errorMessage(parsed);
+    const details = errorDetails(parsed);
+    error = error ?? (details ? formatErrorDetails(details) : null);
     const text = textPart(parsed);
     if (text) {
       textParts.push(text);

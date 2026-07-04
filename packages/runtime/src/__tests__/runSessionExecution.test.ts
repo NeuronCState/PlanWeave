@@ -82,6 +82,17 @@ async function waitForSessionRecord(projectRoot: string, sessionId: string, reco
   expect(detail.session.latestRecordId).toBe(recordId);
 }
 
+async function waitForAutoRunStatus(projectRoot: string, predicate: (status: Awaited<ReturnType<typeof getAutoRunStatus>>) => boolean) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const status = await getAutoRunStatus({ projectRoot });
+    if (predicate(status)) {
+      return status;
+    }
+    await sleep(20);
+  }
+  return getAutoRunStatus({ projectRoot });
+}
+
 describe("runWithSession", () => {
   it("creates a run session, resets state, and records the first block run", async () => {
     const { root, init } = await createTestWorkspace(automaticManifest());
@@ -225,6 +236,10 @@ describe("runWithSession", () => {
   it("continues from current state when reset is not requested", async () => {
     const { root, init } = await createTestWorkspace(automaticManifest());
     await runAutoRunStep({ projectRoot: root });
+    await waitForAutoRunStatus(
+      root,
+      (currentStatus) => currentStatus.warnings.length === 0 && currentStatus.explanation.nextAction.kind === "start" && currentStatus.explanation.nextAction.ref === "T-001#R-001"
+    );
 
     const result = await runWithSession({ projectRoot: root, once: true });
     const state = await readJsonFile<RuntimeState>(init.workspace.stateFile);

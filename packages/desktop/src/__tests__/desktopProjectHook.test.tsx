@@ -22,6 +22,12 @@ import { cleanupRendererTestEnvironment } from "./helpers/rendererTestEnvironmen
 afterEach(cleanupRendererTestEnvironment);
 
 describe("desktop renderer hook interfaces", () => {
+  async function flushAsyncEffects(): Promise<void> {
+    for (let index = 0; index < 5; index += 1) {
+      await Promise.resolve();
+    }
+  }
+
   it("returns detected agent tools without deriving project executor options", async () => {
     const bridge = createDesktopBridgeMock({
       detectAgentTools: vi.fn().mockResolvedValue([
@@ -110,6 +116,49 @@ describe("desktop renderer hook interfaces", () => {
     expect(bridge.getTodoGroups).not.toHaveBeenCalled();
     expect(bridge.watchPackageFiles).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
     expect(updateSettings).toHaveBeenCalledWith({ runtimePath: project.workspaceRoot });
+  });
+
+  it("polls derived project state for external runtime updates", async () => {
+    vi.useFakeTimers();
+    try {
+      const refreshedGraph: DesktopGraphViewModel = {
+        ...graph,
+        graphVersion: "pgv-external-refresh"
+      };
+      const getDesktopProjectSnapshot = vi.fn().mockResolvedValueOnce(projectSnapshot()).mockResolvedValue(projectSnapshot({ graph: refreshedGraph }));
+      const bridge = createDesktopBridgeMock({
+        listProjects: vi.fn().mockResolvedValue([project]),
+        getDesktopProjectSnapshot,
+        refreshPackageFileChanges: vi.fn().mockResolvedValue({ diagnostics: [], dirtyPromptRefs: [] }),
+        watchPackageFiles: vi.fn().mockResolvedValue(undefined)
+      });
+      vi.stubGlobal("planweave", bridge);
+      vi.resetModules();
+      const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
+
+      const { result } = renderHook(() =>
+        useDesktopProject({
+          setError: vi.fn(),
+          t: createTranslator("en"),
+          updateSettings: vi.fn()
+        })
+      );
+
+      await act(async () => {
+        await flushAsyncEffects();
+      });
+      expect(result.current.selectedProject?.projectId).toBe(project.projectId);
+      getDesktopProjectSnapshot.mockClear();
+      await act(async () => {
+        vi.advanceTimersByTime(3_000);
+        await flushAsyncEffects();
+      });
+
+      expect(getDesktopProjectSnapshot).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
+      expect(result.current.graph?.graphVersion).toBe("pgv-external-refresh");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("refreshes project summaries without replacing the current project selection", async () => {

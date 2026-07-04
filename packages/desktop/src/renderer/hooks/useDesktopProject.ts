@@ -40,6 +40,12 @@ type ApplyDesktopProjectSnapshotOptions = {
   includePrompt?: boolean;
 };
 
+const externalRuntimeRefreshIntervalMs = 3_000;
+
+function documentIsVisible(): boolean {
+  return typeof document === "undefined" || document.visibilityState !== "hidden";
+}
+
 export function useDesktopProject({
   setError,
   t,
@@ -59,6 +65,7 @@ export function useDesktopProject({
   const [projectDiagnostics, setProjectDiagnostics] = useState<ValidationIssue[]>([]);
   const [projectPromptMarkdown, setProjectPromptMarkdown] = useState<string | null>(null);
   const [projectPromptPolicy, setProjectPromptPolicy] = useState<ProjectPromptPolicy | null>(null);
+  const externalRefreshInFlightRef = useRef(false);
   const currentCanvasRef = useRef<{
     canvasId: string | null;
     hasGraph: boolean;
@@ -213,6 +220,24 @@ export function useDesktopProject({
   const refreshGraphAndLayout = useCallback(async () => {
     await refreshProjectDerivedState({ includeLayout: true });
   }, [refreshProjectDerivedState]);
+
+  useEffect(() => {
+    if (!bridge || !selectedProject) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      if (!documentIsVisible() || externalRefreshInFlightRef.current) {
+        return;
+      }
+      externalRefreshInFlightRef.current = true;
+      void refreshProjectDerivedState()
+        .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught)))
+        .finally(() => {
+          externalRefreshInFlightRef.current = false;
+        });
+    }, externalRuntimeRefreshIntervalMs);
+    return () => window.clearInterval(timer);
+  }, [refreshProjectDerivedState, selectedProject, setError]);
 
   const updateProjectPromptPolicy = useCallback(
     async (patch: Partial<ProjectPromptPolicy>) => {

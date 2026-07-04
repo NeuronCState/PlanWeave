@@ -24,15 +24,11 @@ import type {
   DesktopTodoGroups,
   ValidationIssue
 } from "@planweave-ai/runtime";
-import type { createTranslator, Language } from "../i18n";
+import type { createTranslator } from "../i18n";
 import type { DesktopSearchCanvasScope, DesktopSearchStatus } from "../hooks/useDesktopSearch";
 import type { AppEdgeTypes, AppNodeTypes } from "../graph/flowModel";
 import type { AutoRunNextActionDescriptor } from "../run/autoRunNextActions";
-import type { AppFlowNode, AppView, AutoRunScopeMode, DesktopSettingsUpdate, DesktopUiSettings, NotificationItem } from "../types";
-import { createAutoRunGraphViewProps } from "../controllers/AutoRunController";
-import { createGraphWorkspaceViewProps, createTodoViewProps } from "../controllers/GraphWorkspaceController";
-import { createSearchViewProps } from "../controllers/SearchController";
-import { createWorkspaceTabsViewProps } from "../controllers/WorkspaceTabsController";
+import type { AppFlowNode, AppView, AutoRunScopeMode, NotificationItem } from "../types";
 import { CanvasMapView } from "./CanvasMapView";
 import { GraphView } from "./GraphView";
 import { NewTaskView } from "./NewTaskView";
@@ -42,225 +38,124 @@ import { SearchView } from "./SearchView";
 import { StatisticsView } from "./StatisticsView";
 import { TodoView } from "./TodoView";
 
-export type WorkspaceTabsViewProps = {
+export type WorkspaceTabsShellProps = {
   activeView: AppView;
+  handleOpenProject: () => Promise<void>;
+  handleRevealPathInFinder: (path: string | null | undefined) => Promise<void>;
+  loadProject: (project: DesktopProjectSummary, canvasId?: string | null) => Promise<void>;
+  projectLoading: boolean;
+  selectedCanvasId: string | null;
+  selectedProject: DesktopProjectSummary | null;
+  selectedTaskPanelId: string | null;
+  setActiveView: Dispatch<SetStateAction<AppView>>;
+  setError: (message: string | null) => void;
+  t: ReturnType<typeof createTranslator>;
+};
+
+export type WorkspaceTabsGraphWorkspaceProps = {
+  edges: Edge[];
+  edgeTypes: AppEdgeTypes;
+  executionPlan: DesktopProjectExecutionPlan | null;
+  graph: DesktopGraphViewModel | null;
+  handleConnect: (connection: Connection) => Promise<void>;
+  handleEdgesDelete: (deletedEdges: Edge[]) => Promise<void>;
+  handleGraphDragOver: (event: DragEvent) => void;
+  handleGraphDrop: (event: DragEvent) => void;
+  handleOpenBlockInspector: (ref: string, canvasId?: string | null) => Promise<void>;
+  handleOpenRunRecord: (recordId: string | null | undefined, canvasId?: string | null) => Promise<void>;
+  handleReconnectEdge: (oldEdge: Edge, connection: Connection) => Promise<void>;
+  handleRedoGraph: () => Promise<void>;
+  handleUndoGraph: () => Promise<void>;
+  nodeTypes: AppNodeTypes;
+  nodes: AppFlowNode[];
+  onAgentPromptCopied: () => void;
+  onEdgesChange: OnEdgesChange<Edge>;
+  onNodeDragStop: (event: MouseEvent, node: Node) => Promise<void>;
+  onNodesChange: OnNodesChange<AppFlowNode>;
+  onTaskPanelSelect: (taskId: string | null) => void;
+  selectedBlockPresent: boolean;
+  setFlowInstance: Dispatch<SetStateAction<ReactFlowInstance<AppFlowNode, Edge> | null>>;
+  visibleTaskIds: Set<string>;
+  visibleTasks: DesktopGraphViewModel["tasks"] | undefined;
+};
+
+export type WorkspaceTabsAutoRunProps = {
   autoRunControlRef: Ref<HTMLDivElement>;
   autoRunControlStyle: CSSProperties;
   autoRunNextAction: AutoRunNextActionDescriptor | null;
   autoRunRetrospective: DesktopAutoRunRetrospectiveSummary | null;
   autoRunScopeMode: AutoRunScopeMode;
   autoRunState: DesktopAutoRunState | null;
-  confirmTaskDraft: () => Promise<void>;
-  edges: Edge[];
-  fileSyncResult: DesktopPackageFileSyncResult | null;
-  projectDiagnostics: ValidationIssue[];
-  generateTaskDraft: () => Promise<void>;
-  graph: DesktopGraphViewModel | null;
-  executionPlan: DesktopProjectExecutionPlan | null;
   handleAutoRunClick: () => Promise<void>;
   handleAutoRunNextAction: (action: AutoRunNextActionDescriptor) => Promise<void>;
-  handleOpenBlockInspector: (ref: string, canvasId?: string | null) => Promise<void>;
-  handleConnect: (connection: Connection) => Promise<void>;
-  handleEdgesDelete: (deletedEdges: Edge[]) => Promise<void>;
-  handleReconnectEdge: (oldEdge: Edge, connection: Connection) => Promise<void>;
-  handleGraphDragOver: (event: DragEvent) => void;
-  handleGraphDrop: (event: DragEvent) => void;
-  handleOpenProject: () => Promise<void>;
-  handleOpenRunRecord: (recordId: string | null | undefined, canvasId?: string | null) => Promise<void>;
-  handleRedoGraph: () => Promise<void>;
-  handleRevealPathInFinder: (path: string | null | undefined) => Promise<void>;
-  resetRuntimeStateClick: () => Promise<void>;
-  handleSearchResultOpen: (result: DesktopSearchResult) => Promise<void>;
-  handleUndoGraph: () => Promise<void>;
-  language: Language;
-  loadProject: (project: DesktopProjectSummary, canvasId?: string | null) => Promise<void>;
   miniRunPanelOpen: boolean;
   moveAutoRunControl: (event: PointerEvent<HTMLButtonElement>) => void;
-  moveReviewStep: (index: number, direction: -1 | 1) => void;
-  newTaskMode: DesktopTaskDraftMode;
-  newTaskTargetId: string | null;
-  newTaskText: string;
-  edgeTypes: AppEdgeTypes;
-  nodeTypes: AppNodeTypes;
-  nodes: AppFlowNode[];
-  notificationItems: NotificationItem[];
-  onApplyLocalPromptConflicts: () => Promise<void>;
-  onKeepLocalPromptConflicts: () => void;
-  projectLoading: boolean;
-  onMarkNotificationRead: (notificationId: string) => void;
-  onAgentPromptCopied: () => void;
-  onReloadPromptConflicts: () => Promise<void>;
-  onEdgesChange: OnEdgesChange<Edge>;
-  onNodeDragStop: (event: MouseEvent, node: Node) => Promise<void>;
-  onNodesChange: OnNodesChange<AppFlowNode>;
-  onTaskPanelSelect: (taskId: string | null) => void;
+  resetRuntimeStateClick: () => Promise<void>;
+  setAutoRunScopeMode: Dispatch<SetStateAction<AutoRunScopeMode>>;
+  setMiniRunPanelOpen: Dispatch<SetStateAction<boolean>>;
+  startAutoRunControlDrag: (event: PointerEvent<HTMLButtonElement>) => void;
+  stopAutoRunClick: () => Promise<void>;
+  stopAutoRunControlDrag: (event: PointerEvent<HTMLButtonElement>) => void;
+};
+
+export type WorkspaceTabsFileSyncProps = {
+  fileSyncResult: DesktopPackageFileSyncResult | null;
+  projectDiagnostics: ValidationIssue[];
   refreshPackageFiles: () => Promise<void>;
+};
+
+export type WorkspaceTabsSearchProps = {
+  handleSearchResultOpen: (result: DesktopSearchResult) => Promise<void>;
+  searchCanvasScope: DesktopSearchCanvasScope;
+  searchQuery: string;
+  searchResultKinds: DesktopSearchResultKind[];
+  searchResults: DesktopSearchResult[];
+  searchStatus: DesktopSearchStatus;
+  selectedSearchResultKinds: DesktopSearchResultKind[];
+  setSearchCanvasScope: Dispatch<SetStateAction<DesktopSearchCanvasScope>>;
+  setSearchQuery: Dispatch<SetStateAction<string>>;
+  setSearchResultKindEnabled: (kind: DesktopSearchResultKind, enabled: boolean) => void;
+};
+
+export type WorkspaceTabsReviewProps = {
+  addReviewStep: () => void;
+  moveReviewStep: (index: number, direction: -1 | 1) => void;
   removeReviewStep: (index: number) => void;
   reviewDefaultCyclesDraft: number;
   reviewDraft: DesktopReviewPipelineStepInput[];
   reviewPipeline: DesktopReviewPipeline | null;
   reviewTaskId: string | null;
   saveReviewPipeline: () => Promise<void>;
-  searchCanvasScope: DesktopSearchCanvasScope;
-  searchQuery: string;
-  searchResultKinds: DesktopSearchResultKind[];
-  searchResults: DesktopSearchResult[];
-  searchStatus: DesktopSearchStatus;
-  selectedBlockPresent: boolean;
-  selectedCanvasId: string | null;
-  selectedProject: DesktopProjectSummary | null;
-  selectedSearchResultKinds: DesktopSearchResultKind[];
-  selectedTaskPanelId: string | null;
-  setActiveView: Dispatch<SetStateAction<AppView>>;
-  setError: (message: string | null) => void;
-  setAutoRunScopeMode: Dispatch<SetStateAction<AutoRunScopeMode>>;
-  setSearchCanvasScope: Dispatch<SetStateAction<DesktopSearchCanvasScope>>;
-  setFlowInstance: Dispatch<SetStateAction<ReactFlowInstance<AppFlowNode, Edge> | null>>;
-  setMiniRunPanelOpen: Dispatch<SetStateAction<boolean>>;
+  setReviewDefaultCyclesDraft: Dispatch<SetStateAction<number>>;
+  setReviewTaskId: Dispatch<SetStateAction<string | null>>;
+  updateReviewStep: (index: number, patch: Partial<DesktopReviewPipelineStepInput>) => void;
+};
+
+export type WorkspaceTabsNewTaskProps = {
+  confirmTaskDraft: () => Promise<void>;
+  generateTaskDraft: () => Promise<void>;
+  newTaskMode: DesktopTaskDraftMode;
+  newTaskTargetId: string | null;
+  newTaskText: string;
   setNewTaskMode: Dispatch<SetStateAction<DesktopTaskDraftMode>>;
   setNewTaskTargetId: Dispatch<SetStateAction<string | null>>;
   setNewTaskText: Dispatch<SetStateAction<string>>;
   setTaskDraft: Dispatch<SetStateAction<DesktopTaskDraft | null>>;
-  setReviewDefaultCyclesDraft: Dispatch<SetStateAction<number>>;
-  setReviewTaskId: Dispatch<SetStateAction<string | null>>;
-  setSearchQuery: Dispatch<SetStateAction<string>>;
-  setSearchResultKindEnabled: (kind: DesktopSearchResultKind, enabled: boolean) => void;
-  settings: DesktopUiSettings;
-  startAutoRunControlDrag: (event: PointerEvent<HTMLButtonElement>) => void;
-  statistics: DesktopStatistics | null;
-  stopAutoRunClick: () => Promise<void>;
-  stopAutoRunControlDrag: (event: PointerEvent<HTMLButtonElement>) => void;
-  t: ReturnType<typeof createTranslator>;
   taskDraft: DesktopTaskDraft | null;
-  todoGroups: DesktopTodoGroups | null;
-  updateReviewStep: (index: number, patch: Partial<DesktopReviewPipelineStepInput>) => void;
-  updateSettings: (update: DesktopSettingsUpdate) => void;
-  visibleTaskIds: Set<string>;
-  visibleTasks: DesktopGraphViewModel["tasks"] | undefined;
-  addReviewStep: () => void;
 };
 
-export type WorkspaceTabsShellProps = Pick<
-  WorkspaceTabsViewProps,
-  | "activeView"
-  | "handleOpenProject"
-  | "handleRevealPathInFinder"
-  | "language"
-  | "loadProject"
-  | "projectLoading"
-  | "selectedCanvasId"
-  | "selectedProject"
-  | "selectedTaskPanelId"
-  | "setActiveView"
-  | "setError"
-  | "settings"
-  | "t"
-  | "updateSettings"
->;
+export type WorkspaceTabsNotificationsProps = {
+  notificationItems: NotificationItem[];
+  onApplyLocalPromptConflicts: () => Promise<void>;
+  onKeepLocalPromptConflicts: () => void;
+  onMarkNotificationRead: (notificationId: string) => void;
+  onReloadPromptConflicts: () => Promise<void>;
+};
 
-export type WorkspaceTabsGraphWorkspaceProps = Pick<
-  WorkspaceTabsViewProps,
-  | "edges"
-  | "edgeTypes"
-  | "executionPlan"
-  | "graph"
-  | "handleConnect"
-  | "handleEdgesDelete"
-  | "handleGraphDragOver"
-  | "handleGraphDrop"
-  | "handleOpenBlockInspector"
-  | "handleOpenRunRecord"
-  | "handleReconnectEdge"
-  | "handleRedoGraph"
-  | "handleUndoGraph"
-  | "nodeTypes"
-  | "nodes"
-  | "onAgentPromptCopied"
-  | "onEdgesChange"
-  | "onNodeDragStop"
-  | "onNodesChange"
-  | "onTaskPanelSelect"
-  | "selectedBlockPresent"
-  | "setFlowInstance"
-  | "visibleTaskIds"
-  | "visibleTasks"
->;
-
-export type WorkspaceTabsAutoRunProps = Pick<
-  WorkspaceTabsViewProps,
-  | "autoRunControlRef"
-  | "autoRunControlStyle"
-  | "autoRunNextAction"
-  | "autoRunRetrospective"
-  | "autoRunScopeMode"
-  | "autoRunState"
-  | "handleAutoRunClick"
-  | "handleAutoRunNextAction"
-  | "miniRunPanelOpen"
-  | "moveAutoRunControl"
-  | "resetRuntimeStateClick"
-  | "setAutoRunScopeMode"
-  | "setMiniRunPanelOpen"
-  | "startAutoRunControlDrag"
-  | "stopAutoRunClick"
-  | "stopAutoRunControlDrag"
->;
-
-export type WorkspaceTabsFileSyncProps = Pick<WorkspaceTabsViewProps, "fileSyncResult" | "projectDiagnostics" | "refreshPackageFiles">;
-
-export type WorkspaceTabsSearchProps = Pick<
-  WorkspaceTabsViewProps,
-  | "handleSearchResultOpen"
-  | "searchCanvasScope"
-  | "searchQuery"
-  | "searchResultKinds"
-  | "searchResults"
-  | "searchStatus"
-  | "selectedSearchResultKinds"
-  | "setSearchCanvasScope"
-  | "setSearchQuery"
-  | "setSearchResultKindEnabled"
->;
-
-export type WorkspaceTabsReviewProps = Pick<
-  WorkspaceTabsViewProps,
-  | "addReviewStep"
-  | "moveReviewStep"
-  | "removeReviewStep"
-  | "reviewDefaultCyclesDraft"
-  | "reviewDraft"
-  | "reviewPipeline"
-  | "reviewTaskId"
-  | "saveReviewPipeline"
-  | "setReviewDefaultCyclesDraft"
-  | "setReviewTaskId"
-  | "updateReviewStep"
->;
-
-export type WorkspaceTabsNewTaskProps = Pick<
-  WorkspaceTabsViewProps,
-  | "confirmTaskDraft"
-  | "generateTaskDraft"
-  | "newTaskMode"
-  | "newTaskTargetId"
-  | "newTaskText"
-  | "setNewTaskMode"
-  | "setNewTaskTargetId"
-  | "setNewTaskText"
-  | "setTaskDraft"
-  | "taskDraft"
->;
-
-export type WorkspaceTabsNotificationsProps = Pick<
-  WorkspaceTabsViewProps,
-  | "notificationItems"
-  | "onApplyLocalPromptConflicts"
-  | "onKeepLocalPromptConflicts"
-  | "onMarkNotificationRead"
-  | "onReloadPromptConflicts"
->;
-
-export type WorkspaceTabsPlanningProps = Pick<WorkspaceTabsViewProps, "statistics" | "todoGroups">;
+export type WorkspaceTabsPlanningProps = {
+  statistics: DesktopStatistics | null;
+  todoGroups: DesktopTodoGroups | null;
+};
 
 export type WorkspaceTabsProps = {
   shell: WorkspaceTabsShellProps;
@@ -274,34 +169,130 @@ export type WorkspaceTabsProps = {
   planning: WorkspaceTabsPlanningProps;
 };
 
+function GraphWorkspaceRoute({
+  autoRun,
+  fileSync,
+  graphWorkspace,
+  shell
+}: Pick<WorkspaceTabsProps, "autoRun" | "fileSync" | "graphWorkspace" | "shell">) {
+  return (
+    <GraphView
+      {...graphWorkspace}
+      {...autoRun}
+      {...fileSync}
+      handleOpenProject={shell.handleOpenProject}
+      handleRevealPathInFinder={shell.handleRevealPathInFinder}
+      projectLoading={shell.projectLoading}
+      selectedCanvasId={shell.selectedCanvasId}
+      selectedProject={shell.selectedProject}
+      selectedTaskPanelId={shell.selectedTaskPanelId}
+      setActiveView={shell.setActiveView}
+      t={shell.t}
+    />
+  );
+}
+
+function SearchRoute({ search, shell }: Pick<WorkspaceTabsProps, "search" | "shell">) {
+  return (
+    <SearchView
+      {...search}
+      handleOpenProject={shell.handleOpenProject}
+      selectedCanvasId={shell.selectedCanvasId}
+      selectedProject={shell.selectedProject}
+      t={shell.t}
+    />
+  );
+}
+
+function TodoRoute({ graphWorkspace, planning, shell }: Pick<WorkspaceTabsProps, "graphWorkspace" | "planning" | "shell">) {
+  return (
+    <TodoView
+      executionPlan={graphWorkspace.executionPlan}
+      handleBlockSelect={graphWorkspace.handleOpenBlockInspector}
+      t={shell.t}
+      todoGroups={planning.todoGroups}
+    />
+  );
+}
+
+function StatisticsRoute({ planning, shell }: Pick<WorkspaceTabsProps, "planning" | "shell">) {
+  return <StatisticsView handleOpenProject={shell.handleOpenProject} selectedProject={shell.selectedProject} statistics={planning.statistics} t={shell.t} />;
+}
+
+function NewTaskRoute({ graphWorkspace, newTask, shell }: Pick<WorkspaceTabsProps, "graphWorkspace" | "newTask" | "shell">) {
+  return (
+    <NewTaskView
+      {...newTask}
+      graph={graphWorkspace.graph}
+      handleOpenProject={shell.handleOpenProject}
+      selectedCanvasId={shell.selectedCanvasId}
+      selectedProject={shell.selectedProject}
+      setActiveView={shell.setActiveView}
+      t={shell.t}
+    />
+  );
+}
+
+function ReviewPipelineRoute({ graphWorkspace, review, shell }: Pick<WorkspaceTabsProps, "graphWorkspace" | "review" | "shell">) {
+  return <ReviewPipelineView {...review} graph={graphWorkspace.graph} t={shell.t} />;
+}
+
+function NotificationsRoute({ fileSync, notifications, shell }: Pick<WorkspaceTabsProps, "fileSync" | "notifications" | "shell">) {
+  return (
+    <NotificationsView
+      {...notifications}
+      onOpenGraph={() => shell.setActiveView("graph")}
+      refreshPackageFiles={fileSync.refreshPackageFiles}
+      t={shell.t}
+    />
+  );
+}
+
+function CanvasMapRoute({ graphWorkspace, shell }: Pick<WorkspaceTabsProps, "graphWorkspace" | "shell">) {
+  return (
+    <CanvasMapView
+      handleOpenBlockInspector={graphWorkspace.handleOpenBlockInspector}
+      handleOpenProject={shell.handleOpenProject}
+      loadProject={shell.loadProject}
+      onAgentPromptCopied={graphWorkspace.onAgentPromptCopied}
+      onTaskPanelSelect={graphWorkspace.onTaskPanelSelect}
+      selectedCanvasId={shell.selectedCanvasId}
+      selectedProject={shell.selectedProject}
+      setActiveView={shell.setActiveView}
+      setError={shell.setError}
+      t={shell.t}
+    />
+  );
+}
+
 export function WorkspaceTabs(props: WorkspaceTabsProps) {
-  const viewProps = createWorkspaceTabsViewProps(props);
-  const graphWorkspaceViewProps = createGraphWorkspaceViewProps(props);
-  const graphAutoRunViewProps = createAutoRunGraphViewProps(props);
-  const searchViewProps = createSearchViewProps(props);
-  const todoViewProps = createTodoViewProps(props);
-  const {
-    activeView
-  } = viewProps;
+  const activeView = props.shell.activeView;
   const content = (() => {
     switch (activeView) {
       case "new-task":
-        return <NewTaskView {...viewProps} />;
+        return <NewTaskRoute graphWorkspace={props.graphWorkspace} newTask={props.newTask} shell={props.shell} />;
       case "review-pipeline":
-        return <ReviewPipelineView {...viewProps} />;
+        return <ReviewPipelineRoute graphWorkspace={props.graphWorkspace} review={props.review} shell={props.shell} />;
       case "todo":
-        return <TodoView {...todoViewProps} />;
+        return <TodoRoute graphWorkspace={props.graphWorkspace} planning={props.planning} shell={props.shell} />;
       case "statistics":
-        return <StatisticsView {...viewProps} />;
+        return <StatisticsRoute planning={props.planning} shell={props.shell} />;
       case "search":
-        return <SearchView {...searchViewProps} />;
+        return <SearchRoute search={props.search} shell={props.shell} />;
       case "notifications":
-        return <NotificationsView {...viewProps} onOpenGraph={() => viewProps.setActiveView("graph")} />;
+        return <NotificationsRoute fileSync={props.fileSync} notifications={props.notifications} shell={props.shell} />;
       case "canvas-map":
-        return <CanvasMapView {...viewProps} />;
+        return <CanvasMapRoute graphWorkspace={props.graphWorkspace} shell={props.shell} />;
       case "graph":
       default:
-        return <GraphView {...graphWorkspaceViewProps} {...graphAutoRunViewProps} />;
+        return (
+          <GraphWorkspaceRoute
+            autoRun={props.autoRun}
+            fileSync={props.fileSync}
+            graphWorkspace={props.graphWorkspace}
+            shell={props.shell}
+          />
+        );
     }
   })();
 

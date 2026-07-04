@@ -523,7 +523,6 @@ export function App() {
     activeView,
     handleOpenProject,
     handleRevealPathInFinder,
-    language,
     loadProject: openProjectInSession,
     projectLoading,
     selectedCanvasId,
@@ -531,9 +530,7 @@ export function App() {
     selectedTaskPanelId,
     setActiveView,
     setError,
-    settings,
-    t,
-    updateSettings
+    t
   };
   const graphWorkspace = createGraphWorkspaceController({
     edges,

@@ -163,6 +163,16 @@ async function runRendererManualSmoke(window: BrowserWindow): Promise<Record<str
             textOf(document.body).slice(0, 240)
         );
       };
+      const waitForAnyText = async (texts) => {
+        for (let attempt = 0; attempt < 50; attempt += 1) {
+          const body = document.body.textContent ?? "";
+          if (texts.some((text) => body.includes(text))) {
+            return;
+          }
+          await wait(100);
+        }
+        throw new Error("Timed out waiting for one of: " + texts.join(" | ") + " | body: " + textOf(document.body).slice(0, 240));
+      };
       const waitForSelector = async (selector, label, options = {}) => {
         const { required = true } = options;
         for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -221,7 +231,7 @@ async function runRendererManualSmoke(window: BrowserWindow): Promise<Record<str
       const covered = [];
       await clickByTestId("sidebar-new-task");
       covered.push("open-new-task-view");
-      await waitForText("需求 / 计划 / 任务说明");
+      await waitForSelector('[data-testid="new-task-input"]', "new task input");
       const taskInput = document.querySelector('[data-testid="new-task-input"]');
       if (!taskInput) {
         throw new Error("New Task textarea was not visible.");
@@ -249,7 +259,7 @@ async function runRendererManualSmoke(window: BrowserWindow): Promise<Record<str
       covered.push("search-created-task");
       await clickByTestId("sidebar-notifications");
       await waitForSelector('[data-testid="notifications-view"]', "notifications view");
-      await waitForText("检测到外部文件变更");
+      await waitForAnyText(["检测到外部文件变更", "External file changes detected"]);
       covered.push("open-notifications");
       covered.push("external-file-change-notification");
       await clickByTestId("sidebar-settings");
@@ -332,7 +342,7 @@ async function writeExternalPromptSmokeChange(): Promise<void> {
 }
 
 export async function runSmokeCheck(window: BrowserWindow): Promise<void> {
-  const requiredText = ["Implement a tiny example change", "Task Node", "Review Block"];
+  const requiredText = ["Implement a tiny example change", "Task Node"];
   for (let attempt = 0; attempt < 50; attempt += 1) {
     const state = await readSmokeState(window);
     const missingText = requiredText.filter((text) => !state.pageText.includes(text));

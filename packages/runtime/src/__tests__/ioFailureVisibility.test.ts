@@ -9,6 +9,7 @@ const fsFailures = vi.hoisted(() => ({
   open: new Map<string, Array<NodeJS.ErrnoException | null>>(),
   readdir: new Map<string, Array<NodeJS.ErrnoException | null>>(),
   readFile: new Map<string, Array<NodeJS.ErrnoException | null>>(),
+  rename: new Map<string, Array<NodeJS.ErrnoException | null>>(),
   stat: new Map<string, Array<NodeJS.ErrnoException | null>>()
 }));
 
@@ -59,6 +60,13 @@ vi.mock("node:fs/promises", async (importOriginal) => {
         throw failure;
       }
       return actual.readFile(path, ...(args as Parameters<typeof actual.readFile> extends [PathLike, ...infer Rest] ? Rest : never));
+    },
+    rename: async (oldPath: PathLike, newPath: PathLike) => {
+      const failure = shiftFailure(fsFailures.rename, newPath);
+      if (failure) {
+        throw failure;
+      }
+      return actual.rename(oldPath, newPath);
     },
     stat: async (path: PathLike, ...args: unknown[]) => {
       const failure = shiftFailure(fsFailures.stat, path);
@@ -350,6 +358,22 @@ describe("filesystem I/O failure visibility", () => {
   it("does not allocate an Auto Run id when a registered project graph cannot be inspected", async () => {
     const { init } = await createTestWorkspace();
     const expected = failOnce("stat", projectGraphPath(init.workspace), "EACCES");
+
+    await expect(nextPersistedAutoRunId(init.workspace)).rejects.toBe(expected);
+  });
+
+  it("does not repair Auto Run id reservations when the index cannot be read", async () => {
+    const { init } = await createTestWorkspace();
+    const indexPath = join(init.workspace.planweaveHome, "desktop", "auto-run-ids", "index.json");
+    const expected = failOnce("readFile", indexPath, "EIO");
+
+    await expect(nextPersistedAutoRunId(init.workspace)).rejects.toBe(expected);
+  });
+
+  it("does not allocate an Auto Run id when the reservation index cannot be written", async () => {
+    const { init } = await createTestWorkspace();
+    const indexPath = join(init.workspace.planweaveHome, "desktop", "auto-run-ids", "index.json");
+    const expected = failOnce("rename", indexPath, "EIO");
 
     await expect(nextPersistedAutoRunId(init.workspace)).rejects.toBe(expected);
   });

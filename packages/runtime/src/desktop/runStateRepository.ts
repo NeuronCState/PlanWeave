@@ -8,8 +8,17 @@ import type { DesktopAutoRunEventLog, DesktopAutoRunEventLogDiagnostic, DesktopA
 import { loadProjectGraphForWorkspace, projectCanvasWorkspace } from "../projectGraph/index.js";
 import { autoRunRoot, writeAutoRunState } from "./runStateStore.js";
 import { normalizePersistedAutoRunState, recoverPersistedAutoRunState } from "./runRecovery.js";
+import {
+  compareRunDirectoriesNewestFirst,
+  ensureAutoRunIdReservationsMigrated,
+  highestRunId,
+  isDesktopRunId,
+  maxRunNumber,
+  recordReservedAutoRunId,
+  reserveAutoRunId,
+  runNumber
+} from "./autoRunIdReservations.js";
 
-const desktopRunIdPattern = /^DESKTOP-RUN-(\d{4,})$/;
 const autoRunLogEventDataKeys = new Set(["timestamp", "runId", "type", "phase", "stepCount", "currentRef"]);
 const desktopAutoRunPhases = ["idle", "running", "pausing", "paused", "manual", "completed", "blocked", "failed", "stopped"] satisfies readonly DesktopAutoRunPhase[];
 const desktopAutoRunPhaseSet = new Set<string>(desktopAutoRunPhases);
@@ -66,23 +75,6 @@ function autoRunEventLogPath(workspace: ProjectWorkspace, runId: string): string
 
 function projectsRoot(workspace: ProjectWorkspace): string {
   return join(workspace.planweaveHome, "projects");
-}
-
-function globalAutoRunIdsRoot(workspace: ProjectWorkspace): string {
-  return join(workspace.planweaveHome, "desktop", "auto-run-ids");
-}
-
-function isDesktopRunId(runId: string): boolean {
-  return desktopRunIdPattern.test(runId);
-}
-
-function runNumber(runId: string): number | null {
-  const match = desktopRunIdPattern.exec(runId);
-  if (!match) {
-    return null;
-  }
-  const parsed = Number.parseInt(match[1], 10);
-  return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
 async function listRunDirectories(workspace: ProjectWorkspace): Promise<string[]> {
@@ -155,28 +147,12 @@ async function listPersistedRunDirectoriesAcrossProjects(workspace: ProjectWorks
   return runIds;
 }
 
-function maxRunNumber(runIds: string[]): number {
-  return runIds
-    .map(runNumber)
-    .filter((value): value is number => value !== null)
-    .reduce((max, value) => Math.max(max, value), 0);
-}
-
 function compareAutoRunStatesNewestFirst(left: DesktopAutoRunState, right: DesktopAutoRunState): number {
   const byUpdatedAt = right.updatedAt.localeCompare(left.updatedAt);
   if (byUpdatedAt !== 0) {
     return byUpdatedAt;
   }
   return right.runId.localeCompare(left.runId, undefined, { numeric: true });
-}
-
-function compareRunDirectoriesNewestFirst(left: string, right: string): number {
-  const leftNumber = runNumber(left) ?? 0;
-  const rightNumber = runNumber(right) ?? 0;
-  if (leftNumber !== rightNumber) {
-    return rightNumber - leftNumber;
-  }
-  return right.localeCompare(left, undefined, { numeric: true });
 }
 
 function maxRunId(left: string | null, right: string | null): string | null {
@@ -187,10 +163,6 @@ function maxRunId(left: string | null, right: string | null): string | null {
     return left;
   }
   return compareRunDirectoriesNewestFirst(left, right) <= 0 ? left : right;
-}
-
-function highestRunId(runIds: string[]): string | null {
-  return runIds.sort(compareRunDirectoriesNewestFirst).at(0) ?? null;
 }
 
 function isRunIdNewerThan(runId: string, baselineRunId: string | null): boolean {
@@ -388,28 +360,21 @@ function parseAutoRunLogEventLine(line: string, lineNumber: number, path: string
 
 export async function nextPersistedAutoRunId(workspace: ProjectWorkspace, options: { isReserved?: (runId: string) => boolean } = {}): Promise<string> {
   await mkdir(autoRunsRoot(workspace), { recursive: true });
-  await mkdir(globalAutoRunIdsRoot(workspace), { recursive: true });
-  let nextNumber = Math.max(
-    maxRunNumber(await listPersistedRunDirectoriesAcrossProjects(workspace)),
-    maxRunNumber(await listRunDirectoriesAt(globalAutoRunIdsRoot(workspace)))
-  ) + 1;
+  const reservationState = await ensureAutoRunIdReservationsMigrated(workspace, () => listPersistedRunDirectoriesAcrossProjects(workspace));
+  let nextNumber = maxRunNumber(reservationState.highestRunId ? [reservationState.highestRunId] : []) + 1;
   while (true) {
     const runId = `DESKTOP-RUN-${String(nextNumber).padStart(4, "0")}`;
     if (options.isReserved?.(runId)) {
       nextNumber += 1;
       continue;
     }
-    try {
-      await mkdir(join(globalAutoRunIdsRoot(workspace), runId), { recursive: false });
-    } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "EEXIST") {
-        nextNumber += 1;
-        continue;
-      }
-      throw error;
+    if (!(await reserveAutoRunId(workspace, runId))) {
+      nextNumber += 1;
+      continue;
     }
     try {
       await mkdir(autoRunRoot(workspace, runId), { recursive: false });
+      await recordReservedAutoRunId(workspace, runId);
       return runId;
     } catch (error) {
       if (error instanceof Error && "code" in error && error.code === "EEXIST") {

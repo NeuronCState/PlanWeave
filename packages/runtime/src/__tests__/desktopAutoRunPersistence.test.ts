@@ -1,7 +1,24 @@
+import type { PathLike } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const fsObservations = vi.hoisted(() => ({
+  readdirPaths: [] as string[]
+}));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    readdir: async (path: PathLike, ...args: unknown[]) => {
+      fsObservations.readdirPaths.push(path.toString());
+      return actual.readdir(path, ...(args as Parameters<typeof actual.readdir> extends [PathLike, ...infer Rest] ? Rest : never));
+    }
+  };
+});
+
 import {
   createTaskCanvas,
   getAutoRunState,
@@ -14,7 +31,11 @@ import {
   stopAutoRun
 } from "../desktop/index.js";
 import type { DesktopAutoRunState } from "../desktop/index.js";
-import { readLatestPersistedAutoRunState, writePersistedAutoRunState as writeRepositoryPersistedAutoRunState } from "../desktop/runStateRepository.js";
+import {
+  nextPersistedAutoRunId,
+  readLatestPersistedAutoRunState,
+  writePersistedAutoRunState as writeRepositoryPersistedAutoRunState
+} from "../desktop/runStateRepository.js";
 import { initWorkspace } from "../initWorkspace.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { canonicalProjectCanvasNode } from "../projectGraph/index.js";
@@ -29,6 +50,7 @@ const noTmux = { tmuxEnabled: false } as const;
 afterEach(async () => {
   await Promise.all([...startedRunIds].map((runId) => stopAutoRun(runId).catch(() => undefined)));
   startedRunIds.clear();
+  fsObservations.readdirPaths = [];
   delete process.env.PLANWEAVE_HOME;
 });
 
@@ -101,6 +123,14 @@ function desktopRunNumber(runId: string): number {
   return Number.parseInt(match![1], 10);
 }
 
+function globalAutoRunIdsRoot(workspace: ProjectWorkspace): string {
+  return join(workspace.planweaveHome, "desktop", "auto-run-ids");
+}
+
+function autoRunIdReservationIndexPath(workspace: ProjectWorkspace): string {
+  return join(globalAutoRunIdsRoot(workspace), "index.json");
+}
+
 async function waitForRun(runId: string, predicate: (state: Awaited<ReturnType<typeof getAutoRunState>>) => boolean) {
   let state = await getAutoRunState(runId);
   for (let attempt = 0; attempt < 500 && !predicate(state); attempt += 1) {
@@ -111,6 +141,86 @@ async function waitForRun(runId: string, predicate: (state: Awaited<ReturnType<t
 }
 
 describe("desktop auto run persistence", () => {
+  it("migrates legacy Auto Run directories into global run id reservations before allocating", async () => {
+    const manifest = manifestTestBuilder().build();
+    const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    const current = await createTestWorkspaceInHome(home, manifest);
+    const historical = await createTestWorkspaceInHome(home, manifest);
+    const canvas = await createTaskCanvas(historical.root, { name: "Historical canvas" });
+    const canvasWorkspace = await resolveTaskCanvasWorkspace(historical.root, canvas.canvasId);
+    await writePersistedAutoRunState(persistedAutoRunState(current.init.workspace, { runId: "DESKTOP-RUN-0003" }));
+    await writePersistedAutoRunState(persistedAutoRunState(canvasWorkspace, { runId: "DESKTOP-RUN-0007", canvasId: canvas.canvasId }));
+
+    await expect(nextPersistedAutoRunId(current.init.workspace)).resolves.toBe("DESKTOP-RUN-0008");
+
+    const reservationsRoot = globalAutoRunIdsRoot(current.init.workspace);
+    await expect(readJsonFile(autoRunIdReservationIndexPath(current.init.workspace))).resolves.toMatchObject({
+      version: 1,
+      highestRunId: "DESKTOP-RUN-0008",
+      migratedAt: expect.any(String)
+    });
+    await expect(mkdir(join(reservationsRoot, "DESKTOP-RUN-0003"), { recursive: false })).rejects.toMatchObject({ code: "EEXIST" });
+    await expect(mkdir(join(reservationsRoot, "DESKTOP-RUN-0007"), { recursive: false })).rejects.toMatchObject({ code: "EEXIST" });
+    await expect(mkdir(join(reservationsRoot, "DESKTOP-RUN-0008"), { recursive: false })).rejects.toMatchObject({ code: "EEXIST" });
+  });
+
+  it("does not scan the projects root after the Auto Run id reservation index exists", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { init } = await createTestWorkspace(manifest);
+    await writePersistedAutoRunState(persistedAutoRunState(init.workspace, { runId: "DESKTOP-RUN-0002" }));
+    await expect(nextPersistedAutoRunId(init.workspace)).resolves.toBe("DESKTOP-RUN-0003");
+
+    fsObservations.readdirPaths = [];
+
+    await expect(nextPersistedAutoRunId(init.workspace)).resolves.toBe("DESKTOP-RUN-0004");
+    expect(fsObservations.readdirPaths).not.toContain(join(init.workspace.planweaveHome, "projects"));
+  });
+
+  it("allocates after the highest existing global Auto Run id reservation directory", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { init } = await createTestWorkspace(manifest);
+    await mkdir(join(globalAutoRunIdsRoot(init.workspace), "DESKTOP-RUN-0042"), { recursive: true });
+
+    await expect(nextPersistedAutoRunId(init.workspace)).resolves.toBe("DESKTOP-RUN-0043");
+  });
+
+  it("keeps in-memory Auto Run id reservations ahead of persisted allocation", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { init } = await createTestWorkspace(manifest);
+
+    await expect(nextPersistedAutoRunId(init.workspace, { isReserved: (runId) => runId === "DESKTOP-RUN-0001" })).resolves.toBe("DESKTOP-RUN-0002");
+  });
+
+  it("keeps incrementing when the current workspace run directory already exists after reservation", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { init } = await createTestWorkspace(manifest);
+    await mkdir(join(init.workspace.resultsDir, "auto-runs", "DESKTOP-RUN-0001"), { recursive: true });
+    await writeJsonFile(autoRunIdReservationIndexPath(init.workspace), {
+      version: 1,
+      highestRunId: null,
+      migratedAt: "2026-05-23T00:00:00.000Z"
+    });
+
+    await expect(nextPersistedAutoRunId(init.workspace)).resolves.toBe("DESKTOP-RUN-0002");
+    await expect(mkdir(join(globalAutoRunIdsRoot(init.workspace), "DESKTOP-RUN-0001"), { recursive: false })).rejects.toMatchObject({ code: "EEXIST" });
+    await expect(mkdir(join(globalAutoRunIdsRoot(init.workspace), "DESKTOP-RUN-0002"), { recursive: false })).rejects.toMatchObject({ code: "EEXIST" });
+  });
+
+  it("repairs a corrupt Auto Run id reservation index from legacy runs and reservation directories", async () => {
+    const manifest = manifestTestBuilder().build();
+    const { init } = await createTestWorkspace(manifest);
+    await writePersistedAutoRunState(persistedAutoRunState(init.workspace, { runId: "DESKTOP-RUN-0005" }));
+    await mkdir(globalAutoRunIdsRoot(init.workspace), { recursive: true });
+    await writeFile(autoRunIdReservationIndexPath(init.workspace), "{", "utf8");
+
+    await expect(nextPersistedAutoRunId(init.workspace)).resolves.toBe("DESKTOP-RUN-0006");
+    await expect(readJsonFile(autoRunIdReservationIndexPath(init.workspace))).resolves.toMatchObject({
+      version: 1,
+      highestRunId: "DESKTOP-RUN-0006",
+      migratedAt: expect.any(String)
+    });
+  });
+
   it("allocates desktop run IDs after existing persisted Auto Run directories", async () => {
     const manifest = manifestTestBuilder().build();
     const { root, init } = await createTestWorkspace(manifest);

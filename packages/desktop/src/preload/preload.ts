@@ -3,13 +3,14 @@ import type { IpcRendererEvent } from "electron";
 import type {
   DesktopAutoRunEvent,
   DesktopBridgeApi,
-  DesktopPackageFileChangeEvent
+  DesktopPackageFileChangeEvent,
+  DesktopRuntimeStateChangeEvent
 } from "@planweave-ai/runtime";
 import type { AppUpdateState, PlanWeaveAppUpdateApi } from "../shared/appUpdate.js";
 import { appUpdateChangedChannel, appUpdateInvokeChannels } from "../shared/appUpdate.js";
 import type { PlanWeaveDesktopSettingsApi } from "../shared/desktopSettings.js";
 import { desktopSettingsInvokeChannels } from "../shared/desktopSettings.js";
-import { autoRunChangedChannel, packageFileChangedChannel } from "../shared/ipcChannels.js";
+import { autoRunChangedChannel, packageFileChangedChannel, runtimeStateChangedChannel } from "../shared/ipcChannels.js";
 import type { McpTunnelStatus, PlanWeaveMcpTunnelApi } from "../shared/mcpTunnel.js";
 import { mcpTunnelChangedChannel, mcpTunnelInvokeChannels } from "../shared/mcpTunnel.js";
 import { windowAppearanceInvokeChannels, type PlanWeaveWindowApi } from "../shared/windowAppearance.js";
@@ -31,6 +32,11 @@ const api: DesktopBridgeApi = {
     const listener = (_event: IpcRendererEvent, payload: DesktopPackageFileChangeEvent) => callback(payload);
     ipcRenderer.on(packageFileChangedChannel, listener);
     return () => ipcRenderer.off(packageFileChangedChannel, listener);
+  },
+  onRuntimeStateChanged: (callback) => {
+    const listener = (_event: IpcRendererEvent, payload: DesktopRuntimeStateChangeEvent) => callback(payload);
+    ipcRenderer.on(runtimeStateChangedChannel, listener);
+    return () => ipcRenderer.off(runtimeStateChangedChannel, listener);
   },
   onAutoRunChanged: (callback) => {
     const listener = (_event: IpcRendererEvent, payload: DesktopAutoRunEvent) => callback(payload);

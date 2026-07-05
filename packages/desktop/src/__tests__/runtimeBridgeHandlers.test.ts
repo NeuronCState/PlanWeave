@@ -51,6 +51,7 @@ const runtimeMock = vi.hoisted(() => {
   return {
     autoRunEventListeners,
     getDesktopProjectSnapshot: vi.fn(async (ref: unknown) => ({ ref })),
+    getDesktopRuntimeRefresh: vi.fn(async (ref: unknown) => ({ ref, latestAutoRun: null, diagnostics: [], errors: [] })),
     getGraphViewModel: vi.fn(async (workspace: unknown) => ({ workspace })),
     getRunRecord: vi.fn(async () => ({
       recordId: "T-001#B-001::RUN-001",
@@ -134,6 +135,7 @@ vi.mock("@planweave-ai/runtime", async () => {
   return {
     ...actual,
     getDesktopProjectSnapshot: runtimeMock.getDesktopProjectSnapshot,
+    getDesktopRuntimeRefresh: runtimeMock.getDesktopRuntimeRefresh,
     getGraphViewModel: runtimeMock.getGraphViewModel,
     getRunRecord: runtimeMock.getRunRecord,
     resetDesktopRuntimeState: runtimeMock.resetDesktopRuntimeState,
@@ -168,6 +170,7 @@ describe("runtime bridge handlers", () => {
     delete process.env.PLANWEAVE_DESKTOP_SMOKE;
     runtimeMock.autoRunEventListeners.clear();
     runtimeMock.getDesktopProjectSnapshot.mockClear();
+    runtimeMock.getDesktopRuntimeRefresh.mockClear();
     runtimeMock.getGraphViewModel.mockClear();
     runtimeMock.getRunRecord.mockClear();
     runtimeMock.resetDesktopRuntimeState.mockClear();
@@ -218,6 +221,20 @@ describe("runtime bridge handlers", () => {
     expect(runtimeMock.getDesktopProjectSnapshot).toHaveBeenCalledWith(ref);
   });
 
+  it("passes lightweight runtime refresh requests to runtime without pre-resolving the canvas", async () => {
+    const { registerRuntimeBridgeHandlers } = await import("../main/runtimeBridgeHandlers");
+    registerRuntimeBridgeHandlers();
+
+    const handler = electronMock.handlers.get(desktopBridgeInvokeChannels.getDesktopRuntimeRefresh);
+    expect(handler).toBeDefined();
+
+    const ref = { projectRoot: "/tmp/project", canvasId: "canvas-a" };
+    await handler?.(null, ref);
+
+    expect(runtimeMock.resolveTaskCanvasWorkspace).not.toHaveBeenCalled();
+    expect(runtimeMock.getDesktopRuntimeRefresh).toHaveBeenCalledWith(ref);
+  });
+
   it("passes runtime reset requests to the runtime desktop API without pre-resolving the canvas", async () => {
     const { registerRuntimeBridgeHandlers } = await import("../main/runtimeBridgeHandlers");
     registerRuntimeBridgeHandlers();
@@ -256,13 +273,17 @@ describe("runtime bridge handlers", () => {
   it("registers handlers for every desktop bridge invoke channel", async () => {
     const { registerRuntimeBridgeHandlers } = await import("../main/runtimeBridgeHandlers");
     const { registerPackageWatchHandlers } = await import("../main/packageWatch");
+    const { registerRuntimeStateWatchHandlers } = await import("../main/runtimeStateWatch");
 
     registerRuntimeBridgeHandlers();
     registerPackageWatchHandlers();
+    registerRuntimeStateWatchHandlers();
 
     expect(new Set(electronMock.handlers.keys())).toEqual(new Set(Object.values(desktopBridgeInvokeChannels)));
     expect(electronMock.handlers.has(desktopBridgeInvokeChannels.watchPackageFiles)).toBe(true);
     expect(electronMock.handlers.has(desktopBridgeInvokeChannels.unwatchPackageFiles)).toBe(true);
+    expect(electronMock.handlers.has(desktopBridgeInvokeChannels.watchRuntimeState)).toBe(true);
+    expect(electronMock.handlers.has(desktopBridgeInvokeChannels.unwatchRuntimeState)).toBe(true);
   });
 
   it("broadcasts auto-run runtime events to every active window once", async () => {

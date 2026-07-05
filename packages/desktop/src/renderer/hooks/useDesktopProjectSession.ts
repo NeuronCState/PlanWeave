@@ -225,6 +225,14 @@ export function useDesktopProjectSession({
     void refreshLatestAutoRunSummary();
   }, [refreshLatestAutoRunSummary]);
 
+  useEffect(() => {
+    if (!projectState.runtimeRefreshSnapshot) {
+      return;
+    }
+    setAutoRunState(projectState.runtimeRefreshSnapshot.latestAutoRun);
+    setAutoRunDiagnostics(projectState.runtimeRefreshSnapshot.diagnostics);
+  }, [projectState.runtimeRefreshSnapshot]);
+
   return {
     ...projectState,
     autoRunDiagnostics,

@@ -1,6 +1,6 @@
 import type { DesktopBridgeApi } from "@planweave-ai/runtime";
 
-export type DesktopBridgeSubscriptionMethod = "onPackageFileChanged" | "onAutoRunChanged";
+export type DesktopBridgeSubscriptionMethod = "onPackageFileChanged" | "onRuntimeStateChanged" | "onAutoRunChanged";
 export type DesktopBridgeInvokeMethod = Exclude<keyof DesktopBridgeApi, DesktopBridgeSubscriptionMethod>;
 
 export const desktopBridgeInvokeChannels = {
@@ -25,6 +25,7 @@ export const desktopBridgeInvokeChannels = {
   getCanvasMapLayout: "planweave:getCanvasMapLayout",
   getDesktopLayout: "planweave:getDesktopLayout",
   getDesktopProjectSnapshot: "planweave:getDesktopProjectSnapshot",
+  getDesktopRuntimeRefresh: "planweave:getDesktopRuntimeRefresh",
   getDirtyPromptRefs: "planweave:getDirtyPromptRefs",
   getFeedbackRecords: "planweave:getFeedbackRecords",
   getGraphViewModel: "planweave:getGraphViewModel",
@@ -83,6 +84,7 @@ export const desktopBridgeInvokeChannels = {
   unblockBlock: "planweave:unblockBlock",
   unlinkProjectSourceRoot: "planweave:unlinkProjectSourceRoot",
   unwatchPackageFiles: "planweave:unwatchPackageFiles",
+  unwatchRuntimeState: "planweave:unwatchRuntimeState",
   updateBlockExecutor: "planweave:updateBlockExecutor",
   updateBlockPrompt: "planweave:updateBlockPrompt",
   updateBlockTitle: "planweave:updateBlockTitle",
@@ -95,8 +97,10 @@ export const desktopBridgeInvokeChannels = {
   updateTaskTitle: "planweave:updateTaskTitle",
   undoPlanGraphCommand: "planweave:undoPlanGraphCommand",
   validateGraphEdit: "planweave:validateGraphEdit",
-  watchPackageFiles: "planweave:watchPackageFiles"
+  watchPackageFiles: "planweave:watchPackageFiles",
+  watchRuntimeState: "planweave:watchRuntimeState"
 } as const satisfies Record<DesktopBridgeInvokeMethod, string>;
 
 export const packageFileChangedChannel = "planweave:packageFileChanged";
+export const runtimeStateChangedChannel = "planweave:runtimeStateChanged";
 export const autoRunChangedChannel = "planweave:autoRunChanged";

@@ -28,6 +28,18 @@ describe("desktop renderer hook interfaces", () => {
     }
   }
 
+  async function settleMockCalls(mock: ReturnType<typeof vi.fn>): Promise<void> {
+    for (let index = 0; index < 5; index += 1) {
+      const callCount = mock.mock.calls.length;
+      await act(async () => {
+        await flushAsyncEffects();
+      });
+      if (mock.mock.calls.length === callCount) {
+        return;
+      }
+    }
+  }
+
   it("returns detected agent tools without deriving project executor options", async () => {
     const bridge = createDesktopBridgeMock({
       detectAgentTools: vi.fn().mockResolvedValue([
@@ -118,17 +130,24 @@ describe("desktop renderer hook interfaces", () => {
     expect(updateSettings).toHaveBeenCalledWith({ runtimePath: project.workspaceRoot });
   });
 
-  it("polls derived project state for external runtime updates", async () => {
+  it("polls lightweight runtime state for external runtime updates", async () => {
     vi.useFakeTimers();
     try {
-      const refreshedGraph: DesktopGraphViewModel = {
-        ...graph,
-        graphVersion: "pgv-external-refresh"
+      const runtimeDiagnostic: ValidationIssue = {
+        code: "auto_run_state_invalid_json",
+        message: "Auto Run state could not be parsed.",
+        path: "/tmp/demo/results/auto-runs/DESKTOP-RUN-0002/state.json"
       };
-      const getDesktopProjectSnapshot = vi.fn().mockResolvedValueOnce(projectSnapshot()).mockResolvedValue(projectSnapshot({ graph: refreshedGraph }));
+      const getDesktopProjectSnapshot = vi.fn().mockResolvedValue(projectSnapshot());
+      const getDesktopRuntimeRefresh = vi.fn().mockResolvedValue({
+        latestAutoRun: null,
+        diagnostics: [runtimeDiagnostic],
+        errors: ["Auto Run state could not be parsed."]
+      });
       const bridge = createDesktopBridgeMock({
         listProjects: vi.fn().mockResolvedValue([project]),
         getDesktopProjectSnapshot,
+        getDesktopRuntimeRefresh,
         refreshPackageFileChanges: vi.fn().mockResolvedValue({ diagnostics: [], dirtyPromptRefs: [] }),
         watchPackageFiles: vi.fn().mockResolvedValue(undefined)
       });
@@ -136,29 +155,95 @@ describe("desktop renderer hook interfaces", () => {
       vi.resetModules();
       const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
 
+      const setError = vi.fn();
+      const updateSettings = vi.fn();
       const { result } = renderHook(() =>
         useDesktopProject({
-          setError: vi.fn(),
+          setError,
           t: createTranslator("en"),
-          updateSettings: vi.fn()
+          updateSettings
         })
       );
 
       await act(async () => {
-        await flushAsyncEffects();
+        for (let index = 0; index < 4; index += 1) {
+          await flushAsyncEffects();
+        }
       });
+      expect(result.current.graph?.graphVersion).toBe(graph.graphVersion);
       expect(result.current.selectedProject?.projectId).toBe(project.projectId);
+      await settleMockCalls(getDesktopProjectSnapshot);
       getDesktopProjectSnapshot.mockClear();
       await act(async () => {
-        vi.advanceTimersByTime(3_000);
+        vi.advanceTimersByTime(30_000);
         await flushAsyncEffects();
       });
 
-      expect(getDesktopProjectSnapshot).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
-      expect(result.current.graph?.graphVersion).toBe("pgv-external-refresh");
+      expect(getDesktopRuntimeRefresh).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
+      expect(getDesktopProjectSnapshot).not.toHaveBeenCalled();
+      expect(result.current.runtimeDiagnostics).toEqual([runtimeDiagnostic]);
+      expect(setError).toHaveBeenCalledWith("Auto Run state could not be parsed.");
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("refreshes only the graph when the current canvas runtime state changes", async () => {
+    let runtimeStateChangedCallback: ((event: {
+      projectRoot: string;
+      canvasId: string | null;
+      stateFile: string;
+      changedAt: string;
+    }) => void) | null = null;
+    const refreshedGraph: DesktopGraphViewModel = {
+      ...graph,
+      graphVersion: "pgv-runtime-state-event"
+    };
+    const getDesktopProjectSnapshot = vi.fn().mockResolvedValue(projectSnapshot());
+    const getGraphViewModel = vi.fn().mockResolvedValue(refreshedGraph);
+    const bridge = createDesktopBridgeMock({
+      listProjects: vi.fn().mockResolvedValue([project]),
+      getDesktopProjectSnapshot,
+      getGraphViewModel,
+      onRuntimeStateChanged: vi.fn((callback) => {
+        runtimeStateChangedCallback = callback;
+        return () => undefined;
+      }),
+      refreshPackageFileChanges: vi.fn().mockResolvedValue({ diagnostics: [], dirtyPromptRefs: [] }),
+      watchPackageFiles: vi.fn().mockResolvedValue(undefined),
+      watchRuntimeState: vi.fn().mockResolvedValue(undefined)
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
+
+    const setError = vi.fn();
+    const updateSettings = vi.fn();
+    const { result } = renderHook(() =>
+      useDesktopProject({
+        setError,
+        t: createTranslator("en"),
+        updateSettings
+      })
+    );
+
+    await waitFor(() => expect(result.current.graph?.graphVersion).toBe(graph.graphVersion));
+    await waitFor(() => expect(runtimeStateChangedCallback).not.toBeNull());
+    await settleMockCalls(getDesktopProjectSnapshot);
+    getDesktopProjectSnapshot.mockClear();
+    await act(async () => {
+      runtimeStateChangedCallback?.({
+        projectRoot: project.rootPath,
+        canvasId: "canvas-main",
+        stateFile: "/tmp/demo/canvases/canvas-main/state.json",
+        changedAt: "2026-06-16T00:00:01.000Z"
+      });
+      await flushAsyncEffects();
+    });
+
+    expect(getGraphViewModel).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
+    expect(getDesktopProjectSnapshot).not.toHaveBeenCalled();
+    expect(result.current.graph?.graphVersion).toBe("pgv-runtime-state-event");
   });
 
   it("refreshes project summaries without replacing the current project selection", async () => {

@@ -6,6 +6,7 @@ import { registerDesktopSettingsHandlers } from "./desktopSettingsHandlers.js";
 import { applyPersistedPlanweaveHomeSetting } from "./desktopSettingsStore.js";
 import { registerPackageWatchHandlers } from "./packageWatch.js";
 import { registerRuntimeBridgeHandlers } from "./runtimeBridgeHandlers.js";
+import { registerRuntimeStateWatchHandlers } from "./runtimeStateWatch.js";
 import { registerWindowAppearanceHandlers } from "./windowAppearance.js";
 import { createWindow } from "./window.js";
 
@@ -35,6 +36,7 @@ if (isSmokeRun && process.env.PLANWEAVE_DESKTOP_SMOKE_USER_DATA_DIR) {
 registerRuntimeBridgeHandlers();
 registerDesktopSettingsHandlers(undefined, { planweaveHomeBaseline: planweaveHomeBaselineForSettingsStore });
 registerPackageWatchHandlers();
+registerRuntimeStateWatchHandlers();
 registerWindowAppearanceHandlers();
 registerAppUpdateHandlers();
 registerMcpTunnelHandlers();

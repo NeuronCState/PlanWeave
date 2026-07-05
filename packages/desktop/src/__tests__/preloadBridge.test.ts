@@ -1,9 +1,9 @@
-import type { DesktopAutoRunEvent, DesktopPackageFileChangeEvent, DesktopProjectSummary } from "@planweave-ai/runtime";
+import type { DesktopAutoRunEvent, DesktopPackageFileChangeEvent, DesktopProjectSummary, DesktopRuntimeStateChangeEvent } from "@planweave-ai/runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesktopBridgeInvokeApi } from "../preload/bridgeInvocation";
 import { appUpdateChangedChannel, appUpdateInvokeChannels, type AppUpdateState } from "../shared/appUpdate";
 import { defaultDesktopSettings, desktopSettingsInvokeChannels, type DesktopUiSettings } from "../shared/desktopSettings";
-import { autoRunChangedChannel, desktopBridgeInvokeChannels, packageFileChangedChannel } from "../shared/ipcChannels";
+import { autoRunChangedChannel, desktopBridgeInvokeChannels, packageFileChangedChannel, runtimeStateChangedChannel } from "../shared/ipcChannels";
 import { mcpTunnelChangedChannel, mcpTunnelInvokeChannels, type McpTunnelStatus } from "../shared/mcpTunnel";
 import { windowAppearanceInvokeChannels } from "../shared/windowAppearance";
 
@@ -192,6 +192,29 @@ describe("preload bridge invocation", () => {
     expect(callback).toHaveBeenCalledWith(event);
     unsubscribe();
     expect(electronMock.ipcRenderer.off).toHaveBeenCalledWith(autoRunChangedChannel, listener);
+  });
+
+  it("exposes runtime state change subscription with unsubscribe", async () => {
+    await import("../preload/preload");
+    const api = electronMock.exposed.get("planweave") as { onRuntimeStateChanged(callback: (event: DesktopRuntimeStateChangeEvent) => void): () => void };
+    const callback = vi.fn();
+
+    const unsubscribe = api.onRuntimeStateChanged(callback);
+
+    expect(electronMock.ipcRenderer.on).toHaveBeenCalledTimes(1);
+    const [channel, listener] = electronMock.ipcRenderer.on.mock.calls[0] as [string, IpcRendererListener];
+    expect(channel).toBe(runtimeStateChangedChannel);
+    const event: DesktopRuntimeStateChangeEvent = {
+      projectRoot: "/tmp/project",
+      canvasId: "canvas-a",
+      stateFile: "/tmp/project/.planweave/canvases/canvas-a/state.json",
+      changedAt: "2026-06-16T00:00:01.000Z"
+    };
+    listener({}, event);
+
+    expect(callback).toHaveBeenCalledWith(event);
+    unsubscribe();
+    expect(electronMock.ipcRenderer.off).toHaveBeenCalledWith(runtimeStateChangedChannel, listener);
   });
 
   it("exposes the window appearance API through a separate preload surface", async () => {

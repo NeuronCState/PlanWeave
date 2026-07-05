@@ -4,10 +4,12 @@ import { vi } from "vitest";
 export function createDesktopBridgeMock(overrides: Partial<DesktopBridgeApi> = {}): DesktopBridgeApi {
   const defaults: Partial<DesktopBridgeApi> = {
     detectRuntimeTools: vi.fn().mockResolvedValue({ tmux: { available: false, command: "tmux" } }),
+    getDesktopRuntimeRefresh: vi.fn().mockResolvedValue({ latestAutoRun: null, diagnostics: [], errors: [] }),
     getLatestAutoRunSummaryWithDiagnostics: vi.fn().mockResolvedValue({ state: null, diagnostics: [] }),
     getRunTerminalAvailability: vi.fn().mockResolvedValue([]),
     onAutoRunChanged: () => () => undefined,
-    onPackageFileChanged: () => () => undefined
+    onPackageFileChanged: () => () => undefined,
+    onRuntimeStateChanged: () => () => undefined
   };
 
   return new Proxy({ ...defaults, ...overrides } as Record<PropertyKey, unknown>, {

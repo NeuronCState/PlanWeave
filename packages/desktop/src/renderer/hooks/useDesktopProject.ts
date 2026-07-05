@@ -5,6 +5,8 @@ import type {
   DesktopProjectSnapshot,
   DesktopProjectExecutionPlan,
   DesktopProjectSummary,
+  DesktopRuntimeRefreshSnapshot,
+  DesktopRuntimeStateChangeEvent,
   DesktopStatistics,
   DesktopTodoGroups,
   ValidationIssue,
@@ -40,10 +42,14 @@ type ApplyDesktopProjectSnapshotOptions = {
   includePrompt?: boolean;
 };
 
-const externalRuntimeRefreshIntervalMs = 3_000;
+const externalRuntimeRefreshIntervalMs = 30_000;
 
 function documentIsVisible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
+}
+
+function runtimeStateEventMatchesCanvas(event: DesktopRuntimeStateChangeEvent, project: DesktopProjectSummary, canvasId: string | null): boolean {
+  return event.projectRoot === project.rootPath && event.canvasId === canvasId;
 }
 
 export function useDesktopProject({
@@ -63,6 +69,8 @@ export function useDesktopProject({
   const [executionPlan, setExecutionPlan] = useState<DesktopProjectExecutionPlan | null>(null);
   const [statistics, setStatistics] = useState<DesktopStatistics | null>(null);
   const [projectDiagnostics, setProjectDiagnostics] = useState<ValidationIssue[]>([]);
+  const [runtimeDiagnostics, setRuntimeDiagnostics] = useState<ValidationIssue[]>([]);
+  const [runtimeRefreshSnapshot, setRuntimeRefreshSnapshot] = useState<DesktopRuntimeRefreshSnapshot | null>(null);
   const [projectPromptMarkdown, setProjectPromptMarkdown] = useState<string | null>(null);
   const [projectPromptPolicy, setProjectPromptPolicy] = useState<ProjectPromptPolicy | null>(null);
   const externalRefreshInFlightRef = useRef(false);
@@ -106,6 +114,15 @@ export function useDesktopProject({
     []
   );
 
+  const applyRuntimeRefreshSnapshot = useCallback((snapshot: DesktopRuntimeRefreshSnapshot) => {
+    setRuntimeDiagnostics(snapshot.diagnostics);
+    setRuntimeRefreshSnapshot(snapshot);
+    return snapshot.errors.filter((_, index) => {
+      const diagnostic = snapshot.diagnostics[index];
+      return !diagnostic || !isDesktopPerformanceDiagnostic(diagnostic);
+    });
+  }, []);
+
   const loadProject = useCallback(
     async (project: DesktopProjectSummary, requestedCanvasId?: string | null) => {
       if (!bridge) {
@@ -117,6 +134,11 @@ export function useDesktopProject({
       const currentCanvas = currentCanvasRef.current;
       const canKeepCurrentCanvas =
         currentCanvas.hasGraph && currentCanvas.projectRoot === project.rootPath && currentCanvas.canvasId === canvasId;
+      currentCanvasRef.current = {
+        canvasId,
+        hasGraph: canKeepCurrentCanvas ? currentCanvas.hasGraph : false,
+        projectRoot: project.rootPath
+      };
       setSelectedProject(project);
       setSelectedCanvasId(canvasId);
       setExpandedProjectId(project.projectId);
@@ -128,6 +150,8 @@ export function useDesktopProject({
         setExecutionPlan(null);
         setStatistics(null);
         setProjectDiagnostics([]);
+        setRuntimeDiagnostics([]);
+        setRuntimeRefreshSnapshot(null);
         setProjectPromptMarkdown(null);
         setProjectPromptPolicy(null);
       }
@@ -193,6 +217,7 @@ export function useDesktopProject({
     return () => {
       if (bridge && projectRoot) {
         void bridge.unwatchPackageFiles({ projectRoot, canvasId });
+        void bridge.unwatchRuntimeState({ projectRoot, canvasId });
       }
     };
   }, [selectedCanvasId, selectedProject?.rootPath]);
@@ -217,27 +242,82 @@ export function useDesktopProject({
     }
   }, [applyDesktopProjectSnapshot, selectedCanvasId, selectedProject, setError]);
 
+  const refreshRuntimeState = useCallback(async () => {
+    if (!bridge || !selectedProject) {
+      return;
+    }
+    const canvasRef = desktopCanvasReference(selectedProject, selectedCanvasId);
+    const snapshot = await bridge.getDesktopRuntimeRefresh(canvasRef);
+    const currentCanvas = currentCanvasRef.current;
+    if (currentCanvas.projectRoot !== canvasRef.projectRoot || currentCanvas.canvasId !== canvasRef.canvasId) {
+      return;
+    }
+    const errors = applyRuntimeRefreshSnapshot(snapshot);
+    if (errors.length > 0) {
+      setError(errors.join("\n"));
+    }
+  }, [applyRuntimeRefreshSnapshot, selectedCanvasId, selectedProject, setError]);
+
   const refreshGraphAndLayout = useCallback(async () => {
     await refreshProjectDerivedState({ includeLayout: true });
   }, [refreshProjectDerivedState]);
+
+  const runExternalRuntimeRefresh = useCallback(() => {
+    if (!documentIsVisible() || externalRefreshInFlightRef.current) {
+      return;
+    }
+    externalRefreshInFlightRef.current = true;
+    void refreshRuntimeState()
+      .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught)))
+      .finally(() => {
+        externalRefreshInFlightRef.current = false;
+      });
+  }, [refreshRuntimeState, setError]);
 
   useEffect(() => {
     if (!bridge || !selectedProject) {
       return undefined;
     }
-    const timer = window.setInterval(() => {
-      if (!documentIsVisible() || externalRefreshInFlightRef.current) {
+    const timer = window.setInterval(runExternalRuntimeRefresh, externalRuntimeRefreshIntervalMs);
+    return () => window.clearInterval(timer);
+  }, [runExternalRuntimeRefresh, selectedProject]);
+
+  useEffect(() => {
+    if (!bridge || !selectedProject || !graph) {
+      return undefined;
+    }
+    const runtimeBridge = bridge;
+    const ref = desktopCanvasReference(selectedProject, selectedCanvasId);
+    void runtimeBridge.watchRuntimeState(ref).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught)));
+    return () => {
+      void runtimeBridge.unwatchRuntimeState(ref);
+    };
+  }, [Boolean(graph), selectedCanvasId, selectedProject?.rootPath, setError]);
+
+  useEffect(() => {
+    if (!bridge || !selectedProject) {
+      return undefined;
+    }
+    return bridge.onRuntimeStateChanged((event) => {
+      if (!runtimeStateEventMatchesCanvas(event, selectedProject, selectedCanvasId)) {
         return;
       }
-      externalRefreshInFlightRef.current = true;
-      void refreshProjectDerivedState()
-        .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught)))
-        .finally(() => {
-          externalRefreshInFlightRef.current = false;
-        });
-    }, externalRuntimeRefreshIntervalMs);
-    return () => window.clearInterval(timer);
-  }, [refreshProjectDerivedState, selectedProject, setError]);
+      void refreshGraph().catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught)));
+    });
+  }, [refreshGraph, selectedCanvasId, selectedProject, setError]);
+
+  useEffect(() => {
+    if (typeof document === "undefined" || !selectedProject) {
+      return undefined;
+    }
+    const handleVisibilityChange = () => {
+      if (documentIsVisible()) {
+        runExternalRuntimeRefresh();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [runExternalRuntimeRefresh, selectedProject]);
 
   const updateProjectPromptPolicy = useCallback(
     async (patch: Partial<ProjectPromptPolicy>) => {
@@ -322,6 +402,8 @@ export function useDesktopProject({
       setExecutionPlan(null);
       setStatistics(null);
       setProjectDiagnostics([]);
+      setRuntimeDiagnostics([]);
+      setRuntimeRefreshSnapshot(null);
       setProjectPromptMarkdown(null);
       setProjectPromptPolicy(null);
       setError(null);
@@ -375,6 +457,8 @@ export function useDesktopProject({
       setExecutionPlan(null);
       setStatistics(null);
       setProjectDiagnostics([]);
+      setRuntimeDiagnostics([]);
+      setRuntimeRefreshSnapshot(null);
       setProjectPromptMarkdown(null);
       setProjectPromptPolicy(null);
     },
@@ -399,6 +483,9 @@ export function useDesktopProject({
     refreshGraph,
     refreshGraphAndLayout,
     refreshProjectDerivedState,
+    refreshRuntimeState,
+    runtimeDiagnostics,
+    runtimeRefreshSnapshot,
     removeProject,
     selectedCanvasId,
     selectedProject,

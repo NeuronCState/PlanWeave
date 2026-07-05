@@ -17,6 +17,7 @@ import {
   getCanvasMapLayout,
   getDesktopLayout,
   getDesktopProjectSnapshot,
+  getDesktopRuntimeRefresh,
   getDirtyPromptRefs,
   getFeedbackRecords,
   getGraphViewModel,
@@ -112,7 +113,10 @@ import {
   resolveTmuxAttachIntent
 } from "./tmuxRunRecordResolver.js";
 
-type RuntimeBridgeInvokeMethod = Exclude<DesktopBridgeInvokeMethod, "watchPackageFiles" | "unwatchPackageFiles">;
+type RuntimeBridgeInvokeMethod = Exclude<
+  DesktopBridgeInvokeMethod,
+  "watchPackageFiles" | "unwatchPackageFiles" | "watchRuntimeState" | "unwatchRuntimeState"
+>;
 
 type RuntimeBridgeHandler<M extends RuntimeBridgeInvokeMethod> = (
   event: IpcMainInvokeEvent,
@@ -317,6 +321,7 @@ export const runtimeBridgeHandlers = {
   saveCanvasMapLayout: (_event, projectRoot, layout: DesktopCanvasMapLayout) => saveCanvasMapLayout(projectRoot, layout),
   resetCanvasMapLayout: (_event, projectRoot) => resetCanvasMapLayout(projectRoot),
   getDesktopProjectSnapshot: (_event, ref) => getDesktopProjectSnapshot(ref),
+  getDesktopRuntimeRefresh: (_event, ref) => getDesktopRuntimeRefresh(ref),
   getGraphViewModel: async (_event, ref) => getGraphViewModel(await resolveDesktopCanvasReference(ref)),
   getTaskDetail: async (_event, ref, taskId) => getTaskDetail(await resolveDesktopCanvasReference(ref), taskId),
   getBlockDetail: async (_event, ref, blockRef) => getBlockDetail(await resolveDesktopCanvasReference(ref), blockRef),

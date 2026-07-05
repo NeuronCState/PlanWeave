@@ -2,7 +2,7 @@ import { cloneDesktopGraphEditResult, type GraphEditResult } from "@planweave-ai
 import { describe, expect, it } from "vitest";
 import { appUpdateChangedChannel, appUpdateInvokeChannels } from "../shared/appUpdate";
 import { desktopSettingsInvokeChannels } from "../shared/desktopSettings";
-import { autoRunChangedChannel, desktopBridgeInvokeChannels, packageFileChangedChannel } from "../shared/ipcChannels";
+import { autoRunChangedChannel, desktopBridgeInvokeChannels, packageFileChangedChannel, runtimeStateChangedChannel } from "../shared/ipcChannels";
 import { mcpTunnelChangedChannel, mcpTunnelInvokeChannels } from "../shared/mcpTunnel";
 import { windowAppearanceInvokeChannels } from "../shared/windowAppearance";
 
@@ -19,8 +19,10 @@ describe("desktop IPC contract", () => {
 
   it("keeps subscription event channels outside the invoke channel registry", () => {
     expect(packageFileChangedChannel).toBe("planweave:packageFileChanged");
+    expect(runtimeStateChangedChannel).toBe("planweave:runtimeStateChanged");
     expect(autoRunChangedChannel).toBe("planweave:autoRunChanged");
     expect(Object.values(desktopBridgeInvokeChannels)).not.toContain(packageFileChangedChannel);
+    expect(Object.values(desktopBridgeInvokeChannels)).not.toContain(runtimeStateChangedChannel);
     expect(Object.values(desktopBridgeInvokeChannels)).not.toContain(autoRunChangedChannel);
   });
 
@@ -74,7 +76,10 @@ describe("desktop IPC contract", () => {
     expect(desktopBridgeInvokeChannels.getCanvasMapLayout).toBe("planweave:getCanvasMapLayout");
     expect(desktopBridgeInvokeChannels.getDesktopLayout).toBe("planweave:getDesktopLayout");
     expect(desktopBridgeInvokeChannels.getDesktopProjectSnapshot).toBe("planweave:getDesktopProjectSnapshot");
+    expect(desktopBridgeInvokeChannels.getDesktopRuntimeRefresh).toBe("planweave:getDesktopRuntimeRefresh");
     expect(desktopBridgeInvokeChannels.watchPackageFiles).toBe("planweave:watchPackageFiles");
+    expect(desktopBridgeInvokeChannels.watchRuntimeState).toBe("planweave:watchRuntimeState");
+    expect(desktopBridgeInvokeChannels.unwatchRuntimeState).toBe("planweave:unwatchRuntimeState");
     expect(desktopBridgeInvokeChannels.getTodoGroups).toBe("planweave:getTodoGroups");
   });
 

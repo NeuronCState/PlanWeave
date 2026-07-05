@@ -4,7 +4,10 @@ import type { DesktopBridgeInvokeMethod } from "../shared/ipcChannels.js";
 import { autoRunChangedChannel, desktopBridgeInvokeChannels } from "../shared/ipcChannels.js";
 import { runtimeBridgeHandlers } from "./runtimeBridgeHandlerRegistry.js";
 
-type RuntimeBridgeInvokeMethod = Exclude<DesktopBridgeInvokeMethod, "watchPackageFiles" | "unwatchPackageFiles">;
+type RuntimeBridgeInvokeMethod = Exclude<
+  DesktopBridgeInvokeMethod,
+  "watchPackageFiles" | "unwatchPackageFiles" | "watchRuntimeState" | "unwatchRuntimeState"
+>;
 
 let unsubscribeAutoRunBroadcast: (() => void) | null = null;
 

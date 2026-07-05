@@ -91,6 +91,7 @@ export {
   getLatestAutoRunRetrospective
 } from "./autoRunRetrospectiveApi.js";
 export {
+  getDesktopRuntimeRefresh,
   getAutoRunState,
   getLatestAutoRunSummary,
   getLatestAutoRunSummaryWithDiagnostics,

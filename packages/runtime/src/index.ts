@@ -158,6 +158,7 @@ export {
   getTodoGroups,
   getAutoRunRetrospective,
   getAutoRunState,
+  getDesktopRuntimeRefresh,
   getLatestAutoRunRetrospective,
   getLatestAutoRunSummary,
   getLatestAutoRunSummaryWithDiagnostics,

@@ -19,6 +19,7 @@ import {
   searchProject,
   selectTaskCanvas
 } from "../desktop/index.js";
+import { listTaskCanvasWorkspaces } from "../desktop/canvasApi.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { readProjectPaths } from "../paths.js";
 import { commitCanvasWorkspaceWrite, stageCanvasWorkspaceWrite } from "../projectGraph/canvasWorkspaceRecovery.js";
@@ -51,6 +52,16 @@ afterEach(() => {
 
 function nodeIoError(code: string): NodeJS.ErrnoException {
   return Object.assign(new Error(`${code} simulated`), { code });
+}
+
+type CanvasStorageMode = "project_graph" | "legacy_registry";
+
+async function createWorkspaceForCanvasStorageMode(mode: CanvasStorageMode): Promise<Awaited<ReturnType<typeof createTestWorkspace>>> {
+  const workspace = await createTestWorkspace();
+  if (mode === "legacy_registry") {
+    await rm(projectGraphPath(workspace.init.workspace));
+  }
+  return workspace;
 }
 
 describe("desktop task canvas API", () => {
@@ -169,6 +180,87 @@ describe("desktop task canvas API", () => {
       taskTotal: 2,
       blockTotal: 4,
       estimatedRemainingBlocks: 4
+    });
+  });
+
+  describe.each<{
+    mode: CanvasStorageMode;
+  }>([{ mode: "project_graph" }, { mode: "legacy_registry" }])("shared canvas lifecycle behavior for $mode", ({ mode }) => {
+    it("creates, duplicates, renames, removes, and resets canvases through the same public API", async () => {
+      const { root, init } = await createWorkspaceForCanvasStorageMode(mode);
+
+      expect(await listTaskCanvases(root)).toEqual([
+        expect.objectContaining({
+          canvasId: "default",
+          name: "Test Plan",
+          taskCount: 1
+        })
+      ]);
+
+      const created = await createTaskCanvas(root, { name: "Shared plan" });
+      const createdWorkspace = await resolveTaskCanvasWorkspace(root, created.canvasId);
+      await expect(access(createdWorkspace.manifestFile)).resolves.toBeUndefined();
+      await expect(access(createdWorkspace.stateFile)).resolves.toBeUndefined();
+      await expect(readdir(join(init.workspace.workspaceRoot, "desktop", "canvas-staging"))).resolves.toEqual([]);
+
+      const duplicated = await duplicateTaskCanvas(root, created.canvasId, { name: "Shared copy" });
+      const renamed = await renameTaskCanvas(root, duplicated.canvasId, " Shared renamed ");
+      const workspaces = await listTaskCanvasWorkspaces(root);
+
+      expect(created).toMatchObject({
+        canvasId: created.canvasId,
+        name: "Shared plan",
+        taskCount: 0,
+        diagnostics: []
+      });
+      expect(duplicated).toMatchObject({
+        canvasId: duplicated.canvasId,
+        name: "Shared copy",
+        taskCount: 0,
+        diagnostics: []
+      });
+      expect(renamed).toMatchObject({
+        canvasId: duplicated.canvasId,
+        name: "Shared renamed",
+        taskCount: 0,
+        diagnostics: []
+      });
+      expect(workspaces.map((workspace) => ({ canvasId: workspace.canvasId, canvasName: workspace.canvasName }))).toEqual([
+        { canvasId: "default", canvasName: "Test Plan" },
+        { canvasId: created.canvasId, canvasName: "Shared plan" },
+        { canvasId: duplicated.canvasId, canvasName: "Shared renamed" }
+      ]);
+
+      const afterRemove = await removeTaskCanvas(root, duplicated.canvasId);
+      expect(afterRemove.map((canvas) => ({ canvasId: canvas.canvasId, name: canvas.name }))).toEqual([
+        { canvasId: "default", name: "Test Plan" },
+        { canvasId: created.canvasId, name: "Shared plan" }
+      ]);
+
+      const defaultWorkspace = await resolveTaskCanvasWorkspace(root, "default");
+      const stalePrompt = join(defaultWorkspace.packageDir, "nodes", "T-STALE", "prompt.md");
+      await mkdir(join(defaultWorkspace.packageDir, "nodes", "T-STALE"), { recursive: true });
+      await writeFile(stalePrompt, "# Stale task prompt\n", "utf8");
+
+      const afterDefaultReset = await removeTaskCanvas(root, "default");
+      expect(afterDefaultReset.map((canvas) => ({ canvasId: canvas.canvasId, name: canvas.name, taskCount: canvas.taskCount }))).toEqual([
+        { canvasId: "default", name: "Test Plan", taskCount: 0 },
+        { canvasId: created.canvasId, name: "Shared plan", taskCount: 0 }
+      ]);
+      await expect(access(stalePrompt)).rejects.toThrow();
+
+      if (mode === "project_graph") {
+        const loaded = await loadProjectGraph(root);
+        expect(loaded.source).toBe("project_graph");
+        expect(loaded.manifest.canvases.map((canvas) => canvas.id)).toEqual(["default", created.canvasId]);
+      } else {
+        const registry = await readJsonFile<{ canvases: Array<{ canvasId: string; name: string }> }>(join(init.workspace.workspaceRoot, "desktop", "canvases.json"));
+        expect(registry.canvases.map((canvas) => ({ canvasId: canvas.canvasId, name: canvas.name }))).toEqual([
+          { canvasId: "default", name: "Test Plan" },
+          { canvasId: created.canvasId, name: "Shared plan" }
+        ]);
+        await expect(access(projectGraphPath(init.workspace))).rejects.toThrow();
+      }
     });
   });
 

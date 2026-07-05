@@ -1,6 +1,5 @@
 import {
   AlertTriangleIcon,
-  ChevronDownIcon,
   ChevronRightIcon,
   ClipboardIcon,
   CopyIcon,
@@ -15,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import type { DesktopGraphViewModel, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -26,6 +26,7 @@ import {
 import { fileManagerLabel } from "../fileManagerLabels";
 import type { createTranslator } from "../i18n";
 import { statusVariant } from "../viewHelpers";
+import { AnimatedTreeRegion } from "./AnimatedTreeRegion";
 
 type TaskCanvasSummary = DesktopProjectSummary["taskCanvases"][number];
 
@@ -115,7 +116,7 @@ export function CanvasTreeItem({
   };
 
   return (
-    <div className="flex w-full min-w-0 max-w-full flex-col gap-1 overflow-hidden">
+    <div className="flex w-full min-w-0 max-w-full flex-col overflow-hidden">
       <div className="group/canvas grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_1.75rem] items-center gap-1">
         {isRenaming ? (
           <form
@@ -216,12 +217,12 @@ export function CanvasTreeItem({
             onCanvasToggle(project, canvas.canvasId, isGraphCanvas);
           }}
         >
-          {isExpandedCanvas ? <ChevronDownIcon className="size-4" /> : <ChevronRightIcon className="size-4" />}
+          <ChevronRightIcon className={cn("size-4 transition-transform duration-[var(--motion-duration-panel)] ease-[var(--motion-ease-emphasized)]", isExpandedCanvas ? "rotate-90" : "rotate-0")} />
         </Button>
       </div>
-      {isExpandedCanvas && graph ? (
-        <div className="ml-3 flex w-[calc(100%-0.75rem)] min-w-0 max-w-full flex-col gap-1 overflow-hidden border-l border-border/60 pl-3">
-          {graph.tasks.map((task) => (
+      <AnimatedTreeRegion expanded={isExpandedCanvas && graph !== null} className="ml-3 flex w-[calc(100%-0.75rem)] min-w-0 max-w-full flex-col gap-1 overflow-hidden border-l border-border/60 pt-1 pl-3">
+        {graph
+          ? graph.tasks.map((task) => (
             <ContextMenu key={task.taskId}>
               <ContextMenuTrigger asChild>
                 <Button
@@ -243,9 +244,9 @@ export function CanvasTreeItem({
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>
-          ))}
-        </div>
-      ) : null}
+          ))
+          : null}
+      </AnimatedTreeRegion>
     </div>
   );
 }

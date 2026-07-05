@@ -1,5 +1,4 @@
 import {
-  ChevronDownIcon,
   ChevronRightIcon,
   FolderOpenIcon,
   GitBranchIcon,
@@ -11,6 +10,7 @@ import {
 import { useEffect, useRef, useState, type Dispatch, type DragEvent, type SetStateAction } from "react";
 import type { DesktopGraphViewModel, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/context-menu";
 import { fileManagerLabel } from "../fileManagerLabels";
 import type { createTranslator } from "../i18n";
+import { AnimatedTreeRegion } from "./AnimatedTreeRegion";
 import { CanvasTreeItem } from "./CanvasTreeItem";
 
 type ProjectTreeItemProps = {
@@ -141,9 +142,10 @@ export function ProjectTreeItem({
   };
 
   return (
-    <div className="flex w-full min-w-0 max-w-full flex-col gap-1">
+    <div className="flex w-full min-w-0 max-w-full flex-col">
       <div className="group/project grid w-full min-w-0 max-w-full grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-1">
         <Button
+          aria-expanded={isExpandedProject}
           aria-label={isExpandedProject ? t("collapseProject") : t("expandProject")}
           className="relative z-10 size-7 shrink-0 border-0 bg-transparent text-text-faint shadow-none opacity-100 hover:bg-surface-muted hover:text-text-strong focus-visible:ring-ring/40"
           size="icon-sm"
@@ -153,7 +155,7 @@ export function ProjectTreeItem({
             onProjectToggle(project, isSelectedProject);
           }}
         >
-          {isExpandedProject ? <ChevronDownIcon className="size-4" /> : <ChevronRightIcon className="size-4" />}
+          <ChevronRightIcon className={cn("size-4 transition-transform duration-[var(--motion-duration-panel)] ease-[var(--motion-ease-emphasized)]", isExpandedProject ? "rotate-90" : "rotate-0")} />
         </Button>
         {isRenamingProject ? (
           <form
@@ -268,38 +270,36 @@ export function ProjectTreeItem({
           </ContextMenu>
         )}
       </div>
-      {isExpandedProject ? (
-        <div className="ml-3 flex w-[calc(100%-0.75rem)] min-w-0 max-w-full flex-col gap-1 overflow-hidden border-l border-border/60 pl-4">
-          {project.taskCanvases.map((canvas) => {
-            const isSelectedCanvas = selectedCanvasId === canvas.canvasId;
-            const isGraphCanvas = isSelectedCanvas || (selectedCanvasId === null && isSelectedProject && project.taskCanvases.length === 1);
-            const isExpandedCanvas = isGraphCanvas && !collapsedCanvasIds.has(canvas.canvasId);
-            return (
-              <CanvasTreeItem
-                canvas={canvas}
-                graph={graph}
-                handleDeleteTaskCanvas={handleDeleteTaskCanvas}
-                handleDeleteTaskNode={handleDeleteTaskNode}
-                handleDuplicateTaskCanvas={handleDuplicateTaskCanvas}
-                handleCopyCanvasAgentPrompt={handleCopyCanvasAgentPrompt}
-                handleCopyCanvasToNewProject={handleCopyCanvasToNewProject}
-                handleProjectNewGraph={handleProjectNewGraph}
-                handleRevealTaskCanvas={handleRevealTaskCanvas}
-                handleRenameTaskCanvas={handleRenameTaskCanvas}
-                handleTaskPanelSelect={handleTaskPanelSelect}
-                isExpandedCanvas={isExpandedCanvas}
-                isGraphCanvas={isGraphCanvas}
-                key={canvas.canvasId}
-                onCanvasSelect={onCanvasSelect}
-                onCanvasToggle={onCanvasToggle}
-                project={project}
-                selectedTaskPanelId={selectedTaskPanelId}
-                t={t}
-              />
-            );
-          })}
-        </div>
-      ) : null}
+      <AnimatedTreeRegion expanded={isExpandedProject} className="ml-3 flex w-[calc(100%-0.75rem)] min-w-0 max-w-full flex-col gap-1 overflow-hidden border-l border-border/60 pt-1 pl-4">
+        {project.taskCanvases.map((canvas) => {
+          const isSelectedCanvas = selectedCanvasId === canvas.canvasId;
+          const isGraphCanvas = isSelectedCanvas || (selectedCanvasId === null && isSelectedProject && project.taskCanvases.length === 1);
+          const isExpandedCanvas = isGraphCanvas && !collapsedCanvasIds.has(canvas.canvasId);
+          return (
+            <CanvasTreeItem
+              canvas={canvas}
+              graph={isGraphCanvas ? graph : null}
+              handleDeleteTaskCanvas={handleDeleteTaskCanvas}
+              handleDeleteTaskNode={handleDeleteTaskNode}
+              handleDuplicateTaskCanvas={handleDuplicateTaskCanvas}
+              handleCopyCanvasAgentPrompt={handleCopyCanvasAgentPrompt}
+              handleCopyCanvasToNewProject={handleCopyCanvasToNewProject}
+              handleProjectNewGraph={handleProjectNewGraph}
+              handleRevealTaskCanvas={handleRevealTaskCanvas}
+              handleRenameTaskCanvas={handleRenameTaskCanvas}
+              handleTaskPanelSelect={handleTaskPanelSelect}
+              isExpandedCanvas={isExpandedCanvas}
+              isGraphCanvas={isGraphCanvas}
+              key={canvas.canvasId}
+              onCanvasSelect={onCanvasSelect}
+              onCanvasToggle={onCanvasToggle}
+              project={project}
+              selectedTaskPanelId={selectedTaskPanelId}
+              t={t}
+            />
+          );
+        })}
+      </AnimatedTreeRegion>
     </div>
   );
 }

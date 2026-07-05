@@ -1,7 +1,8 @@
 import { readdir, readFile, stat } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { join, relative } from "node:path";
 import type { ProjectWorkspace, ValidationIssue } from "../../types.js";
 import { appendDesktopDiagnostic, desktopDiagnostic, errorMessage } from "./desktopDiagnostics.js";
+import { maxCachedResultsDirectories, ResultsFileIndexCache, type ResultsFileIndexCacheScope } from "./resultsFileIndexCache.js";
 
 const resultFilePattern = /\.(md|json|log|txt)$/;
 
@@ -68,7 +69,6 @@ type CachedResultFileBody = {
 };
 
 type CachedResultsFileIndex = {
-  resultsDir: string;
   entriesByRelativePath: Map<string, CachedResultsFileIndexEntry>;
   bodiesByRelativePath: Map<string, CachedResultFileBody>;
 };
@@ -86,7 +86,13 @@ type CollectedResultDirectory = {
   diagnostics: ValidationIssue[];
 };
 
-const resultsFileIndexCacheByResultsDir = new Map<string, CachedResultsFileIndex>();
+const resultsFileIndexCacheByResultsDir = new ResultsFileIndexCache<CachedResultsFileIndex>(maxCachedResultsDirectories);
+
+export { maxCachedResultsDirectories };
+
+export function clearResultsFileIndexCache(scope?: ResultsFileIndexCacheScope): void {
+  resultsFileIndexCacheByResultsDir.clear(scope);
+}
 
 function toPosixPath(path: string): string {
   return path.split("\\").join("/");
@@ -377,6 +383,10 @@ function sameDiagnostic(left: ValidationIssue, right: ValidationIssue): boolean 
   return left.code === right.code && left.message === right.message && left.path === right.path;
 }
 
+function hasReadFailure(diagnostics: ValidationIssue[]): boolean {
+  return diagnostics.some((diagnostic) => diagnostic.code === "desktop_result_file_read_failed");
+}
+
 export function sameResultsFileFingerprintSnapshot(
   left: ResultsFileFingerprintSnapshot,
   right: ResultsFileFingerprintSnapshot
@@ -451,8 +461,7 @@ export async function buildResultsFileIndexFromFingerprintSnapshot(
   workspace: ProjectWorkspace,
   snapshot: ResultsFileFingerprintSnapshot
 ): Promise<ResultsFileIndex> {
-  const cacheKey = resolve(workspace.resultsDir);
-  const cachedIndex = resultsFileIndexCacheByResultsDir.get(cacheKey);
+  const cachedIndex = resultsFileIndexCacheByResultsDir.get(workspace.resultsDir);
   const diagnostics: ValidationIssue[] = [...snapshot.diagnostics];
   const entries: ResultsFileIndexEntry[] = [];
   const nextEntriesByRelativePath = new Map<string, CachedResultsFileIndexEntry>();
@@ -466,11 +475,12 @@ export async function buildResultsFileIndexFromFingerprintSnapshot(
       appendDesktopDiagnostic(diagnostics, diagnostic);
     }
     entries.push(cachedEntry.entry);
-    nextEntriesByRelativePath.set(cachedEntry.fingerprint.path, cachedEntry);
+    if (!hasReadFailure(cachedEntry.diagnostics)) {
+      nextEntriesByRelativePath.set(cachedEntry.fingerprint.path, cachedEntry);
+    }
   }
 
-  resultsFileIndexCacheByResultsDir.set(cacheKey, {
-    resultsDir: cacheKey,
+  resultsFileIndexCacheByResultsDir.set(workspace.resultsDir, {
     entriesByRelativePath: nextEntriesByRelativePath,
     bodiesByRelativePath: cachedIndex?.bodiesByRelativePath ?? new Map()
   });
@@ -516,8 +526,7 @@ function appendResultBodyLimitDiagnostic(diagnostics: ValidationIssue[], sourceD
 }
 
 export async function hydrateResultsFileIndexBodies(index: ResultsFileIndex): Promise<ResultsFileIndex> {
-  const cacheKey = resolve(index.workspace.resultsDir);
-  const cachedIndex = resultsFileIndexCacheByResultsDir.get(cacheKey);
+  const cachedIndex = resultsFileIndexCacheByResultsDir.get(index.workspace.resultsDir);
   const diagnostics: ValidationIssue[] = [...index.diagnostics];
   const entries: ResultsFileIndexEntry[] = [];
   const nextBodiesByRelativePath = new Map<string, CachedResultFileBody>();
@@ -546,13 +555,14 @@ export async function hydrateResultsFileIndexBodies(index: ResultsFileIndex): Pr
       for (const diagnostic of body.diagnostics) {
         appendDesktopDiagnostic(diagnostics, diagnostic);
       }
-      nextBodiesByRelativePath.set(hydrated.entry.relativePath, body);
+      if (!hasReadFailure(body.diagnostics)) {
+        nextBodiesByRelativePath.set(hydrated.entry.relativePath, body);
+      }
     }
     entries.push(hydrated.entry);
   }
 
-  resultsFileIndexCacheByResultsDir.set(cacheKey, {
-    resultsDir: cacheKey,
+  resultsFileIndexCacheByResultsDir.set(index.workspace.resultsDir, {
     entriesByRelativePath: cachedIndex?.entriesByRelativePath ?? new Map(),
     bodiesByRelativePath: nextBodiesByRelativePath
   });

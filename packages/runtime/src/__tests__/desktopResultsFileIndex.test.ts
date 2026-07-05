@@ -1,11 +1,14 @@
 import * as fsPromises from "node:fs/promises";
-import { mkdir, rm, utimes, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { searchProject, searchProjectWithDiagnostics } from "../desktop/index.js";
 import {
   buildResultsFileIndexFromFingerprintSnapshot,
+  clearResultsFileIndexCache,
   hydrateResultsFileIndexBodies,
+  maxCachedResultsDirectories,
   maxIndexedResultFileCount,
   maxIndexedResultTotalBodyBytes,
   selectIndexedResultFingerprints,
@@ -29,6 +32,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  clearResultsFileIndexCache();
   delete process.env.PLANWEAVE_HOME;
 });
 
@@ -65,6 +69,35 @@ function resultIndexEntry(workspace: ResultsFileIndex["workspace"], relativePath
     bodyTruncated: false,
     metadata: null
   };
+}
+
+async function indexedReportWorkspace(
+  template: ResultsFileIndex["workspace"],
+  label: string,
+  body: string
+): Promise<{ workspace: ResultsFileIndex["workspace"]; index: ResultsFileIndex; reportPath: string }> {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), `planweave-results-cache-${label}-`));
+  const resultsDir = join(workspaceRoot, "results");
+  const relativePath = `T-001/blocks/B-001/runs/RUN-${label}/report.md`;
+  const reportPath = join(resultsDir, relativePath);
+  const workspace = {
+    ...template,
+    rootPath: workspaceRoot,
+    workspaceRoot,
+    packageDir: join(workspaceRoot, "package"),
+    manifestFile: join(workspaceRoot, "package", "manifest.json"),
+    stateFile: join(workspaceRoot, "state.json"),
+    resultsDir,
+    projectFile: join(workspaceRoot, "project.json"),
+    projectPromptFile: join(workspaceRoot, "policy", "project-prompt.md")
+  };
+  await mkdir(dirname(reportPath), { recursive: true });
+  await writeFile(reportPath, body, "utf8");
+  const index = await buildResultsFileIndexFromFingerprintSnapshot(workspace, {
+    diagnostics: [],
+    files: [fingerprint(relativePath, 1000, Buffer.byteLength(body))]
+  });
+  return { workspace, index, reportPath };
 }
 
 describe("desktop results file index", () => {
@@ -179,6 +212,48 @@ describe("desktop results file index", () => {
     vi.mocked(fsPromises.readFile).mockClear();
     await hydrateResultsFileIndexBodies(index);
     expect(resultReadPaths(init.workspace.resultsDir)).toEqual([]);
+  });
+
+  it("clears one cached results directory without clearing another", async () => {
+    const { init } = await createTestWorkspace();
+    const first = await indexedReportWorkspace(init.workspace, "CLEAR-A", "first scoped cache needle\n");
+    const second = await indexedReportWorkspace(init.workspace, "CLEAR-B", "second scoped cache needle\n");
+    await hydrateResultsFileIndexBodies(first.index);
+    await hydrateResultsFileIndexBodies(second.index);
+
+    vi.mocked(fsPromises.readFile).mockClear();
+    clearResultsFileIndexCache({ resultsDir: first.workspace.resultsDir });
+    const firstHydrated = await hydrateResultsFileIndexBodies(first.index);
+    const secondHydrated = await hydrateResultsFileIndexBodies(second.index);
+
+    expect(firstHydrated.entries[0]).toMatchObject({ body: "first scoped cache needle\n", bodyLoaded: true });
+    expect(secondHydrated.entries[0]).toMatchObject({ body: "second scoped cache needle\n", bodyLoaded: true });
+    expect(resultReadPaths(first.workspace.resultsDir)).toEqual([first.reportPath]);
+    expect(resultReadPaths(second.workspace.resultsDir)).toEqual([]);
+  });
+
+  it("evicts the least recently used results directory when the cache exceeds its entry limit", async () => {
+    const { init } = await createTestWorkspace();
+    const cached: Array<Awaited<ReturnType<typeof indexedReportWorkspace>>> = [];
+    for (let index = 0; index < maxCachedResultsDirectories; index += 1) {
+      const report = await indexedReportWorkspace(init.workspace, `LRU-${String(index).padStart(2, "0")}`, `lru cached body ${index}\n`);
+      await hydrateResultsFileIndexBodies(report.index);
+      cached.push(report);
+    }
+
+    vi.mocked(fsPromises.readFile).mockClear();
+    await hydrateResultsFileIndexBodies(cached[0].index);
+    expect(resultReadPaths(cached[0].workspace.resultsDir)).toEqual([]);
+
+    const overflow = await indexedReportWorkspace(init.workspace, "LRU-OVERFLOW", "lru overflow body\n");
+    await hydrateResultsFileIndexBodies(overflow.index);
+
+    vi.mocked(fsPromises.readFile).mockClear();
+    await hydrateResultsFileIndexBodies(cached[0].index);
+    await hydrateResultsFileIndexBodies(cached[1].index);
+
+    expect(resultReadPaths(cached[0].workspace.resultsDir)).toEqual([]);
+    expect(resultReadPaths(cached[1].workspace.resultsDir)).toEqual([cached[1].reportPath]);
   });
 
   it("reads result directories with bounded concurrency and keeps indexing after one directory read failure", async () => {
@@ -350,6 +425,36 @@ describe("desktop results file index", () => {
           path: `results/${failedRelativePath}`
         })
       ]));
+    });
+  });
+
+  it("does not cache a result body read failure as a permanent empty body", async () => {
+    const actualFs = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    const { init } = await createTestWorkspace();
+    const report = await indexedReportWorkspace(init.workspace, "RETRY-BODY", "retry body cache needle\n");
+    let failNextRead = true;
+
+    await vi.mocked(fsPromises.readFile).withImplementation(async (...args: Parameters<typeof fsPromises.readFile>) => {
+      const pathString = typeof args[0] === "string" ? args[0] : args[0].toString();
+      if (pathString === report.reportPath && failNextRead) {
+        failNextRead = false;
+        throw new Error("temporary body read failure");
+      }
+      return actualFs.readFile(...args);
+    }, async () => {
+      const failed = await hydrateResultsFileIndexBodies(report.index);
+      expect(failed.entries[0]).toMatchObject({ body: "", bodyLoaded: false });
+      expect(failed.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: "desktop_result_file_read_failed",
+          path: "results/T-001/blocks/B-001/runs/RUN-RETRY-BODY/report.md"
+        })
+      ]));
+
+      vi.mocked(fsPromises.readFile).mockClear();
+      const retried = await hydrateResultsFileIndexBodies(report.index);
+      expect(retried.entries[0]).toMatchObject({ body: "retry body cache needle\n", bodyLoaded: true });
+      expect(resultReadPaths(report.workspace.resultsDir)).toEqual([report.reportPath]);
     });
   });
 

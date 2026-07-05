@@ -2,7 +2,7 @@ import * as fsPromises from "node:fs/promises";
 import { utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createTaskCanvas, getDesktopProjectSnapshot, resolveTaskCanvasWorkspace, searchProjectWithDiagnostics } from "../desktop/index.js";
+import { createTaskCanvas, getDesktopProjectSnapshot, removeTaskCanvas, resolveTaskCanvasWorkspace, searchProjectWithDiagnostics } from "../desktop/index.js";
 import {
   invalidateDesktopProjectProjection,
   readDesktopProjectSearchIndex,
@@ -188,6 +188,42 @@ describe("desktop project projection cache", () => {
     expect(searchDesktopSearchIndex(changedPromptIndex, "projection prompt body needle updated", { kinds: ["prompt"] })).toEqual([
       expect.objectContaining({ canvasId: "default", ref: "T-001", targetRef: "T-001" })
     ]);
+  });
+
+  it("clears cached result bodies when a project projection is invalidated", async () => {
+    const { root, init } = await createTestWorkspace();
+    const runDir = join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-PROJECT-INVALIDATE");
+    const reportPath = join(runDir, "report.md");
+    await fsPromises.mkdir(runDir, { recursive: true });
+    await writeFile(reportPath, "project invalidation result body needle\n", "utf8");
+
+    await readDesktopProjectSearchIndex(root, { includeBodies: true });
+    vi.mocked(fsPromises.readFile).mockClear();
+    invalidateDesktopProjectProjection(root);
+    await readDesktopProjectSearchIndex(root, { includeBodies: true });
+
+    expect(resultReadPaths(init.workspace.resultsDir)).toContain(reportPath);
+  });
+
+  it("clears cached result bodies through the canvas removal invalidation path", async () => {
+    const { root, init } = await createTestWorkspace();
+    const secondCanvas = await createTaskCanvas(root, { name: "Removed canvas" });
+    const secondWorkspace = await resolveTaskCanvasWorkspace(root, secondCanvas.canvasId);
+    const defaultRunDir = join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-CANVAS-INVALIDATE");
+    const secondRunDir = join(secondWorkspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-CANVAS-REMOVED");
+    const defaultReportPath = join(defaultRunDir, "report.md");
+    await fsPromises.mkdir(defaultRunDir, { recursive: true });
+    await fsPromises.mkdir(secondRunDir, { recursive: true });
+    await writeFile(defaultReportPath, "canvas removal default result needle\n", "utf8");
+    await writeFile(join(secondRunDir, "report.md"), "canvas removal removed result needle\n", "utf8");
+
+    await readDesktopProjectSearchIndex(root, { includeBodies: true });
+    vi.mocked(fsPromises.readFile).mockClear();
+    await removeTaskCanvas(root, secondCanvas.canvasId);
+    vi.mocked(fsPromises.readFile).mockClear();
+    await readDesktopProjectSearchIndex(root, { includeBodies: true });
+
+    expect(resultReadPaths(init.workspace.resultsDir)).toContain(defaultReportPath);
   });
 
   it("reuses one projection context during search while keeping body hydration lazy", async () => {

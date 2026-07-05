@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +18,8 @@ import {
   setSourceDefaultProject,
   unlinkProjectSourceRoot
 } from "../desktop/index.js";
+import { readDesktopProjectProjection } from "../desktop/graph/projectProjectionModel.js";
+import { hydrateResultsFileIndexBodies } from "../desktop/graph/resultsFileIndex.js";
 import { initWorkspace } from "../initWorkspace.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
 import { resolvePlanweaveHome } from "../paths.js";
@@ -55,6 +57,12 @@ afterEach(() => {
 
 function nodeIoError(code: string): NodeJS.ErrnoException {
   return Object.assign(new Error(`${code} simulated`), { code });
+}
+
+function resultReadPaths(resultsDir: string): string[] {
+  return vi.mocked(readFile).mock.calls
+    .map(([path]) => (typeof path === "string" ? path : null))
+    .filter((path): path is string => path !== null && path.startsWith(resultsDir));
 }
 
 describe("desktop project API", () => {
@@ -592,6 +600,42 @@ describe("desktop project API", () => {
 
     await expect(removeProject(init.workspace.id)).resolves.toBeUndefined();
 
+    await expect(listProjects()).resolves.toEqual([]);
+    await expect(access(root)).resolves.toBeUndefined();
+  });
+
+  it("clears projection result body cache when removing an external project", async () => {
+    const { init, root } = await createTestWorkspace();
+    const runDir = join(init.workspace.resultsDir, "T-001", "blocks", "B-001", "runs", "RUN-REMOVE-CACHE");
+    const reportPath = join(runDir, "report.md");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(reportPath, "remove project cache needle\n", "utf8");
+
+    const projection = await readDesktopProjectProjection(init.workspace.rootPath);
+    const resultIndex = projection.resultsByCanvas.get("default");
+    if (!resultIndex) {
+      throw new Error("Default canvas results index missing.");
+    }
+    const hydratedBeforeRemove = await hydrateResultsFileIndexBodies(resultIndex);
+    expect(hydratedBeforeRemove.entries).toContainEqual(
+      expect.objectContaining({
+        absolutePath: reportPath,
+        body: "remove project cache needle\n",
+        bodyLoaded: true
+      })
+    );
+
+    vi.mocked(readFile).mockClear();
+    await expect(removeProject(init.workspace.id)).resolves.toBeUndefined();
+    const hydratedAfterRemove = await hydrateResultsFileIndexBodies(resultIndex);
+
+    expect(resultReadPaths(init.workspace.resultsDir)).toContain(reportPath);
+    expect(hydratedAfterRemove.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "desktop_result_file_read_failed",
+        path: "results/T-001/blocks/B-001/runs/RUN-REMOVE-CACHE/report.md"
+      })
+    );
     await expect(listProjects()).resolves.toEqual([]);
     await expect(access(root)).resolves.toBeUndefined();
   });

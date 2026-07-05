@@ -19,6 +19,7 @@ import type { PlanPackageManifest, ProjectMetadata, ProjectWorkspace } from "../
 import type { DesktopProjectSummary } from "./types.js";
 import { getActiveTaskCanvasId, listTaskCanvases } from "./canvasApi.js";
 import { readActiveTaskCanvasSelection, writeActiveTaskCanvasSelection } from "./canvasSelectionStore.js";
+import { invalidateDesktopProjectProjection } from "./graph/projectProjectionModel.js";
 import { updateSourceDefaultProjectReference } from "./sourceDefaultProject.js";
 
 async function exists(path: string): Promise<boolean> {
@@ -141,7 +142,11 @@ export async function removeProject(projectId: string): Promise<void> {
   const projectsRoot = resolve(resolvePlanweaveHome(), "projects");
   const workspaceRoot = resolve(projectsRoot, projectId);
   assertDirectProjectWorkspace(projectsRoot, workspaceRoot, projectId, "removed");
+  const entry = await readRegisteredProject(projectId);
   await rm(workspaceRoot, { recursive: true, force: true });
+  if (entry) {
+    invalidateDesktopProjectProjection(entry.project.rootPath);
+  }
 }
 
 async function rewriteJsonProjectId(path: string, projectId: string): Promise<void> {

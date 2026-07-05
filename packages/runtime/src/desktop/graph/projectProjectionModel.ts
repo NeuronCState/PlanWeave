@@ -16,6 +16,7 @@ import {
 } from "./projectCanvasAggregation.js";
 import {
   buildResultsFileIndexFromFingerprintSnapshot,
+  clearResultsFileIndexCache,
   hydrateResultsFileIndexBodies,
   sameResultsFileFingerprintSnapshot,
   snapshotResultsFileFingerprints,
@@ -131,9 +132,17 @@ function projectProjectionKey(projectRoot: PackageWorkspaceRef): string {
 export function invalidateDesktopProjectProjection(projectRoot?: PackageWorkspaceRef): void {
   if (!projectRoot) {
     projectProjectionCache.clear();
+    clearResultsFileIndexCache();
     return;
   }
-  projectProjectionCache.delete(projectProjectionKey(projectRoot));
+  const key = projectProjectionKey(projectRoot);
+  const cached = projectProjectionCache.get(key);
+  if (cached) {
+    for (const entry of cached.canvases.values()) {
+      clearResultsFileIndexCache({ resultsDir: entry.resultsIndex.workspace.resultsDir });
+    }
+  }
+  projectProjectionCache.delete(key);
 }
 
 async function optionalFileStatFingerprint(path: string): Promise<FileStatFingerprint | null> {
@@ -722,7 +731,9 @@ export async function readDesktopProjectSearchIndexFromContext(
   context: DesktopProjectProjectionContext,
   options: { includeBodies?: boolean } = {}
 ): Promise<DesktopSearchIndex> {
-  const cached = projectionContextCache.get(context) ?? projectProjectionCache.get(context.key);
+  const cachedFromProject = projectProjectionCache.get(context.key);
+  const cachedFromContext = projectionContextCache.get(context);
+  const cached = cachedFromContext === cachedFromProject ? cachedFromContext : cachedFromProject;
   const diagnostics = [...context.projection.diagnostics];
   const summaryIndex = await buildProjectSummarySearchIndex({
     cached,

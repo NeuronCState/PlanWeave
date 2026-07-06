@@ -31,6 +31,7 @@ import type { DesktopAddBlockInput, DesktopAddTaskInput, DesktopGraphEditValidat
 import { getDesktopLayout, saveDesktopLayoutDirect } from "../layoutApi.js";
 import { getTask } from "./graphHelpers.js";
 import { invalidateDesktopProjectProjection } from "./projectProjectionModel.js";
+import { defaultTaskBlockTypes } from "./taskDefaults.js";
 
 type UpdateTaskFieldsCommand = Extract<PlanGraphCommand, { type: "updateTaskFields" }>;
 type UpdateBlockFieldsCommand = Extract<PlanGraphCommand, { type: "updateBlockFields" }>;
@@ -138,6 +139,82 @@ function createBlock(options: {
   return { ...common, type: options.type, parallel: { safe: false, locks: [] } };
 }
 
+function planNewBlockPlacement(task: ManifestTaskNode, block: ManifestBlock, explicitDependsOn: boolean): {
+  task: ManifestTaskNode;
+  insertIndex: number | null;
+  affectedDependsOn: Array<{ blockRef: string; dependsOn: string[] }>;
+} {
+  if (explicitDependsOn || block.type !== "implementation") {
+    return {
+      task: { ...task, blocks: [...task.blocks, block] },
+      insertIndex: null,
+      affectedDependsOn: []
+    };
+  }
+  let reviewIndex = -1;
+  for (let index = task.blocks.length - 1; index >= 0; index -= 1) {
+    if (task.blocks[index].type === "review") {
+      reviewIndex = index;
+      break;
+    }
+  }
+  if (reviewIndex < 0) {
+    return {
+      task: { ...task, blocks: [...task.blocks, block] },
+      insertIndex: null,
+      affectedDependsOn: []
+    };
+  }
+  const reviewBlock = task.blocks[reviewIndex];
+  let dependsOn = [...reviewBlock.depends_on];
+  if (dependsOn.length === 0) {
+    for (let index = reviewIndex - 1; index >= 0; index -= 1) {
+      if (task.blocks[index].type === "implementation") {
+        dependsOn = [task.blocks[index].id];
+        break;
+      }
+    }
+  }
+  const placedBlock = {
+    ...block,
+    depends_on: dependsOn
+  };
+  const nextBlocks = [
+    ...task.blocks.slice(0, reviewIndex),
+    placedBlock,
+    ...task.blocks.slice(reviewIndex).map((candidate, index) => {
+      if (index !== 0 || candidate.type !== "review") {
+        return candidate;
+      }
+      return { ...candidate, depends_on: [placedBlock.id] };
+    })
+  ];
+  return {
+    task: { ...task, blocks: nextBlocks },
+    insertIndex: reviewIndex,
+    affectedDependsOn: [{ blockRef: `${task.id}#${reviewBlock.id}`, dependsOn: [placedBlock.id] }]
+  };
+}
+
+function addBlockMutation(
+  manifest: PlanPackageManifest,
+  task: ManifestTaskNode,
+  block: ManifestBlock,
+  promptMarkdown: string,
+  explicitDependsOn: boolean
+) {
+  const placement = planNewBlockPlacement(task, block, explicitDependsOn);
+  const nextManifest = {
+    ...manifest,
+    nodes: manifest.nodes.map((node) => (node.type === "task" && node.id === task.id ? placement.task : node))
+  };
+  const sideEffects: PlanPackageGraphMutationSideEffect[] = [{ kind: "writePrompt", packagePath: block.prompt, markdown: promptMarkdown }];
+  return buildPlanPackageManifestChangeMutation(manifest, nextManifest, {
+    affectedTasks: [task.id],
+    sideEffects
+  });
+}
+
 function buildTaskNodeForCreate(manifest: PlanPackageManifest, input: DesktopAddTaskInput): {
   node: ManifestTaskNode;
   taskPromptMarkdown: string;
@@ -145,7 +222,7 @@ function buildTaskNodeForCreate(manifest: PlanPackageManifest, input: DesktopAdd
 } {
   const title = requireNonEmptyTitle(input.title);
   const taskId = nextTaskId(manifest, title);
-  const blockTypes = input.blockTypes?.length ? input.blockTypes : (["implementation"] satisfies BlockType[]);
+  const blockTypes = input.blockTypes?.length ? input.blockTypes : defaultTaskBlockTypes();
   const blocks: ManifestBlock[] = [];
   for (const type of blockTypes) {
     const blockId = nextBlockId({ id: taskId, type: "task", title, prompt: "", acceptance: [], blocks }, type);
@@ -288,21 +365,23 @@ export async function addBlock(projectRoot: PackageWorkspaceRef, input: DesktopA
   const graph = compileTaskGraph(manifest);
   const task = getTask(graph, input.taskId);
   const blockId = nextBlockId(task, input.type);
+  const explicitDependsOn = input.dependsOn !== undefined;
   const block = createBlock({
     taskId: task.id,
     blockId,
     type: input.type,
     title: input.title,
-    dependsOn: input.dependsOn ?? (task.blocks.length > 0 ? [task.blocks[task.blocks.length - 1].id] : []),
+    dependsOn: explicitDependsOn ? (input.dependsOn ?? []) : (task.blocks.length > 0 ? [task.blocks[task.blocks.length - 1].id] : []),
     executor: normalizeOptionalText(input.executor ?? null),
     maxFeedbackCycles: manifest.review.maxFeedbackCycles
   });
+  const placement = planNewBlockPlacement(task, block, explicitDependsOn);
   const snapshot: BlockComponentSnapshot = {
     taskId: task.id,
-    block,
+    block: placement.task.blocks.find((candidate) => candidate.id === block.id) ?? block,
     promptMarkdown: promptFileMarkdown(input.promptMarkdown),
-    insertIndex: null,
-    affectedDependsOn: []
+    insertIndex: placement.insertIndex,
+    affectedDependsOn: placement.affectedDependsOn
   };
   return executeDesktopPlanGraphCommand(projectRoot, { type: "addBlock", snapshot });
 }
@@ -596,21 +675,17 @@ export async function bulkCreateBlocks(
     const graph = compileTaskGraph(nextManifest);
     const task = getTask(graph, input.taskId);
     const blockId = nextBlockId(task, input.type);
+    const explicitDependsOn = input.dependsOn !== undefined;
     const block = createBlock({
       taskId: task.id,
       blockId,
       type: input.type,
       title: input.title,
-      dependsOn: input.dependsOn ?? (task.blocks.length > 0 ? [task.blocks[task.blocks.length - 1].id] : []),
+      dependsOn: explicitDependsOn ? (input.dependsOn ?? []) : (task.blocks.length > 0 ? [task.blocks[task.blocks.length - 1].id] : []),
       executor: normalizeOptionalText(input.executor ?? null),
       maxFeedbackCycles: nextManifest.review.maxFeedbackCycles
     });
-    const mutation = buildPlanPackageGraphMutation(nextManifest, {
-      kind: "addBlock",
-      taskId: task.id,
-      block,
-      promptMarkdown: promptFileMarkdown(input.promptMarkdown)
-    });
+    const mutation = addBlockMutation(nextManifest, task, block, promptFileMarkdown(input.promptMarkdown), explicitDependsOn);
     nextManifest = mutation.nextManifest;
     affectedTasks.push(...mutation.affectedTasks, task.id);
     sideEffects.push(...mutation.sideEffects);

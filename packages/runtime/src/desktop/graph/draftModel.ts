@@ -3,6 +3,7 @@ import { loadPackage } from "../../package/loadPackage.js";
 import type { PackageWorkspaceRef } from "../../types.js";
 import type { DesktopTaskDraft } from "../types.js";
 import { getTask } from "./graphHelpers.js";
+import { defaultTaskBlockTypes } from "./taskDefaults.js";
 
 function draftTitle(text: string): string {
   const firstLine = text
@@ -65,7 +66,7 @@ export async function createTaskDraft(
         title: draftTitle(section),
         promptMarkdown: section,
         acceptance: acceptanceFromText(section),
-        blockTypes: ["implementation"]
+        blockTypes: defaultTaskBlockTypes()
       })),
       blocks: []
     };
@@ -78,7 +79,7 @@ export async function createTaskDraft(
         title: draftTitle(text),
         promptMarkdown: text,
         acceptance: acceptanceFromText(text),
-        blockTypes: ["implementation"]
+        blockTypes: defaultTaskBlockTypes()
       }
     ],
     blocks: []

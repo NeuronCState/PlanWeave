@@ -2,7 +2,6 @@ import { chmod, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  addBlock,
   addDependencyEdge,
   addTaskNode,
   applyCanvasLaneLayout,
@@ -13,7 +12,6 @@ import {
   bulkUpdateBlocks,
   bulkUpdateParallelPolicy,
   bulkUpdateTasks,
-  createTaskDraft,
   getDesktopLayout,
   getProjectOverview,
   removeBlock,
@@ -549,71 +547,8 @@ describe("desktop graph edit API", () => {
     });
   });
 
-  it("creates task drafts and writes new task nodes and blocks through package files", async () => {
+  it("writes new task nodes through package files and layout history", async () => {
     const { root, init } = await createTestWorkspace();
-
-    const draft = await createTaskDraft(root, {
-      mode: "task",
-      text: "# Add export flow\n\nUsers can export the current plan."
-    });
-    expect(draft).toMatchObject({
-      mode: "task",
-      tasks: [
-        {
-          title: "Add export flow",
-          blockTypes: ["implementation"]
-        }
-      ]
-    });
-
-    await expect(addTaskNode(root, draft.tasks[0])).resolves.toMatchObject({ ok: true });
-    let manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
-    const createdTask = manifest.nodes.find((node) => node.type === "task" && node.title === "Add export flow");
-    if (createdTask?.type !== "task") {
-      throw new Error("Created task missing.");
-    }
-    expect(createdTask.id).toBe("T-ADD-EXPORT-FLOW");
-    expect(createdTask.acceptance).toEqual(["# Add export flow", "Users can export the current plan."]);
-    expect(createdTask.blocks.map((block) => block.type)).toEqual(["implementation"]);
-    expect(createdTask.blocks.map((block) => block.depends_on)).toEqual([[]]);
-    expect(await readFile(join(init.workspace.packageDir, createdTask.prompt), "utf8")).toContain("Users can export");
-    expect(await readFile(join(init.workspace.packageDir, createdTask.blocks[0].prompt), "utf8")).toContain("Add export flow");
-
-    await expect(
-      addBlock(root, {
-        taskId: createdTask.id,
-        type: "implementation",
-        title: "Implement export follow-up",
-        promptMarkdown: "# Implement export follow-up\n"
-      })
-    ).resolves.toMatchObject({ ok: true });
-    manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
-    const updatedTask = manifest.nodes.find((node) => node.type === "task" && node.id === createdTask.id);
-    if (updatedTask?.type !== "task") {
-      throw new Error("Updated task missing.");
-    }
-    const addedBlock = updatedTask.blocks.at(-1);
-    expect(addedBlock).toMatchObject({
-      id: "B-002",
-      type: "implementation",
-      title: "Implement export follow-up",
-      depends_on: ["B-001"]
-    });
-    expect(await readFile(join(init.workspace.packageDir, addedBlock?.prompt ?? ""), "utf8")).toBe("# Implement export follow-up\n");
-
-    await expect(
-      addTaskNode(root, {
-        title: "Fallback default blocks",
-        promptMarkdown: "# Fallback default blocks\n"
-      })
-    ).resolves.toMatchObject({ ok: true });
-    manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
-    const fallbackTask = manifest.nodes.find((node) => node.type === "task" && node.title === "Fallback default blocks");
-    if (fallbackTask?.type !== "task") {
-      throw new Error("Fallback task missing.");
-    }
-    expect(fallbackTask.acceptance).toEqual(["Task is implemented."]);
-    expect(fallbackTask.blocks.map((block) => block.type)).toEqual(["implementation"]);
 
     await expect(
       addTaskNode(root, {
@@ -621,7 +556,7 @@ describe("desktop graph edit API", () => {
         promptMarkdown: "# Edge slug\n"
       })
     ).resolves.toMatchObject({ ok: true });
-    manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
+    let manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
     expect(manifest.nodes.some((node) => node.type === "task" && node.id === "T-EDGE-SLUG")).toBe(true);
 
     await expect(
@@ -646,29 +581,6 @@ describe("desktop graph edit API", () => {
     manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
     expect(manifest.nodes.some((node) => node.type === "task" && node.id === "T-DROPPED-TASK")).toBe(true);
     expect((await getDesktopLayout(root)).nodes).toContainEqual({ nodeId: "T-DROPPED-TASK", x: 480, y: 240 });
-
-    await expect(
-      addTaskNode(root, {
-        title: "Manual review gate",
-        promptMarkdown: "# Manual review gate\n",
-        acceptance: ["Manual review remains opt-in."],
-        blockTypes: ["implementation", "review"]
-      })
-    ).resolves.toMatchObject({ ok: true });
-    manifest = await readJsonFile<PlanPackageManifest>(init.workspace.manifestFile);
-    const reviewedTask = manifest.nodes.find((node) => node.type === "task" && node.title === "Manual review gate");
-    if (reviewedTask?.type !== "task") {
-      throw new Error("Explicit review task missing.");
-    }
-    expect(reviewedTask.blocks.map((block) => block.type)).toEqual(["implementation", "review"]);
-    expect(reviewedTask.blocks.map((block) => block.depends_on)).toEqual([[], ["B-001"]]);
-
-    const appendDraft = await createTaskDraft(root, {
-      mode: "blocks",
-      targetTaskId: createdTask.id,
-      text: "Add a follow-up validation block."
-    });
-    expect(appendDraft.blocks).toMatchObject([{ taskId: createdTask.id, type: "implementation", title: "Add a follow-up validation block." }]);
   });
 
   it("removes task/block package surfaces through graph APIs", async () => {

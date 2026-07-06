@@ -47,21 +47,21 @@ function readBlockSnapshot(loaded: LoadedPlanGraphPackage, blockRef: string): Bl
   };
 }
 
-function restoreBlockMutation(loaded: LoadedPlanGraphPackage, task: ManifestTaskNode, command: RestoreBlockCommand): PlanPackageGraphMutation {
+function blockSnapshotMutation(loaded: LoadedPlanGraphPackage, task: ManifestTaskNode, snapshot: BlockComponentSnapshot): PlanPackageGraphMutation {
   const insertIndex =
-    command.snapshot.insertIndex === null
+    snapshot.insertIndex === null
       ? task.blocks.length
-      : Math.max(0, Math.min(command.snapshot.insertIndex, task.blocks.length));
+      : Math.max(0, Math.min(snapshot.insertIndex, task.blocks.length));
   const blocksWithRestoredBlock = [
     ...task.blocks.slice(0, insertIndex),
-    command.snapshot.block,
+    snapshot.block,
     ...task.blocks.slice(insertIndex)
   ];
   const nextTask: ManifestTaskNode = {
     ...task,
     blocks: blocksWithRestoredBlock.map((block) => {
       const ref = `${task.id}#${block.id}`;
-      const affected = command.snapshot.affectedDependsOn.find((item) => item.blockRef === ref);
+      const affected = snapshot.affectedDependsOn.find((item) => item.blockRef === ref);
       return affected ? { ...block, depends_on: [...affected.dependsOn] } : block;
     })
   };
@@ -71,7 +71,7 @@ function restoreBlockMutation(loaded: LoadedPlanGraphPackage, task: ManifestTask
       ...loaded.manifest,
       nodes: loaded.manifest.nodes.map((node) => (node.type === "task" && node.id === task.id ? nextTask : node))
     },
-    { affectedTasks: [task.id], sideEffects: writePromptSideEffects(command.snapshot.block.prompt, command.snapshot.promptMarkdown) }
+    { affectedTasks: [task.id], sideEffects: writePromptSideEffects(snapshot.block.prompt, snapshot.promptMarkdown) }
   );
 }
 
@@ -114,15 +114,7 @@ export const blockCommandHandler: PlanGraphCommandHandler<BlockCommand> = {
       if (task.blocks.some((block) => block.id === command.snapshot.block.id)) {
         return diagnostic("block_duplicate", `Block '${command.snapshot.taskId}#${command.snapshot.block.id}' already exists.`, command.snapshot.block.id);
       }
-      if (command.type === "restoreBlock") {
-        return restoreBlockMutation(loaded, task, command);
-      }
-      return buildPlanPackageGraphMutation(loaded.manifest, {
-        kind: "addBlock",
-        taskId: command.snapshot.taskId,
-        block: command.snapshot.block,
-        promptMarkdown: command.snapshot.promptMarkdown
-      });
+      return blockSnapshotMutation(loaded, task, command.snapshot);
     }
     if (!blockFromManifest(loaded.manifest, command.blockRef)) {
       return diagnostic("block_missing", `Block '${command.blockRef}' does not exist.`, command.blockRef);

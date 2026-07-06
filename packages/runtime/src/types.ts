@@ -4,6 +4,7 @@ export * from "./types/workspace.js";
 export * from "./types/state.js";
 export * from "./types/validation.js";
 export * from "./types/graph.js";
+export * from "./types/graphInspection.js";
 export * from "./types/packageFiles.js";
 export * from "./types/taskManager.js";
 export * from "./types/autoRun.js";

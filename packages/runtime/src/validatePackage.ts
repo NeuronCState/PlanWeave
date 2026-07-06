@@ -17,6 +17,7 @@ import { manifestSchema } from "./schema/manifest.js";
 import { readState } from "./state.js";
 import type { PlanPackageManifest, ProjectWorkspace, ValidationIssue, ValidationReport } from "./types.js";
 import { validateDesktopLayout } from "./validation/desktopLayoutValidation.js";
+import { summarizeValidationReport } from "./validation/validationSummary.js";
 import type { LoadedProjectGraph } from "./projectGraph/index.js";
 
 function issue(code: string, message: string, path?: string): ValidationIssue {
@@ -290,6 +291,7 @@ export async function validatePackage(options: { projectRoot: string }): Promise
   return {
     ok: errors.length === 0,
     errors,
-    warnings
+    warnings,
+    summary: summarizeValidationReport(errors, warnings)
   };
 }

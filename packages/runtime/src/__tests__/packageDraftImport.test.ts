@@ -7,11 +7,13 @@ import {
   previewPackageDraftImport,
   validatePackageDraft
 } from "../package/packageDraftImport.js";
+import { bulkApplyReviewPipeline } from "../desktop/index.js";
+import { inspectGraph } from "../graph/inspectGraph.js";
 import { validateGraphQuality } from "../graph/validateGraphQuality.js";
 import { validatePackage } from "../validatePackage.js";
 import { writeJsonFile } from "../json.js";
 import { projectGraphPath } from "../projectGraph/index.js";
-import type { PlanPackageManifest } from "../types.js";
+import type { ManifestTaskNode, PlanPackageManifest } from "../types.js";
 import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
 
 async function createDraft(manifest: PlanPackageManifest): Promise<string> {
@@ -55,6 +57,87 @@ async function createProjectDraft(options: { canvasIds?: string[]; extraUnreadab
     crossTaskEdges: []
   });
   return draftRoot;
+}
+
+function taskId(index: number): string {
+  return `T-${String(index).padStart(3, "0")}`;
+}
+
+function hundredTaskManifest(): PlanPackageManifest {
+  const nodes: ManifestTaskNode[] = Array.from({ length: 100 }, (_, index) => {
+    const number = index + 1;
+    const id = taskId(number);
+    return {
+      id,
+      type: "task",
+      title: `Import acceptance task ${number}`,
+      prompt: `nodes/${id}/prompt.md`,
+      acceptance: [
+        `Task ${number} writes a verifiable runtime result without relying on planning archives.`,
+        `Task ${number} review confirms the implementation block output and dependency contract.`
+      ],
+      blocks: [
+        {
+          id: "B-001",
+          type: "implementation",
+          title: `Implement import acceptance task ${number}`,
+          prompt: `nodes/${id}/blocks/B-001.prompt.md`,
+          depends_on: [],
+          parallel: { safe: true, locks: [`acceptance-${id}`] }
+        }
+      ]
+    };
+  });
+
+  return {
+    version: "plan-package/v1",
+    project: {
+      title: "100 Task Import Acceptance",
+      description: "Programmatic package draft used to prove large import acceptance."
+    },
+    execution: {
+      parallel: {
+        enabled: false,
+        maxConcurrent: 1
+      }
+    },
+    review: {
+      maxFeedbackCycles: 1,
+      completionPolicy: "strict"
+    },
+    nodes,
+    edges: nodes.slice(1).map((node, index) => ({
+      from: node.id,
+      to: taskId(index + 1),
+      type: "depends_on" as const
+    }))
+  };
+}
+
+function reviewPipelineUpdate(task: ManifestTaskNode) {
+  return {
+    taskId: task.id,
+    input: {
+      packageDefaults: {
+        maxFeedbackCycles: 1,
+        completionPolicy: "strict" as const
+      },
+      steps: [
+        {
+          title: `Review ${task.title}`,
+          enabled: true,
+          preset: "general",
+          triggerCondition: "after_required_work_completed" as const,
+          inputContext: "implementation block report and task acceptance criteria",
+          passCriteria: "The implementation satisfies all task acceptance criteria.",
+          feedbackFormat: "Actionable findings grouped by affected implementation block.",
+          maxFeedbackCycles: 1,
+          hook: null,
+          promptMarkdown: `# Review ${task.id}\n\nReview the implementation block for ${task.title}.\n`
+        }
+      ]
+    }
+  };
 }
 
 describe("package draft import", () => {
@@ -216,5 +299,112 @@ describe("package draft import", () => {
     await expect(access(stalePackageDir)).rejects.toThrow();
     await expect(access(staleStateFile)).rejects.toThrow();
     await expect(access(staleResultsDir)).rejects.toThrow();
+  });
+
+  it("applies bulk review pipeline coverage to a 100-task implementation-only draft", async () => {
+    const { root, init } = await createTestWorkspace();
+    const draftManifest = hundredTaskManifest();
+    const draftRoot = await createDraft(draftManifest);
+
+    const draftValidation = await validatePackageDraft({ draftRoot });
+    const draftCanvas = draftValidation.canvases[0];
+
+    expect(draftValidation).toMatchObject({ ok: true, mode: "single-canvas" });
+    expect(draftCanvas?.validation.ok).toBe(true);
+    expect(draftCanvas?.graphQuality?.ok).toBe(true);
+    expect(draftCanvas?.graphQuality?.summary).toMatchObject({
+      taskCount: 100,
+      blockCount: 100,
+      taskDependencyCount: 99,
+      reviewBlockCount: 0,
+      errorCount: 0
+    });
+    expect(draftCanvas?.graphQuality?.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "task_missing_review_block",
+        count: 100
+      })
+    );
+
+    const preview = await previewPackageDraftImport({ draftRoot, projectRoot: root });
+
+    expect(preview.ok).toBe(true);
+    expect(preview.summary.changed).toBeGreaterThan(0);
+    expect(preview.summary.added).toBeGreaterThan(0);
+    expect(preview.effects).toEqual(
+      expect.arrayContaining([
+        { type: "replace_package", path: "package" },
+        { type: "reset_state", path: "state.json" },
+        { type: "reset_results", path: "results" }
+      ])
+    );
+    expect(await readManifestTitle(init.workspace.packageDir)).toBe("Test Plan");
+    await expect(access(join(init.workspace.packageDir, "nodes", taskId(100), "prompt.md"))).rejects.toThrow();
+
+    const applied = await applyPackageDraftImport({ draftRoot, projectRoot: root });
+    expect(applied).toMatchObject({ ok: true, applied: true, target: { canvasId: "default" } });
+
+    const draftTasks = draftManifest.nodes.filter((node): node is ManifestTaskNode => node.type === "task");
+    const reviewUpdates = draftTasks.map((node) => reviewPipelineUpdate(node));
+    await expect(bulkApplyReviewPipeline(root, reviewUpdates)).resolves.toMatchObject({
+      ok: true,
+      affectedTasks: draftTasks.map((node) => node.id)
+    });
+    await expect(bulkApplyReviewPipeline(root, reviewUpdates)).resolves.toMatchObject({ ok: true });
+
+    const validation = await validatePackage({ projectRoot: root });
+    const quality = await validateGraphQuality({ projectRoot: root });
+    const summary = await inspectGraph({ projectRoot: root, view: "summary", limit: 5 });
+    const finalTaskSlice = await inspectGraph({ projectRoot: root, view: "slice", taskId: taskId(100), limit: 5 });
+
+    expect(validation.ok).toBe(true);
+    expect(quality.ok).toBe(true);
+    expect(quality.summary).toMatchObject({
+      taskCount: 100,
+      blockCount: 200,
+      taskDependencyCount: 99,
+      reviewBlockCount: 100,
+      errorCount: 0
+    });
+    expect(summary.counts).toMatchObject({
+      taskCount: 100,
+      blockCount: 200,
+      taskDependencyCount: 99,
+      reviewBlockCount: 100,
+      diagnosticCount: 0
+    });
+    expect(summary.tasksPreview).toHaveLength(5);
+    expect(summary.page).toMatchObject({ total: 100, nextCursor: "next:5", truncated: true });
+    expect(JSON.stringify(summary)).not.toContain("writes a verifiable runtime result");
+    expect(finalTaskSlice.center.dependsOn).toEqual([taskId(99)]);
+    expect(finalTaskSlice.edges.items).toEqual([{ from: taskId(100), to: taskId(99), type: "depends_on" }]);
+    expect(finalTaskSlice.blocks.items).toEqual([
+      expect.objectContaining({ ref: `${taskId(100)}#B-001`, type: "implementation", dependsOn: [] }),
+      expect.objectContaining({ type: "review", dependsOn: [`${taskId(100)}#B-001`] })
+    ]);
+
+    const appliedManifest = JSON.parse(await readFile(join(init.workspace.packageDir, "manifest.json"), "utf8")) as PlanPackageManifest;
+    const tasks = appliedManifest.nodes.filter((node): node is ManifestTaskNode => node.type === "task");
+
+    expect(tasks).toHaveLength(100);
+    expect(appliedManifest.edges).toHaveLength(99);
+    expect(appliedManifest.edges).toContainEqual({ from: taskId(2), to: taskId(1), type: "depends_on" });
+    expect(appliedManifest.edges).toContainEqual({ from: taskId(100), to: taskId(99), type: "depends_on" });
+    for (const task of tasks) {
+      const implementations = task.blocks.filter((block) => block.type === "implementation");
+      const reviews = task.blocks.filter((block) => block.type === "review");
+
+      expect(task.title.trim()).not.toBe("");
+      expect(task.acceptance.length).toBeGreaterThan(0);
+      expect(task.acceptance.every((item) => item.trim() !== "")).toBe(true);
+      expect(implementations).toHaveLength(1);
+      expect(reviews).toHaveLength(1);
+      const implementation = implementations[0];
+      const review = reviews[0];
+      if (!implementation || !review) {
+        throw new Error(`Task '${task.id}' is missing implementation or review block.`);
+      }
+      expect(review.depends_on).toEqual([implementation.id]);
+    }
   });
 });

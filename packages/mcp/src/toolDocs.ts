@@ -1,15 +1,18 @@
 export const authoringRules = [
   "Use get_planweave_guide when you need PlanWeave concepts, storage layout, or tool-selection guidance.",
-  "Use get_project_tree when you need the local PlanWeave project/canvas/task/block structure before writing a plan.",
-  "Use projectId and optional canvasId from get_project_tree, list_projects, or open_project; MCP tools do not accept arbitrary server absolute paths.",
+  "Use list_tool_groups first so default discovery follows the lightweight graph, diagnostics, content, and package-draft paths.",
+  "Use list_projects_summary, open_project_summary, and list_canvases to choose targets without returning full task trees.",
+  "Use projectId and optional canvasId from summary/list tools; MCP tools do not accept arbitrary server absolute paths.",
   "Create a new isolated task canvas with create_canvas before writing a plan that should not modify an existing demo canvas.",
-  "Create and update graph structure through create_task, create_block, add_dependency, and related write tools.",
-  "Use update_task_acceptance, update_block_dependencies, update_block_planning, update_review_pipeline, and project graph dependency tools for plan metadata that is not prompt text.",
+  "Prefer package-shaped drafts for large plans: validate_package_draft, validate_graph_quality, preview_package_import, then import_package_draft with apply: true.",
+  "After importing a large DAG, use apply_canvas_lane_layout to materialize the recommended canvas lane layout.",
+  "Create and update graph structure through create_task, create_block, add_task_dependency, remove_task_dependency, set_task_dependencies, and related semantic write tools.",
+  "Use update_task_acceptance, set_block_dependencies, update_block_planning, set_review_pipeline, and project graph dependency tools for plan metadata that is not prompt text.",
   "Use update_canvas_execution_policy for canvas-level execution.defaultExecutor and execution.parallel settings; use update_block_planning for per-block parallel safety and locks.",
-  "Keep the graph acyclic. Use get_project_graph before large dependency changes.",
-  "Write task and block prompt markdown through update_task and update_block, then run refresh_prompts and validate_project.",
+  "Keep the graph acyclic. Use get_graph_summary, get_graph_slice, and validate_graph_quality before and after large dependency changes.",
+  "Write task and block prompt markdown through write_prompt_source, update_task, or update_block, then run refresh_prompts_summary, validate_project, and validate_graph_quality.",
   "Use implementation blocks for work and review blocks for review gates; review blocks should depend on the implementation blocks they inspect.",
-  "Import packages only from structured file lists, and validate before relying on the imported project."
+  "Read large content only through list_package_files, read_package_file, read_prompt_source, get_rendered_prompt, export_plan_package_files, or explicit full-debug tools."
 ] as const;
 
 export const planweaveGuide = {
@@ -44,7 +47,12 @@ export const planweaveGuide = {
     {
       name: "Prompt surfaces",
       description:
-        "Task and block prompts are source markdown in the Plan Package. Rendered prompts are derived surfaces and should be read with get_prompt/read_prompt instead of edited directly."
+        "Task and block prompts are source markdown in the Plan Package. Rendered prompts are derived surfaces and should be read with get_rendered_prompt instead of edited directly."
+    },
+    {
+      name: "Package draft",
+      description:
+        "A draft root is a temporary package-shaped directory. Validate and preview it before transactionally importing it into an active project or canvas."
     }
   ],
   workspaceLayout: [
@@ -57,25 +65,29 @@ export const planweaveGuide = {
   ],
   mcpWorkflow: [
     "Use get_planweave_guide when you need the product model or directory layout.",
-    "Use get_project_tree to inspect the local project/canvas/task/block tree before authoring a plan into an existing project.",
-    "Use list_projects for a lightweight project list when task/block details are unnecessary.",
+    "Use list_tool_groups to discover the recommended lightweight path for the current job.",
+    "Use list_projects_summary, open_project_summary, and list_canvases to select targets without returning full prompt or graph content.",
     "Use create_canvas when the plan should live in a new isolated canvas.",
-    "Use create_task, create_block, update_task_acceptance, update_block_dependencies, update_canvas_execution_policy, update_block_planning, update_review_pipeline, add_dependency, and project graph dependency tools to author structure.",
+    "For large plans, write a package-shaped draft root outside the active project, then use validate_package_draft, validate_graph_quality, preview_package_import, import_package_draft with apply: true, and apply_canvas_lane_layout.",
+    "Use create_task, create_block, update_task_acceptance, set_block_dependencies, update_canvas_execution_policy, update_block_planning, set_review_pipeline, add_task_dependency, set_task_dependencies, and project graph dependency tools for direct edits.",
     "For parallel plans, first set the selected canvas execution.parallel policy with update_canvas_execution_policy, then mark only truly independent implementation blocks with update_block_planning parallelSafe/parallelLocks.",
-    "Use update_task and update_block to update promptMarkdown, titles, or executors.",
-    "Run refresh_prompts and validate_project after meaningful authoring changes."
+    "Use write_prompt_source, update_task, and update_block to update promptMarkdown, titles, or executors.",
+    "Run refresh_prompts_summary, validate_project, validate_graph_quality, and validate_execution_readiness after meaningful authoring changes."
   ],
   toolSelection: [
     { need: "Understand PlanWeave concepts and storage layout", tool: "get_planweave_guide" },
-    { need: "Find local projects, canvases, tasks, and blocks", tool: "get_project_tree" },
-    { need: "List registered projects only", tool: "list_projects" },
-    { need: "Inspect one canvas DAG", tool: "get_project_graph" },
-    { need: "Read task/block/project prompt markdown", tool: "read_prompt" },
-    { need: "Read a rendered execution prompt", tool: "get_prompt" },
-    { need: "Create or update plan structure", tool: "create_task/create_block/update_* tools" },
+    { need: "Find local projects", tool: "list_projects_summary" },
+    { need: "List canvases in a project", tool: "list_canvases" },
+    { need: "Inspect one canvas DAG", tool: "get_graph_summary or get_graph_slice" },
+    { need: "Read task/block/project prompt markdown", tool: "read_prompt_source" },
+    { need: "Read a rendered execution prompt", tool: "get_rendered_prompt" },
+    { need: "Create or update plan structure", tool: "create_task/create_block/semantic dependency tools" },
+    { need: "Validate a package draft before import", tool: "validate_package_draft" },
+    { need: "Preview and apply a package draft", tool: "preview_package_import then import_package_draft" },
+    { need: "Lay out an imported DAG into dependency lanes", tool: "apply_canvas_lane_layout" },
     { need: "Enable or tune canvas-level parallel execution", tool: "update_canvas_execution_policy" },
     { need: "Mark individual implementation blocks as parallel-safe or set locks", tool: "update_block_planning" },
-    { need: "Validate authored plans", tool: "validate_project or explain_validation_errors" }
+    { need: "Validate authored plans", tool: "validate_project, validate_graph_quality, validate_execution_readiness, or explain_validation_errors" }
   ],
   nonGoals: [
     "MCP tools do not infer the currently selected PlanWeave Desktop project.",
@@ -84,7 +96,28 @@ export const planweaveGuide = {
   ]
 } as const;
 
-export const exampleFiles = [
+export const exampleTemplates = [
+  {
+    template: "basic",
+    title: "Basic single-canvas package",
+    description: "One implementation block and one review block with explicit review dependency.",
+    fileCount: 4
+  },
+  {
+    template: "large_dag_with_review_loop",
+    title: "Large DAG with review loop",
+    description: "Six task nodes with branching dependencies, review gates, and parallel-safe implementation blocks.",
+    fileCount: 19
+  }
+] as const;
+
+type PackageExampleFile = {
+  path: string;
+  encoding: "utf8";
+  content: string;
+};
+
+const basicExampleFiles = [
   {
     path: "manifest.json",
     encoding: "utf8" as const,
@@ -142,4 +175,105 @@ export const exampleFiles = [
     encoding: "utf8" as const,
     content: "# Review feature\n\nCheck correctness, regressions, and test coverage.\n"
   }
+] as const satisfies readonly PackageExampleFile[];
+
+const largeDagTasks = [
+  ["T-001", "Define target architecture", "Document the desired architecture, boundaries, and acceptance criteria."],
+  ["T-002", "Implement runtime contracts", "Implement runtime behavior and tests for the shared contract."],
+  ["T-003", "Implement MCP contract", "Expose the runtime behavior through MCP tools and contract tests."],
+  ["T-004", "Implement CLI contract", "Expose the runtime behavior through CLI commands and contract tests."],
+  ["T-005", "Connect desktop diagnostics", "Render the shared diagnostics in the desktop bridge and UI."],
+  ["T-006", "Finalize docs and verification", "Update user-facing docs and run the verification suite."]
 ] as const;
+
+const largeDagEdges = [
+  ["T-002", "T-001"],
+  ["T-003", "T-001"],
+  ["T-004", "T-002"],
+  ["T-004", "T-003"],
+  ["T-005", "T-003"],
+  ["T-006", "T-004"],
+  ["T-006", "T-005"]
+] as const;
+
+function largeDagManifest(): string {
+  return JSON.stringify(
+    {
+      version: "plan-package/v1",
+      project: {
+        title: "Large PlanWeave DAG Example",
+        description: "A package-shaped draft for large plans with review loops and parallel execution hints."
+      },
+      execution: {
+        defaultExecutor: "codex-auto",
+        parallel: { enabled: true, maxConcurrent: 3 }
+      },
+      review: { maxFeedbackCycles: 2, completionPolicy: "strict" },
+      nodes: largeDagTasks.map(([id, title]) => ({
+        id,
+        type: "task",
+        title,
+        prompt: `nodes/${id}/prompt.md`,
+        acceptance: [`${title} is complete, tested, and documented where relevant.`],
+        blocks: [
+          {
+            id: "B-001",
+            type: "implementation",
+            title: `Implement ${title.toLowerCase()}`,
+            prompt: `nodes/${id}/blocks/B-001.prompt.md`,
+            depends_on: [],
+            parallel: { safe: id !== "T-001", locks: id === "T-005" ? ["desktop-ui"] : [] }
+          },
+          {
+            id: "R-001",
+            type: "review",
+            title: `Review ${title.toLowerCase()}`,
+            prompt: `nodes/${id}/blocks/R-001.prompt.md`,
+            depends_on: ["B-001"],
+            review: { required: true, maxFeedbackCycles: 2, hook: null }
+          }
+        ]
+      })),
+      edges: largeDagEdges.map(([from, to]) => ({ from, to, type: "depends_on" }))
+    },
+    null,
+    2
+  );
+}
+
+const largeDagExampleFiles = [
+  {
+    path: "manifest.json",
+    encoding: "utf8" as const,
+    content: largeDagManifest()
+  },
+  ...largeDagTasks.flatMap(([id, title, detail]) => [
+    {
+      path: `nodes/${id}/prompt.md`,
+      encoding: "utf8" as const,
+      content: `# ${title}\n\n${detail}\n\nAcceptance should be verified before the review block passes.\n`
+    },
+    {
+      path: `nodes/${id}/blocks/B-001.prompt.md`,
+      encoding: "utf8" as const,
+      content: `# Implement ${title.toLowerCase()}\n\nMake the focused implementation change for ${id}. Preserve existing contracts unless this task explicitly changes them.\n`
+    },
+    {
+      path: `nodes/${id}/blocks/R-001.prompt.md`,
+      encoding: "utf8" as const,
+      content: `# Review ${title.toLowerCase()}\n\nCheck correctness, regression risk, tests, and whether the implementation satisfies the task acceptance criteria.\n`
+    }
+  ])
+] as const satisfies readonly PackageExampleFile[];
+
+export const exampleFiles = basicExampleFiles;
+
+export function getPackageExampleFiles(template: string): readonly PackageExampleFile[] | undefined {
+  if (template === "basic") {
+    return basicExampleFiles;
+  }
+  if (template === "large_dag_with_review_loop") {
+    return largeDagExampleFiles;
+  }
+  return undefined;
+}

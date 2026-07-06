@@ -6,7 +6,16 @@ import { listenPlanweaveMcpServer } from "./server.js";
 export { readMcpConfig, type McpConfig, type McpOAuthConfig } from "./config.js";
 export { createHealthPayload, type HealthPayload } from "./health.js";
 export { createPlanweaveMcpHttpServer, listenPlanweaveMcpServer } from "./server.js";
-export { handlePlanweaveTool, isPlanweaveToolName, planweaveToolNames, type PlanweaveToolName, type RuntimeGateway } from "./tools.js";
+export {
+  compatPlanweaveToolNames,
+  debugPlanweaveToolNames,
+  defaultPlanweaveToolNames,
+  handlePlanweaveTool,
+  isPlanweaveToolName,
+  planweaveToolNames,
+  type PlanweaveToolName,
+  type RuntimeGateway
+} from "./tools.js";
 export {
   assertTunnelClientBinaryStartTarget,
   getTunnelClientBinaryStartError,

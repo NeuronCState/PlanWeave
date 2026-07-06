@@ -78,4 +78,9 @@ describe("readMcpConfig", () => {
       tokenStorePath: "/tmp/planweave-oauth-tokens.json"
     });
   });
+
+  it("reads explicit MCP tool discovery mode", () => {
+    expect(readMcpConfig({ PLANWEAVE_MCP_TOOL_DISCOVERY: "compat" })).toMatchObject({ toolDiscoveryMode: "compat" });
+    expect(() => readMcpConfig({ PLANWEAVE_MCP_TOOL_DISCOVERY: "all" })).toThrow("PLANWEAVE_MCP_TOOL_DISCOVERY");
+  });
 });

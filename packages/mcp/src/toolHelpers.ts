@@ -67,6 +67,22 @@ export function sanitizeValidationIssues(issues: ValidationIssue[]): ValidationI
   return issues.map(sanitizeValidationIssue);
 }
 
+export function sanitizeValidationReport(report: ValidationReport): ValidationReport {
+  return {
+    ...report,
+    errors: sanitizeValidationIssues(report.errors),
+    warnings: sanitizeValidationIssues(report.warnings),
+    summary: {
+      ...report.summary,
+      groups: report.summary.groups.map((group) => ({
+        ...group,
+        message: sanitizeLocalPaths(group.message),
+        examples: group.examples.map(sanitizeLocalPaths)
+      }))
+    }
+  };
+}
+
 export function explainValidationReport(report: ValidationReport) {
   const issues = [
     ...report.errors.map((issue) => ({ severity: "error", ...issue })),

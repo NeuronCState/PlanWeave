@@ -4,7 +4,20 @@ import {
   addCrossTaskDependency,
   addDependencyEdge,
   addTaskNode,
+  applyCanvasLaneLayout as runtimeApplyCanvasLaneLayout,
+  bulkApplyReviewPipeline as runtimeBulkApplyReviewPipeline,
+  applyPackageDraftImport as runtimeApplyPackageDraftImport,
+  bulkAddTaskDependencies as runtimeBulkAddTaskDependencies,
+  bulkCreateBlocks as runtimeBulkCreateBlocks,
+  bulkCreateTasks as runtimeBulkCreateTasks,
+  bulkRemoveGraphItems as runtimeBulkRemoveGraphItems,
+  bulkSetBlockDependencies as runtimeBulkSetBlockDependencies,
+  bulkSetTaskDependencies as runtimeBulkSetTaskDependencies,
+  bulkUpdateBlocks as runtimeBulkUpdateBlocks,
+  bulkUpdateParallelPolicy as runtimeBulkUpdateParallelPolicy,
+  bulkUpdateTasks as runtimeBulkUpdateTasks,
   createTaskCanvas,
+  getPromptSources as runtimeGetPromptSources,
   getBlockDetail,
   getExecutionStatus,
   getGraphViewModel,
@@ -12,10 +25,16 @@ import {
   getReviewPipeline,
   getTaskDetail,
   initManagedProject,
+  inspectGraph as runtimeInspectGraph,
+  listPackageFiles as runtimeListPackageFiles,
   renderPrompt,
   listProjects,
   listTaskCanvases,
   openProject,
+  previewPackageDraftImport as runtimePreviewPackageDraftImport,
+  readPackageFile as runtimeReadPackageFile,
+  readPromptSource as runtimeReadPromptSource,
+  readRenderedPrompt as runtimeReadRenderedPrompt,
   readProjectPrompt,
   refreshPrompts,
   removeBlock,
@@ -26,6 +45,7 @@ import {
   resolveTaskCanvasWorkspace,
   runtimeSchemaDocuments,
   searchProjectWithDiagnostics,
+  setTaskDependencies as runtimeSetTaskDependencies,
   updateBlockDependencies,
   updateBlockFields,
   updateBlockPlanning,
@@ -34,6 +54,9 @@ import {
   updateReviewPipeline,
   updateTaskAcceptance,
   updateTaskFields,
+  validateExecutionReadiness as runtimeValidateExecutionReadiness,
+  validateGraphQuality as runtimeValidateGraphQuality,
+  validatePackageDraft as runtimeValidatePackageDraft,
   validatePackage
 } from "@planweave-ai/runtime";
 import type { DesktopSearchResult, DesktopTodoItem } from "@planweave-ai/runtime";
@@ -97,6 +120,21 @@ export const runtimeGateway: RuntimeGateway = {
   async getProjectGraph(projectId, canvasId) {
     return getGraphViewModel(await resolveCanvasWorkspace(projectId, canvasId));
   },
+  async inspectGraph(projectId, canvasId, input) {
+    return runtimeInspectGraph({
+      projectRoot: await resolveCanvasWorkspace(projectId, canvasId),
+      ...input
+    });
+  },
+  async validateGraphQuality(projectId, canvasId, input) {
+    return runtimeValidateGraphQuality({
+      projectRoot: await resolveCanvasWorkspace(projectId, canvasId),
+      ...input
+    });
+  },
+  async validateExecutionReadiness(projectId, canvasId) {
+    return runtimeValidateExecutionReadiness({ projectRoot: await resolveCanvasWorkspace(projectId, canvasId) });
+  },
   async getTaskDetail(projectId, taskId, canvasId) {
     return getTaskDetail(await resolveCanvasWorkspace(projectId, canvasId), taskId);
   },
@@ -109,8 +147,14 @@ export const runtimeGateway: RuntimeGateway = {
   async updateReviewPipeline(projectId, canvasId, taskId, input) {
     return updateReviewPipeline(await resolveCanvasWorkspace(projectId, canvasId), taskId, input);
   },
+  async bulkApplyReviewPipeline(projectId, canvasId, updates) {
+    return runtimeBulkApplyReviewPipeline(await resolveCanvasWorkspace(projectId, canvasId), updates);
+  },
   async createTask(projectId, canvasId, input) {
     return addTaskNode(await resolveCanvasWorkspace(projectId, canvasId), input);
+  },
+  async bulkCreateTasks(projectId, canvasId, tasks) {
+    return runtimeBulkCreateTasks(await resolveCanvasWorkspace(projectId, canvasId), tasks);
   },
   async updateTask(projectId, canvasId, taskId, input) {
     const workspace = await resolveCanvasWorkspace(projectId, canvasId);
@@ -125,15 +169,41 @@ export const runtimeGateway: RuntimeGateway = {
   async createBlock(projectId, canvasId, input) {
     return addBlock(await resolveCanvasWorkspace(projectId, canvasId), input);
   },
+  async bulkCreateBlocks(projectId, canvasId, blocks) {
+    return runtimeBulkCreateBlocks(await resolveCanvasWorkspace(projectId, canvasId), blocks);
+  },
   async updateBlock(projectId, canvasId, blockRef, input) {
     const workspace = await resolveCanvasWorkspace(projectId, canvasId);
     return updateBlockFields(workspace, blockRef, input);
+  },
+  async bulkUpdateTasks(projectId, canvasId, updates) {
+    return runtimeBulkUpdateTasks(await resolveCanvasWorkspace(projectId, canvasId), updates.map((update) => ({
+      taskId: update.taskId,
+      fields: update.input
+    })));
+  },
+  async bulkUpdateBlocks(projectId, canvasId, updates) {
+    return runtimeBulkUpdateBlocks(await resolveCanvasWorkspace(projectId, canvasId), updates.map((update) => ({
+      blockRef: update.blockRef,
+      fields: update.input
+    })));
+  },
+  async bulkRemoveGraphItems(projectId, canvasId, input) {
+    return runtimeBulkRemoveGraphItems(await resolveCanvasWorkspace(projectId, canvasId), {
+      taskIds: input.tasks,
+      blockRefs: input.blocks,
+      taskDependencyEdges: input.taskDependencyEdges,
+      blockDependencyEdges: input.blockDependencyRefs
+    });
   },
   async updateCanvasExecutionPolicy(projectId, canvasId, input) {
     return updateCanvasExecutionPolicy(await resolveCanvasWorkspace(projectId, canvasId), input);
   },
   async updateBlockPlanning(projectId, canvasId, blockRef, input) {
     return updateBlockPlanning(await resolveCanvasWorkspace(projectId, canvasId), blockRef, input);
+  },
+  async bulkUpdateParallelPolicy(projectId, canvasId, input) {
+    return runtimeBulkUpdateParallelPolicy(await resolveCanvasWorkspace(projectId, canvasId), input);
   },
   async updateBlockDependencies(projectId, canvasId, blockRef, dependsOn) {
     return updateBlockDependencies(await resolveCanvasWorkspace(projectId, canvasId), blockRef, dependsOn);
@@ -146,6 +216,21 @@ export const runtimeGateway: RuntimeGateway = {
   },
   async removeDependency(projectId, canvasId, fromTaskId, toTaskId) {
     return removeDependencyEdge(await resolveCanvasWorkspace(projectId, canvasId), fromTaskId, toTaskId);
+  },
+  async setTaskDependencies(projectId, canvasId, taskId, dependsOn) {
+    return runtimeSetTaskDependencies({ projectRoot: await resolveCanvasWorkspace(projectId, canvasId), taskId, dependsOn });
+  },
+  async bulkAddTaskDependencies(projectId, canvasId, edges) {
+    return runtimeBulkAddTaskDependencies({ projectRoot: await resolveCanvasWorkspace(projectId, canvasId), edges });
+  },
+  async bulkSetTaskDependencies(projectId, canvasId, updates) {
+    return runtimeBulkSetTaskDependencies({ projectRoot: await resolveCanvasWorkspace(projectId, canvasId), updates });
+  },
+  async bulkSetBlockDependencies(projectId, canvasId, updates) {
+    return runtimeBulkSetBlockDependencies({ projectRoot: await resolveCanvasWorkspace(projectId, canvasId), updates });
+  },
+  async applyCanvasLaneLayout(projectId, canvasId, input) {
+    return runtimeApplyCanvasLaneLayout(await resolveCanvasWorkspace(projectId, canvasId), input);
   },
   async addCanvasDependency(projectId, fromCanvasId, toCanvasId) {
     return addCanvasDependency(await resolveProjectRoot(projectId), fromCanvasId, toCanvasId);
@@ -161,6 +246,21 @@ export const runtimeGateway: RuntimeGateway = {
   },
   async readProjectPrompt(projectId) {
     return readProjectPrompt(await resolveProjectRoot(projectId));
+  },
+  async listPackageFiles(projectId, canvasId, limit, cursor) {
+    return runtimeListPackageFiles({ projectRoot: await resolveCanvasWorkspace(projectId, canvasId), limit, cursor });
+  },
+  async readPackageFile(projectId, canvasId, path, maxBytes) {
+    return runtimeReadPackageFile({ projectRoot: await resolveCanvasWorkspace(projectId, canvasId), path, maxBytes });
+  },
+  async readPromptSource(projectId, canvasId, input) {
+    return runtimeReadPromptSource({ projectRoot: await resolveCanvasWorkspace(projectId, canvasId), ...input });
+  },
+  async readRenderedPrompt(projectId, canvasId, ref, maxBytes) {
+    return runtimeReadRenderedPrompt({ projectRoot: await resolveCanvasWorkspace(projectId, canvasId), ref, maxBytes });
+  },
+  async getPromptSources(projectId, canvasId, ref) {
+    return runtimeGetPromptSources({ projectRoot: await resolveCanvasWorkspace(projectId, canvasId), ref });
   },
   async updateProjectPrompt(projectId, markdown) {
     return updateProjectPrompt(await resolveProjectRoot(projectId), markdown);
@@ -182,6 +282,23 @@ export const runtimeGateway: RuntimeGateway = {
   },
   async importPlanPackage(input) {
     return importPackageFiles(input.name, input.files, input.overwrite ?? false);
+  },
+  async validatePackageDraft(draftRoot) {
+    return runtimeValidatePackageDraft({ draftRoot });
+  },
+  async previewPackageDraftImport(input) {
+    return runtimePreviewPackageDraftImport({
+      draftRoot: input.draftRoot,
+      projectRoot: await resolveProjectRoot(input.projectId),
+      canvasId: input.canvasId
+    });
+  },
+  async importPackageDraft(input) {
+    return runtimeApplyPackageDraftImport({
+      draftRoot: input.draftRoot,
+      projectRoot: await resolveProjectRoot(input.projectId),
+      canvasId: input.canvasId
+    });
   }
 };
 

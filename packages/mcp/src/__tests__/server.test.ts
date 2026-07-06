@@ -3,7 +3,8 @@ import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Server } from "node:http";
 import { createPlanweaveMcpHttpServer } from "../server.js";
-import { planweaveToolNames } from "../tools.js";
+import { defaultPlanweaveToolNames, planweaveToolNames } from "../tools.js";
+import type { McpConfig } from "../config.js";
 
 const require = createRequire(import.meta.url);
 const mcpPackage = require("../../package.json") as { version: string };
@@ -26,13 +27,14 @@ afterEach(async () => {
   server = undefined;
 });
 
-async function startServer(token?: string): Promise<string> {
+async function startServer(token?: string, overrides: Partial<McpConfig> = {}): Promise<string> {
   server = createPlanweaveMcpHttpServer({
     host: "127.0.0.1",
     maxRequestBodyBytes: 1_048_576,
     port: 8787,
     token,
-    planweaveHomeFromEnv: true
+    planweaveHomeFromEnv: true,
+    ...overrides
   });
   await new Promise<void>((resolve, reject) => {
     server?.once("error", reject);
@@ -187,14 +189,45 @@ describe("PlanWeave MCP HTTP server", () => {
     expect(toolsResponse.status).toBe(200);
     const toolsPayload = await readMcpResponse(toolsResponse);
     const tools = (toolsPayload as { result: { tools: Array<{ name: string; outputSchema?: unknown; annotations?: { readOnlyHint?: boolean } }> } }).result.tools;
-    expect(tools.map((tool) => tool.name).sort()).toEqual([...planweaveToolNames].sort());
+    const toolNames = tools.map((tool) => tool.name);
+    expect(toolNames.sort()).toEqual([...defaultPlanweaveToolNames].sort());
+    expect(toolNames).not.toEqual(expect.arrayContaining(["get_block_detail", "get_project_graph", "refresh_prompts", "export_plan_package_full"]));
     expect(tools.every((tool) => tool.outputSchema && typeof tool.outputSchema === "object")).toBe(true);
     expect(tools).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "get_status", annotations: expect.objectContaining({ readOnlyHint: true }) }),
-        expect.objectContaining({ name: "get_prompt", annotations: expect.objectContaining({ readOnlyHint: true }) }),
+        expect.objectContaining({ name: "get_rendered_prompt", annotations: expect.objectContaining({ readOnlyHint: true }) }),
         expect.objectContaining({ name: "search_project", annotations: expect.objectContaining({ readOnlyHint: true }) }),
-        expect.objectContaining({ name: "list_ready_blocks", annotations: expect.objectContaining({ readOnlyHint: true }) })
+        expect.objectContaining({ name: "list_ready_blocks", annotations: expect.objectContaining({ readOnlyHint: true }) }),
+        expect.objectContaining({ name: "get_graph_summary", annotations: expect.objectContaining({ readOnlyHint: true }) })
+      ])
+    );
+  });
+
+  it("serves compatibility MCP discovery only when explicitly configured", async () => {
+    const baseUrl = await startServer(undefined, { toolDiscoveryMode: "compat" });
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: {}
+      })
+    });
+
+    expect(response.status).toBe(200);
+    const payload = await readMcpResponse(response);
+    const tools = (payload as { result: { tools: Array<{ name: string }> } }).result.tools;
+    expect(tools.map((tool) => tool.name).sort()).toEqual([...planweaveToolNames].sort());
+    expect(tools).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "get_block_detail" }),
+        expect.objectContaining({ name: "export_plan_package_full" })
       ])
     );
   });

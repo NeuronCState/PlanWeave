@@ -42,7 +42,7 @@ function requestBodySizeStatus(req: IncomingMessage, maxRequestBodyBytes: number
   return { ok: true };
 }
 
-function createPlanweaveMcpServer(): McpServer {
+function createPlanweaveMcpServer(config: McpConfig): McpServer {
   const server = new McpServer(
     {
       name: "planweave-mcp",
@@ -55,7 +55,7 @@ function createPlanweaveMcpServer(): McpServer {
     }
   );
 
-  registerPlanweaveTools(server);
+  registerPlanweaveTools(server, { discoveryMode: config.toolDiscoveryMode ?? "default" });
   return server;
 }
 
@@ -78,7 +78,7 @@ async function handleMcpRequest(req: IncomingMessage, res: ServerResponse, confi
     return;
   }
 
-  const mcpServer = createPlanweaveMcpServer();
+  const mcpServer = createPlanweaveMcpServer(config);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined
   });

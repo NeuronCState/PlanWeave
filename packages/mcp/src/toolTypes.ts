@@ -2,6 +2,7 @@ import type {
   BlockType,
   DesktopBlockDetail,
   DesktopGraphViewModel,
+  DesktopLayout,
   DesktopProjectSummary,
   DesktopReviewPipeline,
   DesktopSearchFilters,
@@ -11,10 +12,19 @@ import type {
   DesktopUpdateReviewPipelineInput,
   DesktopTaskDetail,
   DesktopTaskCanvasSummary,
+  ExecutionReadinessReport,
+  GraphInspectionResult,
   GraphEditResult,
+  GraphQualityReport,
+  PackageContentReadResult,
+  PackageDraftImportApplyResult,
+  PackageDraftImportPreview,
+  PackageDraftValidationResult,
+  PackageFileListResult,
   PlanStatus,
   ProjectGraphEditResult,
   ProjectTaskRef,
+  PromptSourceSummary,
   ReviewHookDefinition,
   RefreshPromptsResult,
   RuntimeSchemaTopicName,
@@ -23,13 +33,18 @@ import type {
 } from "@planweave-ai/runtime";
 
 export const planweaveToolNames = [
+  "list_tool_groups",
   "get_schema",
   "get_planweave_guide",
   "get_authoring_rules",
+  "get_plan_package_examples",
   "get_plan_package_example",
   "get_project_tree",
+  "list_projects_summary",
   "list_projects",
+  "open_project_summary",
   "open_project",
+  "list_canvases",
   "init_project",
   "create_canvas",
   "get_project_overview",
@@ -41,10 +56,18 @@ export const planweaveToolNames = [
   "list_ready_blocks",
   "preview_execution_graph",
   "get_project_graph",
+  "get_graph_summary",
+  "get_graph_slice",
+  "list_tasks",
+  "validate_graph_quality",
+  "validate_execution_readiness",
   "get_task_detail",
   "get_block_detail",
+  "get_block_summary",
+  "get_block_detail_full_debug",
   "get_review_pipeline",
   "update_review_pipeline",
+  "set_review_pipeline",
   "create_task",
   "update_task",
   "update_task_acceptance",
@@ -54,24 +77,95 @@ export const planweaveToolNames = [
   "update_canvas_execution_policy",
   "update_block_planning",
   "update_block_dependencies",
+  "set_block_dependencies",
   "remove_block",
   "add_dependency",
   "remove_dependency",
+  "add_task_dependency",
+  "remove_task_dependency",
+  "set_task_dependencies",
+  "bulk_create_tasks",
+  "bulk_create_blocks",
+  "bulk_update_tasks",
+  "bulk_update_blocks",
+  "bulk_remove_graph_items",
+  "bulk_add_task_dependencies",
+  "bulk_set_task_dependencies",
+  "bulk_set_block_dependencies",
+  "bulk_apply_review_pipeline",
+  "bulk_update_parallel_policy",
   "add_canvas_dependency",
   "remove_canvas_dependency",
   "add_cross_task_dependency",
   "remove_cross_task_dependency",
   "read_prompt",
+  "read_prompt_source",
+  "get_rendered_prompt",
+  "get_prompt_sources",
+  "list_package_files",
+  "read_package_file",
   "write_task_prompt",
   "write_block_prompt",
+  "write_prompt_source",
   "update_project_prompt",
   "refresh_prompts",
+  "refresh_prompts_summary",
+  "refresh_prompts_full_debug",
   "export_project",
+  "export_project_summary",
+  "export_project_files",
+  "export_project_full_debug",
   "export_plan_package",
-  "import_plan_package"
+  "export_plan_package_summary",
+  "export_plan_package_files",
+  "export_plan_package_full",
+  "import_plan_package",
+  "validate_package_draft",
+  "preview_package_import",
+  "import_package_draft",
+  "apply_canvas_lane_layout"
 ] as const;
 
 export type PlanweaveToolName = (typeof planweaveToolNames)[number];
+
+export const debugPlanweaveToolNames = [
+  "get_block_detail_full_debug",
+  "refresh_prompts_full_debug",
+  "export_project_full_debug",
+  "export_plan_package_full"
+] as const satisfies readonly PlanweaveToolName[];
+
+export const compatPlanweaveToolNames = [
+  "get_plan_package_example",
+  "get_project_tree",
+  "list_projects",
+  "open_project",
+  "get_project_overview",
+  "get_prompt",
+  "preview_execution_graph",
+  "get_project_graph",
+  "get_task_detail",
+  "get_block_detail",
+  "update_review_pipeline",
+  "get_review_pipeline",
+  "update_block_dependencies",
+  "add_dependency",
+  "remove_dependency",
+  "read_prompt",
+  "write_task_prompt",
+  "write_block_prompt",
+  "refresh_prompts",
+  "export_project",
+  "export_plan_package",
+  "import_plan_package",
+  ...debugPlanweaveToolNames
+] as const satisfies readonly PlanweaveToolName[];
+
+const compatToolNameSet = new Set<PlanweaveToolName>(compatPlanweaveToolNames);
+
+export const defaultPlanweaveToolNames = planweaveToolNames.filter(
+  (name): name is PlanweaveToolName => !compatToolNameSet.has(name)
+);
 
 export type ExportedPlanPackageFile = {
   path: string;
@@ -126,6 +220,17 @@ export type RuntimeGateway = {
   searchProject(projectId: string, args: SearchProjectArgs): Promise<SearchProjectPayload>;
   listReadyBlocks(projectId: string, canvasId?: string | null): Promise<ReadyBlocksPayload>;
   getProjectGraph(projectId: string, canvasId?: string): Promise<DesktopGraphViewModel>;
+  inspectGraph(
+    projectId: string,
+    canvasId: string | undefined,
+    input: { view: "summary" | "tasks" | "slice"; taskId?: string; limit?: number; cursor?: string }
+  ): Promise<GraphInspectionResult>;
+  validateGraphQuality(
+    projectId: string,
+    canvasId: string | undefined,
+    input: { reviewPolicy?: "none" | "risk-based" | "required"; gatePolicy?: "none" | "required"; heuristics?: "on" | "off"; strict?: boolean }
+  ): Promise<GraphQualityReport>;
+  validateExecutionReadiness(projectId: string, canvasId?: string): Promise<ExecutionReadinessReport>;
   getTaskDetail(projectId: string, taskId: string, canvasId?: string): Promise<DesktopTaskDetail>;
   getBlockDetail(projectId: string, blockRef: string, canvasId?: string): Promise<DesktopBlockDetail>;
   getReviewPipeline(projectId: string, taskId: string, canvasId?: string): Promise<DesktopReviewPipeline>;
@@ -134,6 +239,11 @@ export type RuntimeGateway = {
     canvasId: string | undefined,
     taskId: string,
     input: DesktopUpdateReviewPipelineInput
+  ): Promise<GraphEditResult>;
+  bulkApplyReviewPipeline(
+    projectId: string,
+    canvasId: string | undefined,
+    updates: Array<{ taskId: string; input: DesktopUpdateReviewPipelineInput }>
   ): Promise<GraphEditResult>;
   createTask(
     projectId: string,
@@ -154,6 +264,17 @@ export type RuntimeGateway = {
   ): Promise<GraphEditResult>;
   updateTaskAcceptance(projectId: string, canvasId: string | undefined, taskId: string, acceptance: string[]): Promise<GraphEditResult>;
   removeTask(projectId: string, canvasId: string | undefined, taskId: string): Promise<GraphEditResult>;
+  bulkCreateTasks(
+    projectId: string,
+    canvasId: string | undefined,
+    tasks: Array<{
+      title: string;
+      promptMarkdown: string;
+      acceptance?: string[];
+      blockTypes?: BlockType[];
+      executor?: string | null;
+    }>
+  ): Promise<GraphEditResult>;
   createBlock(
     projectId: string,
     canvasId: string | undefined,
@@ -166,11 +287,56 @@ export type RuntimeGateway = {
       dependsOn?: string[];
     }
   ): Promise<GraphEditResult>;
+  bulkCreateBlocks(
+    projectId: string,
+    canvasId: string | undefined,
+    blocks: Array<{
+      taskId: string;
+      type: BlockType;
+      title: string;
+      promptMarkdown: string;
+      executor?: string | null;
+      dependsOn?: string[];
+    }>
+  ): Promise<GraphEditResult>;
   updateBlock(
     projectId: string,
     canvasId: string | undefined,
     blockRef: string,
     input: { title?: string; promptMarkdown?: string; executor?: string | null }
+  ): Promise<GraphEditResult>;
+  bulkUpdateTasks(
+    projectId: string,
+    canvasId: string | undefined,
+    updates: Array<{ taskId: string; input: { title?: string; promptMarkdown?: string; executor?: string | null; acceptance?: string[] } }>
+  ): Promise<GraphEditResult>;
+  bulkUpdateBlocks(
+    projectId: string,
+    canvasId: string | undefined,
+    updates: Array<{
+      blockRef: string;
+      input: {
+        title?: string;
+        promptMarkdown?: string;
+        executor?: string | null;
+        dependsOn?: string[];
+        parallelSafe?: boolean;
+        parallelLocks?: string[];
+        reviewRequired?: boolean;
+        maxFeedbackCycles?: number;
+        reviewHook?: ReviewHookDefinition | null;
+      };
+    }>
+  ): Promise<GraphEditResult>;
+  bulkRemoveGraphItems(
+    projectId: string,
+    canvasId: string | undefined,
+    input: {
+      tasks: string[];
+      blocks: string[];
+      taskDependencyEdges: Array<{ dependentTaskId: string; dependsOnTaskId: string }>;
+      blockDependencyRefs: Array<{ blockRef: string; dependsOnBlockId: string }>;
+    }
   ): Promise<GraphEditResult>;
   updateCanvasExecutionPolicy(
     projectId: string,
@@ -193,15 +359,57 @@ export type RuntimeGateway = {
       reviewHook?: ReviewHookDefinition | null;
     }
   ): Promise<GraphEditResult>;
+  bulkUpdateParallelPolicy(
+    projectId: string,
+    canvasId: string | undefined,
+    input: {
+      canvasPolicy?: {
+        defaultExecutor?: string | null;
+        parallelEnabled?: boolean;
+        maxConcurrent?: number;
+      };
+      blocks: Array<{ blockRef: string; input: { parallelSafe?: boolean; parallelLocks?: string[] } }>;
+    }
+  ): Promise<GraphEditResult>;
   updateBlockDependencies(projectId: string, canvasId: string | undefined, blockRef: string, dependsOn: string[]): Promise<GraphEditResult>;
   removeBlock(projectId: string, canvasId: string | undefined, blockRef: string): Promise<GraphEditResult>;
   addDependency(projectId: string, canvasId: string | undefined, fromTaskId: string, toTaskId: string): Promise<GraphEditResult>;
   removeDependency(projectId: string, canvasId: string | undefined, fromTaskId: string, toTaskId: string): Promise<GraphEditResult>;
+  setTaskDependencies(projectId: string, canvasId: string | undefined, taskId: string, dependsOn: string[]): Promise<GraphEditResult>;
+  bulkAddTaskDependencies(
+    projectId: string,
+    canvasId: string | undefined,
+    edges: Array<{ dependentTaskId: string; dependsOnTaskId: string }>
+  ): Promise<GraphEditResult>;
+  bulkSetTaskDependencies(
+    projectId: string,
+    canvasId: string | undefined,
+    updates: Array<{ taskId: string; dependsOn: string[] }>
+  ): Promise<GraphEditResult>;
+  bulkSetBlockDependencies(
+    projectId: string,
+    canvasId: string | undefined,
+    updates: Array<{ blockRef: string; dependsOn: string[] }>
+  ): Promise<GraphEditResult>;
+  applyCanvasLaneLayout(
+    projectId: string,
+    canvasId: string | undefined,
+    input: { columnWidth?: number; rowHeight?: number; startX?: number; startY?: number }
+  ): Promise<DesktopLayout>;
   addCanvasDependency(projectId: string, fromCanvasId: string, toCanvasId: string): Promise<ProjectGraphEditResult>;
   removeCanvasDependency(projectId: string, fromCanvasId: string, toCanvasId: string): Promise<ProjectGraphEditResult>;
   addCrossTaskDependency(projectId: string, from: ProjectTaskRef, to: ProjectTaskRef): Promise<ProjectGraphEditResult>;
   removeCrossTaskDependency(projectId: string, from: ProjectTaskRef, to: ProjectTaskRef): Promise<ProjectGraphEditResult>;
   readProjectPrompt(projectId: string): Promise<string>;
+  listPackageFiles(projectId: string, canvasId: string | undefined, limit?: number, cursor?: string): Promise<PackageFileListResult>;
+  readPackageFile(projectId: string, canvasId: string | undefined, path: string, maxBytes?: number): Promise<PackageContentReadResult>;
+  readPromptSource(
+    projectId: string,
+    canvasId: string | undefined,
+    input: { target: "project" | "task" | "block"; taskId?: string; blockRef?: string; maxBytes?: number }
+  ): Promise<PackageContentReadResult>;
+  readRenderedPrompt(projectId: string, canvasId: string | undefined, ref: string, maxBytes?: number): Promise<PackageContentReadResult>;
+  getPromptSources(projectId: string, canvasId: string | undefined, ref: string): Promise<{ ref: string; sources: PromptSourceSummary[] }>;
   updateProjectPrompt(projectId: string, markdown: string): Promise<string>;
   refreshPrompts(projectId: string, canvasId?: string): Promise<RefreshPromptsResult>;
   exportPlanPackage(projectId: string, canvasId?: string): Promise<ExportedPlanPackage>;
@@ -215,4 +423,7 @@ export type RuntimeGateway = {
     files: ExportedPlanPackageFile[];
     overwrite?: boolean;
   }): Promise<{ project: DesktopProjectSummary; validation: ValidationReport; importedFiles: number }>;
+  validatePackageDraft(draftRoot: string): Promise<PackageDraftValidationResult>;
+  previewPackageDraftImport(input: { draftRoot: string; projectId: string; canvasId?: string }): Promise<PackageDraftImportPreview>;
+  importPackageDraft(input: { draftRoot: string; projectId: string; canvasId?: string }): Promise<PackageDraftImportApplyResult>;
 };

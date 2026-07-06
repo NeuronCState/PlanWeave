@@ -28,7 +28,7 @@ async function exists(path: string): Promise<boolean> {
 
 export async function exportCanvasPackage(projectId: string, canvasId?: string): Promise<ExportedPlanPackage> {
   const project = await openProject({ projectId });
-  const selectedCanvasId = canvasId ?? "default";
+  const selectedCanvasId = canvasId ?? project.activeCanvasId ?? project.taskCanvases[0]?.canvasId ?? "default";
   const workspace = await resolveTaskCanvasWorkspace(project.rootPath, selectedCanvasId);
   return {
     canvasId: selectedCanvasId,

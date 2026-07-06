@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { ZodError } from "zod";
@@ -20,6 +20,7 @@ import {
 import { manifestSchema } from "../schema/manifest.js";
 import { createEmptyState } from "../state.js";
 import { summarizeValidationReport } from "../validation/validationSummary.js";
+import { ImportTransaction } from "./importTransaction.js";
 import type {
   GraphQualityReport,
   PlanPackageManifest,
@@ -435,66 +436,49 @@ export async function previewPackageDraftImport(options: {
   };
 }
 
-async function replacePathWithBackup(target: string, staged: string, backupRoot: string, key: string, changed: string[]): Promise<void> {
-  const backup = join(backupRoot, key);
-  await mkdir(dirname(backup), { recursive: true });
-  let backedUp = false;
-  if (await optionalStat(target)) {
-    await rename(target, backup);
-    backedUp = true;
-    changed.push(target);
-  }
-  await mkdir(dirname(target), { recursive: true });
-  await rename(staged, target);
-  if (!backedUp) {
-    changed.push(target);
-  }
+function errorSummary(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
-async function removePathWithBackup(target: string, backupRoot: string, key: string, changed: string[]): Promise<void> {
-  if (!(await optionalStat(target))) {
-    return;
+async function rollbackApplyFailure(transaction: ImportTransaction, importError: unknown): Promise<never> {
+  try {
+    await transaction.rollback();
+  } catch (rollbackError) {
+    throw new Error(`Package draft import apply failed: ${errorSummary(importError)}; rollback failed: ${errorSummary(rollbackError)}`);
   }
-  const backup = join(backupRoot, key);
-  await mkdir(dirname(backup), { recursive: true });
-  await rename(target, backup);
-  changed.push(target);
+  throw new Error(`Package draft import apply failed: ${errorSummary(importError)}`);
 }
 
-async function rollbackChangedPaths(changed: string[], backupRoot: string): Promise<void> {
-  for (const target of changed.reverse()) {
-    const key = target.replace(/[:/\\]/g, "_");
-    const backup = join(backupRoot, key);
-    await rm(target, { recursive: true, force: true });
-    if (await optionalStat(backup)) {
-      await mkdir(dirname(target), { recursive: true });
-      await rename(backup, target);
-    }
+async function commitImportTransaction(transaction: ImportTransaction): Promise<void> {
+  try {
+    await transaction.commit();
+  } catch (error) {
+    throw new Error(`Package draft import commit cleanup failed: ${errorSummary(error)}`);
   }
 }
 
 async function applySingleCanvasDraft(options: { draftRoot: string; projectRoot: string; canvasId?: string | null }): Promise<void> {
   const { resolveTaskCanvasWorkspace } = await import("../desktop/canvasApi.js");
+  const projectWorkspace = await requireInitializedProjectWorkspace(options.projectRoot);
   const workspace = await resolveTaskCanvasWorkspace(options.projectRoot, options.canvasId);
   const tempRoot = await mkdtemp(join(tmpdir(), "planweave-package-import-"));
-  const backupRoot = join(tempRoot, "backup");
   const stagedPackage = join(tempRoot, "package");
   const stagedState = join(tempRoot, "state.json");
   const stagedResults = join(tempRoot, "results");
-  const changed: string[] = [];
+  const transaction = await ImportTransaction.create({ workspaceRoot: projectWorkspace.workspaceRoot });
   try {
     await cp(resolve(options.draftRoot), stagedPackage, { recursive: true });
     await writeJsonFile(stagedState, createEmptyState());
     await mkdir(stagedResults, { recursive: true });
-    await replacePathWithBackup(workspace.packageDir, stagedPackage, backupRoot, workspace.packageDir.replace(/[:/\\]/g, "_"), changed);
-    await replacePathWithBackup(workspace.stateFile, stagedState, backupRoot, workspace.stateFile.replace(/[:/\\]/g, "_"), changed);
-    await replacePathWithBackup(workspace.resultsDir, stagedResults, backupRoot, workspace.resultsDir.replace(/[:/\\]/g, "_"), changed);
+    await transaction.replacePath(workspace.packageDir, stagedPackage);
+    await transaction.replacePath(workspace.stateFile, stagedState);
+    await transaction.replacePath(workspace.resultsDir, stagedResults);
   } catch (error) {
-    await rollbackChangedPaths(changed, backupRoot);
-    throw error;
+    await rollbackApplyFailure(transaction, error);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
+  await commitImportTransaction(transaction);
 }
 
 async function writeTextFile(path: string, content: string): Promise<void> {
@@ -510,12 +494,17 @@ async function applyProjectDraft(options: { draftRoot: string; projectRoot: stri
     throw new Error("Project package draft requires project-graph.json.");
   }
   const tempRoot = await mkdtemp(join(tmpdir(), "planweave-project-import-"));
-  const backupRoot = join(tempRoot, "backup");
   const stagedGraph = join(tempRoot, "project-graph.json");
-  const changed: string[] = [];
+  const transaction = await ImportTransaction.create({ workspaceRoot: projectWorkspace.workspaceRoot });
   try {
     await writeTextFile(stagedGraph, await readFile(join(resolve(options.draftRoot), "project-graph.json"), "utf8"));
-    await replacePathWithBackup(projectGraphPath(projectWorkspace), stagedGraph, backupRoot, projectGraphPath(projectWorkspace).replace(/[:/\\]/g, "_"), changed);
+    await transaction.replacePath(projectGraphPath(projectWorkspace), stagedGraph);
+    for (const canvas of plan.removedCanvases) {
+      const targetWorkspace = projectCanvasWorkspace(projectWorkspace, canvas);
+      await transaction.removePath(targetWorkspace.packageDir);
+      await transaction.removePath(targetWorkspace.stateFile);
+      await transaction.removePath(targetWorkspace.resultsDir);
+    }
     for (const canvas of projectGraph.canvases) {
       const sourcePackageDir = resolve(options.draftRoot, canvas.packageDir);
       if (!isInside(resolve(options.draftRoot), sourcePackageDir)) {
@@ -528,22 +517,16 @@ async function applyProjectDraft(options: { draftRoot: string; projectRoot: stri
       await cp(sourcePackageDir, stagedPackage, { recursive: true });
       await writeJsonFile(stagedState, createEmptyState());
       await mkdir(stagedResults, { recursive: true });
-      await replacePathWithBackup(targetWorkspace.packageDir, stagedPackage, backupRoot, targetWorkspace.packageDir.replace(/[:/\\]/g, "_"), changed);
-      await replacePathWithBackup(targetWorkspace.stateFile, stagedState, backupRoot, targetWorkspace.stateFile.replace(/[:/\\]/g, "_"), changed);
-      await replacePathWithBackup(targetWorkspace.resultsDir, stagedResults, backupRoot, targetWorkspace.resultsDir.replace(/[:/\\]/g, "_"), changed);
-    }
-    for (const canvas of plan.removedCanvases) {
-      const targetWorkspace = projectCanvasWorkspace(projectWorkspace, canvas);
-      await removePathWithBackup(targetWorkspace.packageDir, backupRoot, targetWorkspace.packageDir.replace(/[:/\\]/g, "_"), changed);
-      await removePathWithBackup(targetWorkspace.stateFile, backupRoot, targetWorkspace.stateFile.replace(/[:/\\]/g, "_"), changed);
-      await removePathWithBackup(targetWorkspace.resultsDir, backupRoot, targetWorkspace.resultsDir.replace(/[:/\\]/g, "_"), changed);
+      await transaction.replacePath(targetWorkspace.packageDir, stagedPackage);
+      await transaction.replacePath(targetWorkspace.stateFile, stagedState);
+      await transaction.replacePath(targetWorkspace.resultsDir, stagedResults);
     }
   } catch (error) {
-    await rollbackChangedPaths(changed, backupRoot);
-    throw error;
+    await rollbackApplyFailure(transaction, error);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
+  await commitImportTransaction(transaction);
 }
 
 export async function applyPackageDraftImport(options: {

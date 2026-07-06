@@ -1,19 +1,20 @@
-import { access, chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   applyPackageDraftImport,
   previewPackageDraftImport,
   validatePackageDraft
 } from "../package/packageDraftImport.js";
+import { ImportTransaction } from "../package/importTransaction.js";
 import { bulkApplyReviewPipeline } from "../desktop/index.js";
 import { inspectGraph } from "../graph/inspectGraph.js";
 import { validateGraphQuality } from "../graph/validateGraphQuality.js";
 import { validatePackage } from "../validatePackage.js";
 import { writeJsonFile } from "../json.js";
 import { projectGraphPath } from "../projectGraph/index.js";
-import type { ManifestTaskNode, PlanPackageManifest } from "../types.js";
+import type { ManifestTaskNode, PlanPackageManifest, ProjectWorkspace } from "../types.js";
 import { basicManifest, createTestWorkspace, writePromptFiles } from "./promptTestHelpers.js";
 
 async function createDraft(manifest: PlanPackageManifest): Promise<string> {
@@ -26,6 +27,18 @@ async function createDraft(manifest: PlanPackageManifest): Promise<string> {
 async function readManifestTitle(packageDir: string): Promise<string> {
   const manifest = JSON.parse(await readFile(join(packageDir, "manifest.json"), "utf8")) as PlanPackageManifest;
   return manifest.project.title;
+}
+
+async function packageImportRecoveryEntries(workspaceRoot: string): Promise<string[]> {
+  try {
+    return await readdir(join(workspaceRoot, "desktop", "recovery", "package-import"));
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? (error as { code?: unknown }).code : null;
+    if (code === "ENOENT" || code === "ENOTDIR") {
+      return [];
+    }
+    throw error;
+  }
 }
 
 async function createProjectDraft(options: { canvasIds?: string[]; extraUnreadableFile?: boolean } = {}): Promise<string> {
@@ -57,6 +70,42 @@ async function createProjectDraft(options: { canvasIds?: string[]; extraUnreadab
     crossTaskEdges: []
   });
   return draftRoot;
+}
+
+async function addStaleCanvas(workspace: ProjectWorkspace) {
+  const stalePackageDir = join(workspace.workspaceRoot, "canvases", "stale", "package");
+  const staleStateFile = join(workspace.workspaceRoot, "canvases", "stale", "state.json");
+  const staleResultsDir = join(workspace.workspaceRoot, "canvases", "stale", "results");
+  await mkdir(stalePackageDir, { recursive: true });
+  await writeJsonFile(join(stalePackageDir, "manifest.json"), basicManifest());
+  await writePromptFiles(stalePackageDir, basicManifest());
+  await writeJsonFile(staleStateFile, { currentRefs: ["STALE#B-001"] });
+  await mkdir(staleResultsDir, { recursive: true });
+  await writeFile(join(staleResultsDir, "old.txt"), "stale result\n", "utf8");
+  await writeJsonFile(projectGraphPath(workspace), {
+    version: "plan-project/v1",
+    canvases: [
+      {
+        id: "default",
+        type: "canvas",
+        title: "Default",
+        packageDir: "canvases/default/package",
+        stateFile: "canvases/default/state.json",
+        resultsDir: "canvases/default/results"
+      },
+      {
+        id: "stale",
+        type: "canvas",
+        title: "Stale",
+        packageDir: "canvases/stale/package",
+        stateFile: "canvases/stale/state.json",
+        resultsDir: "canvases/stale/results"
+      }
+    ],
+    edges: [],
+    crossTaskEdges: []
+  });
+  return { stalePackageDir, staleStateFile, staleResultsDir };
 }
 
 function taskId(index: number): string {
@@ -195,6 +244,7 @@ describe("package draft import", () => {
     expect(await readManifestTitle(init.workspace.packageDir)).toBe("Draft Plan");
     expect(validation.ok).toBe(true);
     expect(quality.ok).toBe(true);
+    expect(await packageImportRecoveryEntries(init.workspace.workspaceRoot)).toEqual([]);
   });
 
   it("does not write target files when validation fails before apply", async () => {
@@ -253,38 +303,7 @@ describe("package draft import", () => {
 
   it("previews and applies project-shaped imports without stale workspace diff drift", async () => {
     const { root, init } = await createTestWorkspace();
-    const stalePackageDir = join(init.workspace.workspaceRoot, "canvases", "stale", "package");
-    const staleStateFile = join(init.workspace.workspaceRoot, "canvases", "stale", "state.json");
-    const staleResultsDir = join(init.workspace.workspaceRoot, "canvases", "stale", "results");
-    await mkdir(stalePackageDir, { recursive: true });
-    await writeJsonFile(join(stalePackageDir, "manifest.json"), basicManifest());
-    await writePromptFiles(stalePackageDir, basicManifest());
-    await writeJsonFile(staleStateFile, { currentRefs: ["STALE#B-001"] });
-    await mkdir(staleResultsDir, { recursive: true });
-    await writeFile(join(staleResultsDir, "old.txt"), "stale result\n", "utf8");
-    await writeJsonFile(projectGraphPath(init.workspace), {
-      version: "plan-project/v1",
-      canvases: [
-        {
-          id: "default",
-          type: "canvas",
-          title: "Default",
-          packageDir: "canvases/default/package",
-          stateFile: "canvases/default/state.json",
-          resultsDir: "canvases/default/results"
-        },
-        {
-          id: "stale",
-          type: "canvas",
-          title: "Stale",
-          packageDir: "canvases/stale/package",
-          stateFile: "canvases/stale/state.json",
-          resultsDir: "canvases/stale/results"
-        }
-      ],
-      edges: [],
-      crossTaskEdges: []
-    });
+    const { stalePackageDir, staleStateFile, staleResultsDir } = await addStaleCanvas(init.workspace);
     const draftRoot = await createProjectDraft();
 
     const preview = await previewPackageDraftImport({ draftRoot, projectRoot: root });
@@ -299,6 +318,44 @@ describe("package draft import", () => {
     await expect(access(stalePackageDir)).rejects.toThrow();
     await expect(access(staleStateFile)).rejects.toThrow();
     await expect(access(staleResultsDir)).rejects.toThrow();
+    expect(await packageImportRecoveryEntries(init.workspace.workspaceRoot)).toEqual([]);
+  });
+
+  it("restores stale canvas removal when a later canvas write fails", async () => {
+    const { root, init } = await createTestWorkspace();
+    const { stalePackageDir, staleStateFile, staleResultsDir } = await addStaleCanvas(init.workspace);
+    const draftRoot = await createProjectDraft({ canvasIds: ["default", "blocked"] });
+    await writeFile(join(init.workspace.workspaceRoot, "canvases", "blocked"), "not a directory\n", "utf8");
+
+    await expect(applyPackageDraftImport({ draftRoot, projectRoot: root })).rejects.toThrow("Package draft import apply failed");
+
+    const projectGraph = JSON.parse(await readFile(projectGraphPath(init.workspace), "utf8")) as {
+      canvases: Array<{ id: string }>;
+    };
+    expect(projectGraph.canvases.map((canvas) => canvas.id)).toEqual(["default", "stale"]);
+    expect(await readFile(join(stalePackageDir, "manifest.json"), "utf8")).toContain("Test Plan");
+    expect(await readFile(staleStateFile, "utf8")).toContain("STALE#B-001");
+    expect(await readFile(join(staleResultsDir, "old.txt"), "utf8")).toBe("stale result\n");
+    expect(await packageImportRecoveryEntries(init.workspace.workspaceRoot)).toEqual([]);
+  });
+
+  it("reports import and rollback failures", async () => {
+    const { root, init } = await createTestWorkspace();
+    const draftRoot = await createProjectDraft({ canvasIds: ["default", "blocked"] });
+    await writeFile(join(init.workspace.workspaceRoot, "canvases", "blocked"), "not a directory\n", "utf8");
+    const rollbackSpy = vi.spyOn(ImportTransaction.prototype, "rollback").mockRejectedValueOnce(new Error("rollback failed"));
+
+    try {
+      await expect(applyPackageDraftImport({ draftRoot, projectRoot: root })).rejects.toThrow(
+        /Package draft import apply failed: .*rollback failed: rollback failed/
+      );
+    } finally {
+      rollbackSpy.mockRestore();
+    }
+
+    const entries = await packageImportRecoveryEntries(init.workspace.workspaceRoot);
+    expect(entries).toHaveLength(1);
+    await expect(access(join(init.workspace.workspaceRoot, "desktop", "recovery", "package-import", entries[0] ?? "", "recovery.json"))).resolves.toBeUndefined();
   });
 
   it("applies bulk review pipeline coverage to a 100-task implementation-only draft", async () => {

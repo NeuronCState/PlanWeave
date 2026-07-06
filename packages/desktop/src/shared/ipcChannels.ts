@@ -24,6 +24,7 @@ export const desktopBridgeInvokeChannels = {
   getCanvasGraphViewModel: "planweave:getCanvasGraphViewModel",
   getCanvasMapLayout: "planweave:getCanvasMapLayout",
   getDesktopLayout: "planweave:getDesktopLayout",
+  getDesktopGraphDiagnostics: "planweave:getDesktopGraphDiagnostics",
   getDesktopProjectSnapshot: "planweave:getDesktopProjectSnapshot",
   getDesktopRuntimeRefresh: "planweave:getDesktopRuntimeRefresh",
   getDirtyPromptRefs: "planweave:getDirtyPromptRefs",

@@ -72,6 +72,34 @@ describe("DesktopDiagnosticsPopover", () => {
     expect(screen.getByTestId("desktop-runtime-diagnostic")).toHaveTextContent("state.json");
   });
 
+  it("renders graph quality diagnostics with repair metadata", async () => {
+    render(
+      <DesktopDiagnosticsPopover
+        diagnostics={[
+          {
+            code: "task_orphaned",
+            message: "Some tasks are not connected.",
+            path: "T-001",
+            source: "graph_quality",
+            severity: "warning",
+            suggestedTool: "add_task_dependency",
+            fixId: "connect_task_dependencies"
+          }
+        ]}
+        disabled={false}
+        t={t}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "View desktop diagnostics" }));
+
+    expect(screen.getByTestId("graphQuality-diagnostics-section")).toHaveTextContent("Graph quality diagnostics (1)");
+    expect(screen.getByTestId("desktop-graphQuality-diagnostic")).toHaveTextContent("task_orphaned");
+    expect(screen.getByTestId("desktop-graphQuality-diagnostic")).toHaveTextContent("warning");
+    expect(screen.getByTestId("desktop-graphQuality-diagnostic")).toHaveTextContent("add_task_dependency");
+    expect(screen.getByTestId("desktop-graphQuality-diagnostic")).toHaveTextContent("connect_task_dependencies");
+  });
+
   it("shows an empty state when there are no diagnostics", async () => {
     render(<DesktopDiagnosticsPopover diagnostics={[]} disabled={false} t={t} />);
 

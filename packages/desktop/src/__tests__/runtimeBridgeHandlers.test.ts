@@ -50,6 +50,7 @@ const runtimeMock = vi.hoisted(() => {
   const autoRunEventListeners = new Set<AutoRunEventListener>();
   return {
     autoRunEventListeners,
+    getDesktopGraphDiagnostics: vi.fn(async (workspace: unknown) => ({ workspace, diagnostics: [] })),
     getDesktopProjectSnapshot: vi.fn(async (ref: unknown) => ({ ref })),
     getDesktopRuntimeRefresh: vi.fn(async (ref: unknown) => ({ ref, latestAutoRun: null, diagnostics: [], errors: [] })),
     getGraphViewModel: vi.fn(async (workspace: unknown) => ({ workspace })),
@@ -135,6 +136,7 @@ vi.mock("@planweave-ai/runtime", async () => {
   return {
     ...actual,
     getDesktopProjectSnapshot: runtimeMock.getDesktopProjectSnapshot,
+    getDesktopGraphDiagnostics: runtimeMock.getDesktopGraphDiagnostics,
     getDesktopRuntimeRefresh: runtimeMock.getDesktopRuntimeRefresh,
     getGraphViewModel: runtimeMock.getGraphViewModel,
     getRunRecord: runtimeMock.getRunRecord,
@@ -169,6 +171,7 @@ describe("runtime bridge handlers", () => {
     });
     delete process.env.PLANWEAVE_DESKTOP_SMOKE;
     runtimeMock.autoRunEventListeners.clear();
+    runtimeMock.getDesktopGraphDiagnostics.mockClear();
     runtimeMock.getDesktopProjectSnapshot.mockClear();
     runtimeMock.getDesktopRuntimeRefresh.mockClear();
     runtimeMock.getGraphViewModel.mockClear();
@@ -233,6 +236,23 @@ describe("runtime bridge handlers", () => {
 
     expect(runtimeMock.resolveTaskCanvasWorkspace).not.toHaveBeenCalled();
     expect(runtimeMock.getDesktopRuntimeRefresh).toHaveBeenCalledWith(ref);
+  });
+
+  it("resolves desktop canvas references before loading graph diagnostics", async () => {
+    const { registerRuntimeBridgeHandlers } = await import("../main/runtimeBridgeHandlers");
+    registerRuntimeBridgeHandlers();
+
+    const handler = electronMock.handlers.get(desktopBridgeInvokeChannels.getDesktopGraphDiagnostics);
+    expect(handler).toBeDefined();
+
+    await handler?.(null, { projectRoot: "/tmp/project", canvasId: "canvas-a" });
+
+    expect(runtimeMock.resolveTaskCanvasWorkspace).toHaveBeenCalledWith("/tmp/project", "canvas-a");
+    expect(runtimeMock.getDesktopGraphDiagnostics).toHaveBeenCalledWith({
+      projectRoot: "/tmp/project",
+      canvasId: "canvas-a",
+      source: "task"
+    });
   });
 
   it("passes runtime reset requests to the runtime desktop API without pre-resolving the canvas", async () => {

@@ -1,16 +1,24 @@
 import type { ValidationIssue } from "@planweave-ai/runtime";
 
+export type DesktopDiagnostic = ValidationIssue & {
+  source?: string;
+  severity?: string;
+  suggestedTool?: string;
+  fixId?: string;
+};
+
 export type DesktopDiagnosticSource =
   | "performance"
   | "package"
   | "search"
   | "runtime"
   | "project"
+  | "graphQuality"
   | "other";
 
 export type DesktopDiagnosticGroup = {
   source: DesktopDiagnosticSource;
-  diagnostics: ValidationIssue[];
+  diagnostics: DesktopDiagnostic[];
 };
 
 const desktopDiagnosticSourceOrder: DesktopDiagnosticSource[] = [
@@ -19,6 +27,7 @@ const desktopDiagnosticSourceOrder: DesktopDiagnosticSource[] = [
   "search",
   "runtime",
   "project",
+  "graphQuality",
   "other"
 ];
 
@@ -69,7 +78,10 @@ function hasAnyPrefix(value: string, prefixes: string[]): boolean {
   return prefixes.some((prefix) => value.startsWith(prefix));
 }
 
-export function desktopDiagnosticSource(diagnostic: Pick<ValidationIssue, "code">): DesktopDiagnosticSource {
+export function desktopDiagnosticSource(diagnostic: Pick<ValidationIssue, "code"> & { source?: string }): DesktopDiagnosticSource {
+  if (diagnostic.source === "graph_quality" || diagnostic.source === "execution_readiness") {
+    return "graphQuality";
+  }
   if (desktopPerformanceDiagnosticCodes.has(diagnostic.code)) {
     return "performance";
   }
@@ -92,13 +104,14 @@ export function isDesktopPerformanceDiagnostic(diagnostic: Pick<ValidationIssue,
   return desktopDiagnosticSource(diagnostic) === "performance";
 }
 
-export function groupDesktopDiagnostics(diagnostics: ValidationIssue[]): DesktopDiagnosticGroup[] {
-  const grouped: Record<DesktopDiagnosticSource, ValidationIssue[]> = {
+export function groupDesktopDiagnostics(diagnostics: DesktopDiagnostic[]): DesktopDiagnosticGroup[] {
+  const grouped: Record<DesktopDiagnosticSource, DesktopDiagnostic[]> = {
     performance: [],
     package: [],
     search: [],
     runtime: [],
     project: [],
+    graphQuality: [],
     other: []
   };
   for (const diagnostic of diagnostics) {
@@ -109,13 +122,13 @@ export function groupDesktopDiagnostics(diagnostics: ValidationIssue[]): Desktop
     .filter((group) => group.diagnostics.length > 0);
 }
 
-function desktopDiagnosticKey(diagnostic: ValidationIssue): string {
+function desktopDiagnosticKey(diagnostic: DesktopDiagnostic): string {
   return `${diagnostic.code}\u001f${diagnostic.message}\u001f${diagnostic.path ?? ""}`;
 }
 
-export function uniqueDesktopDiagnostics(diagnostics: ValidationIssue[]): ValidationIssue[] {
+export function uniqueDesktopDiagnostics<T extends DesktopDiagnostic>(diagnostics: T[]): T[] {
   const seen = new Set<string>();
-  const unique: ValidationIssue[] = [];
+  const unique: T[] = [];
   for (const diagnostic of diagnostics) {
     const key = desktopDiagnosticKey(diagnostic);
     if (seen.has(key)) {

@@ -78,6 +78,24 @@ planweave mcp tunnel print-systemd --planweave-home /srv/planweave --env-file /e
 
 The desktop app's **Settings -> MCP Tunnel** page remains available for local ChatGPT tunnel traffic. Headless or VPS deployments should use the CLI systemd path instead of the desktop app.
 
+MCP planning clients should start with `list_tool_groups`. The recommended default path uses bounded tools:
+
+- graph reads: `get_graph_summary`, `list_tasks`, `get_graph_slice`
+- graph diagnostics: `validate_graph_quality`, `validate_execution_readiness`
+- content reads: `list_package_files`, `read_package_file`, `read_prompt_source`, `get_rendered_prompt`, `get_prompt_sources`
+- package draft import: `validate_package_draft`, `preview_package_import`, `import_package_draft`
+
+Default discovery hides compatibility aliases and heavy/debug tools. Legacy MCP clients that still discover or call aliases such as `get_project_graph`, `preview_execution_graph`, `get_block_detail`, `refresh_prompts`, `export_plan_package`, or `import_plan_package` should start the server with `PLANWEAVE_MCP_TOOL_DISCOVERY=compat`. New clients should keep the default discovery mode and prefer the bounded tool names; heavy/debug output is only behind explicit tools such as `get_block_detail_full_debug`, `refresh_prompts_full_debug`, and `export_plan_package_full`.
+
+The equivalent CLI flow for package-shaped drafts is:
+
+```bash
+planweave package-draft validate --draft-root <draft> --json
+planweave package-draft quality --draft-root <draft> --json
+planweave package import --from <draft> --dry-run --json
+planweave package import --from <draft> --apply --json
+```
+
 ## Verification
 
 Run the full test suite:

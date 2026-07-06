@@ -1,11 +1,11 @@
 ---
 name: plan-importer
-description: Generate a block-level PlanWeave Plan Package from project documentation and validate it through the PlanWeave CLI. Use when importing plans, PRDs, roadmaps, issue sets, or architecture notes into a PlanWeave package.
+description: Generate a block-level PlanWeave package draft from project documentation, validate it, preview import, and apply it through the PlanWeave draft import flow. Use when importing plans, PRDs, roadmaps, issue sets, or architecture notes into a PlanWeave package.
 ---
 
 # Plan Importer
 
-Use this skill to turn project planning material into a PlanWeave Plan Package.
+Use this skill to turn strong project planning material into a PlanWeave package draft and import it through PlanWeave's dry-run and transactional import path. Do not use this skill as the normal next step after `plan-maker`; `plan-maker` should materialize its own package-shaped draft when asked.
 
 ## Command Entry
 
@@ -27,9 +27,12 @@ Write examples as `<pw> ...`, where `<pw>` is the resolved command.
   - Linux: `~/.planweave`
   - Windows: `%USERPROFILE%\.planweave`
 - Read exact workspace paths from `<pw> init --json` or `<pw> paths --json`.
-- For single-canvas plans, write only inside the returned `workspace.packageDir` / `packageDir`.
-- For formal multi-canvas plans, write `project-graph.json` at the returned project/workspace root and write each canvas package only under the package directories named by that project graph.
+- For draft imports, write first to a temporary draft root, not the active package.
+- Use `workspace.packageDir` / `packageDir` only to understand the current target package path for preview/apply validation; do not write there directly before import.
+- A single-canvas draft root contains `manifest.json`, prompt files, and optional layout files.
+- A formal multi-canvas draft root contains `project-graph.json` plus each canvas package under the package directories named by that project graph.
 - Treat CLI-returned project/workspace and package directories as the only writable PlanWeave locations.
+- For the draft import workflow, write to active CLI-returned locations only after dry-run preview and confirmed apply.
 
 ## Import Workflow
 
@@ -39,9 +42,13 @@ Write examples as `<pw> ...`, where `<pw>` is the resolved command.
 4. Do not create context nodes. Put goals, requirements, constraints, risks, references, and architecture gates into project/global prompt, task acceptance, task prompt, or block prompt.
 5. Run the Plan Quality Gate below before writing. Build a coverage map: each task has concrete acceptance, each block has verifiable done criteria, and key requirements have an explicit prompt placement.
 6. Choose one canvas or a formal multi-canvas project graph. For multi-canvas imports, plan `project-graph.json` first, then each canvas `manifest.json`.
-7. Run `<pw> init --json`, then write `project-graph.json` when needed, plus each canvas `manifest.json`, task prompts, and block prompts under the returned/declared package directories.
-8. Run `<pw> validate --json`; fix validation errors and weak importer-created coverage.
-9. Output a Plan Import Report listing source docs, command entry, project graph path when present, package paths, prompt placement, canvas strategy, review strategy, and validation result.
+7. Write the draft to a temporary draft root. Do not write directly into the active package.
+8. Run `<pw> package-draft validate --draft-root <draft> --json`; fix validation errors.
+9. Run `<pw> package-draft quality --draft-root <draft> --json`; fix serious quality errors and record warnings.
+10. Run `<pw> package import --from <draft> --dry-run --json`; inspect the file/effect preview and confirm it targets the intended project/canvas.
+11. Apply with `<pw> package import --from <draft> --apply --json` only after confirmation when the surrounding workflow requires it.
+12. Re-run `<pw> validate --json` and `<pw> graph quality --json` after import.
+13. Output a Plan Import Report listing source docs, command entry, draft root, project graph path when present, package paths, prompt placement, canvas strategy, review strategy, import preview, apply result, and validation/quality result.
 
 ## Plan Quality Gate
 
@@ -98,7 +105,7 @@ When writing a formal multi-canvas plan, include:
 - explicit `crossTaskEdges` for blockers from one canvas task to another canvas task.
 - no context nodes, feedback nodes, runtime state, or layout-only graph mirrors.
 
-After writing, validate with `<pw> validate --json`; project graph schema/read/compile diagnostics such as missing canvas refs, missing cross-task refs, and cycles must be fixed before reporting success.
+After writing the draft, validate with `<pw> package-draft validate --draft-root <draft> --json` and `<pw> package-draft quality --draft-root <draft> --json`; project graph schema/read/compile diagnostics such as missing canvas refs, missing cross-task refs, and cycles must be fixed before reporting success.
 
 ## Block Shape
 

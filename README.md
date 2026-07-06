@@ -74,9 +74,9 @@ planweave --help
 
 ## MCP and ChatGPT Web Planning
 
-PlanWeave includes a local HTTP MCP server for using PlanWeave from MCP clients such as ChatGPT. The MCP tools are not just read-only status helpers: they can also author plans by initializing projects, creating canvases, adding tasks and blocks, wiring dependencies, editing prompts, configuring review pipelines, and validating the local project.
+PlanWeave includes a local HTTP MCP server for using PlanWeave from MCP clients such as ChatGPT. The MCP tools are not just read-only status helpers: they can also author plans by initializing projects, creating canvases, adding tasks and blocks, wiring dependencies, editing prompts, configuring review pipelines, validating graph quality, and importing package drafts.
 
-For ChatGPT in the browser, use the CLI MCP tunnel on a VPS or PlanWeave Desktop's MCP settings on a local machine. You can use ChatGPT Web as the planning partner: describe the project goal, ask it to draft the task graph, then let PlanWeave save the result as a canvas.
+For ChatGPT in the browser, use the CLI MCP tunnel on a VPS or PlanWeave Desktop's MCP settings on a local machine. You can use ChatGPT Web as the planning partner: describe the project goal, ask it to write a package-shaped draft in a temporary draft root, dry-run validate and quality-check it, preview the import, then apply it transactionally.
 
 Recommended headless setup for a VPS uses systemd. The MCP server stays on loopback, and the OpenAI `tunnel-client` keeps an outbound connection open; PlanWeave does not run its own daemon or pidfile manager.
 
@@ -119,7 +119,9 @@ For local desktop setup:
 3. Enter your Tunnel ID and Runtime API key, then start the secure tunnel.
 4. Add PlanWeave in ChatGPT using the Tunnel connection mode.
 
-Once connected, ChatGPT can ask PlanWeave for authoring rules and schema, generate a plan from your project goal, write it into a new task canvas, preview the execution graph, and validate the package before you run it.
+Once connected, ChatGPT can ask PlanWeave for authoring rules and schema, discover recommended tool groups with `list_tool_groups`, inspect bounded graph views with `get_graph_summary` / `get_graph_slice`, validate graph quality with `validate_graph_quality`, and read large content through path/ref tools instead of broad dumps. For large plans, the recommended MCP flow is `validate_package_draft`, `preview_package_import`, then `import_package_draft` with `apply: true`.
+
+The default MCP discovery list hides legacy aliases and heavy/debug tools. Old MCP clients that still need aliases such as `get_project_graph`, `get_block_detail`, `refresh_prompts`, `export_plan_package`, or `import_plan_package` should start the server with `PLANWEAVE_MCP_TOOL_DISCOVERY=compat`. New clients should keep the default discovery mode and call bounded tools; heavy/debug paths such as `get_block_detail_full_debug`, `refresh_prompts_full_debug`, and `export_plan_package_full` are explicit opt-ins.
 
 Source-level MCP server setup is documented in [Development](DEVELOPMENT.md).
 
@@ -133,8 +135,8 @@ Each block run writes durable output under the PlanWeave workspace, including pr
 
 The repository includes focused agent skills under `skills/`:
 
-- `plan-maker`: design a PlanWeave plan draft from a fuzzy goal or sparse codebase context before a formal package exists.
-- `plan-importer`: create a PlanWeave Plan Package from project docs, with plan-quality checks before writing.
+- `plan-maker`: design a PlanWeave package-shaped draft from a fuzzy goal or sparse codebase context, then materialize it through draft validation/import when requested.
+- `plan-importer`: create a PlanWeave package draft from strong source docs, then validate, preview, and import it through the draft import flow.
 - `plan-auditor`: review an already-authored PlanWeave plan for coverage, lifecycle gaps, contract drift, weak prompts, and unverifiable completion criteria.
 - `plan-coordinator`: keep a full PlanWeave execution loop moving as the main agent, dispatching implementation, review, and recovery work.
 - `plan-runner`: execute one implementation block and produce a completion report.
@@ -158,7 +160,14 @@ Use skill: plan-maker
 Create a PlanWeave plan for this project from the goal below...
 ```
 
-If you already have PRDs, roadmaps, issues, or architecture notes, use `plan-importer` instead.
+If you already have PRDs, roadmaps, issues, or architecture notes, use `plan-importer` instead. `plan-maker` no longer hands a Markdown-only report to `plan-importer`; when materializing, it should write a package-shaped draft and run:
+
+```bash
+planweave package-draft validate --draft-root <draft> --json
+planweave package-draft quality --draft-root <draft> --json
+planweave package import --from <draft> --dry-run --json
+planweave package import --from <draft> --apply --json
+```
 
 2. Ask the coordinator to run the plan.
 
@@ -177,6 +186,8 @@ The coordinator should assign one concrete block at a time. Implementation agent
 planweave status
 planweave current
 planweave explain <ref>
+planweave graph inspect --view summary --json
+planweave graph quality --json
 planweave doctor
 ```
 

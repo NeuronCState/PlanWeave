@@ -164,6 +164,7 @@ export const enCatalog = {
     searchDiagnostics: "Search diagnostics",
     runtimeDiagnostics: "Runtime diagnostics",
     projectGraphDiagnostics: "Project graph diagnostics",
+    graphQualityDiagnostics: "Graph quality diagnostics",
     otherDiagnostics: "Other diagnostics",
     dependencyHealth: "Dependency health",
     dependencies: "Dependencies",

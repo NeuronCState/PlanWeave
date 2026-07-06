@@ -98,6 +98,7 @@ export function App() {
     expandedProjectId,
     executionPlan,
     graph,
+    graphDiagnostics,
     handleOpenProject,
     layout,
     projects,
@@ -262,8 +263,8 @@ export function App() {
     setError
   });
   const visibleProjectDiagnostics = useMemo(
-    () => uniqueDesktopDiagnostics([...projectDiagnostics, ...runtimeDiagnostics, ...searchDiagnostics, ...autoRunDiagnostics]),
-    [autoRunDiagnostics, projectDiagnostics, runtimeDiagnostics, searchDiagnostics]
+    () => uniqueDesktopDiagnostics([...projectDiagnostics, ...graphDiagnostics, ...runtimeDiagnostics, ...searchDiagnostics, ...autoRunDiagnostics]),
+    [autoRunDiagnostics, graphDiagnostics, projectDiagnostics, runtimeDiagnostics, searchDiagnostics]
   );
 
   const {

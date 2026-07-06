@@ -2,7 +2,9 @@ import type {
   BlockStatus,
   BlockType,
   EdgeType,
+  ExecutionReadinessReport,
   GraphEditResult,
+  GraphQualityReport,
   ReviewGateHint,
   TaskStatus,
   ValidationIssue
@@ -61,6 +63,23 @@ export type DesktopGraphViewModel = {
   edges: DesktopGraphEdgeViewModel[];
   diagnostics: ValidationIssue[];
   dirtyPromptRefs: string[];
+};
+
+export type DesktopGraphDiagnosticSource = "graph_quality" | "execution_readiness";
+
+export type DesktopGraphDiagnosticIssue = ValidationIssue & {
+  source: DesktopGraphDiagnosticSource;
+  severity: "error" | "warning" | "info";
+  ruleType?: "structural" | "policy" | "heuristic";
+  affectedIds?: string[];
+  suggestedTool?: string;
+  fixId?: string;
+};
+
+export type DesktopGraphDiagnostics = {
+  graphQuality: GraphQualityReport;
+  executionReadiness: ExecutionReadinessReport;
+  diagnostics: DesktopGraphDiagnosticIssue[];
 };
 
 export type DesktopCanvasNodeViewModel = {

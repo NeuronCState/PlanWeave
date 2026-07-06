@@ -1,14 +1,13 @@
 import { useState, type ReactNode } from "react";
-import type { ValidationIssue } from "@planweave-ai/runtime";
 import { ChevronDownIcon, ChevronRightIcon, GaugeIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
-import { groupDesktopDiagnostics, type DesktopDiagnosticSource } from "../diagnostics";
+import { groupDesktopDiagnostics, type DesktopDiagnostic, type DesktopDiagnosticSource } from "../diagnostics";
 import type { TranslationKey } from "../i18n";
 import type { FloatingAutoRunTranslator } from "./floatingAutoRunTypes";
 
 type DesktopDiagnosticsPopoverProps = {
-  diagnostics: ValidationIssue[];
+  diagnostics: DesktopDiagnostic[];
   disabled: boolean;
   t: FloatingAutoRunTranslator;
 };
@@ -47,7 +46,7 @@ function DesktopDiagnosticsList({
   diagnostics,
   itemTestId
 }: {
-  diagnostics: ValidationIssue[];
+  diagnostics: DesktopDiagnostic[];
   itemTestId: string;
 }) {
   return (
@@ -62,6 +61,13 @@ function DesktopDiagnosticsList({
             <div className="font-medium text-text-strong">{diagnostic.code}</div>
             <div className="break-words text-muted-foreground">{diagnostic.message}</div>
             {diagnostic.path ? <div className="mt-1 break-all text-text-faint">{diagnostic.path}</div> : null}
+            {(diagnostic.severity || diagnostic.suggestedTool || diagnostic.fixId) ? (
+              <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-text-faint">
+                {diagnostic.severity ? <span>{diagnostic.severity}</span> : null}
+                {diagnostic.suggestedTool ? <span>{diagnostic.suggestedTool}</span> : null}
+                {diagnostic.fixId ? <span>{diagnostic.fixId}</span> : null}
+              </div>
+            ) : null}
           </div>
         ))}
       </div>
@@ -75,6 +81,7 @@ const diagnosticTitleKeys = {
   search: "searchDiagnostics",
   runtime: "runtimeDiagnostics",
   project: "projectGraphDiagnostics",
+  graphQuality: "graphQualityDiagnostics",
   other: "otherDiagnostics"
 } satisfies Record<DesktopDiagnosticSource, TranslationKey>;
 

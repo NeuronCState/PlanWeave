@@ -102,9 +102,21 @@ describe("desktop renderer hook interfaces", () => {
   });
 
   it("loads a project through bridge calls scoped by DesktopCanvasReference", async () => {
+    const graphQualityDiagnostic = {
+      code: "task_orphaned",
+      message: "Some tasks are not connected.",
+      source: "graph_quality",
+      severity: "warning",
+      suggestedTool: "add_task_dependency"
+    };
     const bridge = createDesktopBridgeMock({
       listProjects: vi.fn().mockResolvedValue([project]),
       getDesktopProjectSnapshot: vi.fn().mockResolvedValue(projectSnapshot()),
+      getDesktopGraphDiagnostics: vi.fn().mockResolvedValue({
+        graphQuality: { ok: true, diagnostics: [] },
+        executionReadiness: { ok: true, diagnostics: [] },
+        diagnostics: [graphQualityDiagnostic]
+      }),
       refreshPackageFileChanges: vi.fn().mockResolvedValue({ diagnostics: [], dirtyPromptRefs: [] }),
       watchPackageFiles: vi.fn().mockResolvedValue(undefined)
     });
@@ -113,7 +125,7 @@ describe("desktop renderer hook interfaces", () => {
     const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
 
     const updateSettings = vi.fn();
-    renderHook(() =>
+    const { result } = renderHook(() =>
       useDesktopProject({
         setError: vi.fn(),
         t: createTranslator("en"),
@@ -123,6 +135,8 @@ describe("desktop renderer hook interfaces", () => {
 
     await waitFor(() => expect(bridge.getDesktopProjectSnapshot).toHaveBeenCalled());
     expect(bridge.getDesktopProjectSnapshot).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
+    expect(bridge.getDesktopGraphDiagnostics).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
+    await waitFor(() => expect(result.current.graphDiagnostics).toEqual([graphQualityDiagnostic]));
     expect(bridge.getGraphViewModel).not.toHaveBeenCalled();
     expect(bridge.getDesktopLayout).not.toHaveBeenCalled();
     expect(bridge.getTodoGroups).not.toHaveBeenCalled();

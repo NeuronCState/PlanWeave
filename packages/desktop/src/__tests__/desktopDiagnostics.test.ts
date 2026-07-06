@@ -12,6 +12,8 @@ describe("desktop diagnostics", () => {
     expect(desktopDiagnosticSource({ code: "desktop_canvas_runtime_input_failed" })).toBe("runtime");
     expect(desktopDiagnosticSource({ code: "project_graph_schema" })).toBe("project");
     expect(desktopDiagnosticSource({ code: "project_cross_task_from_missing" })).toBe("project");
+    expect(desktopDiagnosticSource({ code: "task_orphaned", source: "graph_quality" })).toBe("graphQuality");
+    expect(desktopDiagnosticSource({ code: "no_ready_blocks", source: "execution_readiness" })).toBe("graphQuality");
     expect(desktopDiagnosticSource({ code: "unknown_diagnostic" })).toBe("other");
   });
 
@@ -20,10 +22,11 @@ describe("desktop diagnostics", () => {
       { code: "desktop_result_metadata_read_failed", message: "Search issue." },
       { code: "unknown_diagnostic", message: "Other issue." },
       { code: "desktop_projection_slow_part", message: "Slow projection." },
+      { code: "task_orphaned", message: "Graph quality warning.", source: "graph_quality" },
       { code: "auto_run_event_log_bad_line", message: "Bad event log." }
     ]);
 
-    expect(groups.map((group) => group.source)).toEqual(["performance", "search", "runtime", "other"]);
+    expect(groups.map((group) => group.source)).toEqual(["performance", "search", "runtime", "graphQuality", "other"]);
   });
 
   it("deduplicates diagnostics by code, message, and path", () => {

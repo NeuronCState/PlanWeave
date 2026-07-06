@@ -166,6 +166,7 @@ export const zhCnCatalog = {
     searchDiagnostics: "搜索诊断",
     runtimeDiagnostics: "运行时诊断",
     projectGraphDiagnostics: "项目图谱诊断",
+    graphQualityDiagnostics: "图谱质量诊断",
     otherDiagnostics: "其他诊断",
     dependencyHealth: "依赖健康",
     dependencies: "依赖",

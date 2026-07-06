@@ -69,6 +69,7 @@ export function useDesktopProject({
   const [executionPlan, setExecutionPlan] = useState<DesktopProjectExecutionPlan | null>(null);
   const [statistics, setStatistics] = useState<DesktopStatistics | null>(null);
   const [projectDiagnostics, setProjectDiagnostics] = useState<ValidationIssue[]>([]);
+  const [graphDiagnostics, setGraphDiagnostics] = useState<ValidationIssue[]>([]);
   const [runtimeDiagnostics, setRuntimeDiagnostics] = useState<ValidationIssue[]>([]);
   const [runtimeRefreshSnapshot, setRuntimeRefreshSnapshot] = useState<DesktopRuntimeRefreshSnapshot | null>(null);
   const [projectPromptMarkdown, setProjectPromptMarkdown] = useState<string | null>(null);
@@ -123,6 +124,14 @@ export function useDesktopProject({
     });
   }, []);
 
+  const refreshDesktopGraphDiagnostics = useCallback(async (canvasRef: { projectRoot: string; canvasId?: string | null }) => {
+    if (!bridge) {
+      return;
+    }
+    const diagnostics = await bridge.getDesktopGraphDiagnostics(canvasRef);
+    setGraphDiagnostics(diagnostics.diagnostics);
+  }, []);
+
   const loadProject = useCallback(
     async (project: DesktopProjectSummary, requestedCanvasId?: string | null) => {
       if (!bridge) {
@@ -150,6 +159,7 @@ export function useDesktopProject({
         setExecutionPlan(null);
         setStatistics(null);
         setProjectDiagnostics([]);
+        setGraphDiagnostics([]);
         setRuntimeDiagnostics([]);
         setRuntimeRefreshSnapshot(null);
         setProjectPromptMarkdown(null);
@@ -162,11 +172,14 @@ export function useDesktopProject({
         errors.push(...applyDesktopProjectSnapshot(snapshot, { includeLayout: true, includePrompt: true }));
         if (snapshot.graph) {
           try {
+            await refreshDesktopGraphDiagnostics(canvasRef);
             await bridge.refreshPackageFileChanges(canvasRef);
             await bridge.watchPackageFiles(canvasRef);
           } catch (caught) {
             errors.push(errorMessage(caught));
           }
+        } else {
+          setGraphDiagnostics([]);
         }
       } catch (caught) {
         errors.push(errorMessage(caught));
@@ -177,7 +190,7 @@ export function useDesktopProject({
       updateSettings({ runtimePath: project.workspaceRoot });
       setProjectLoading(false);
     },
-    [applyDesktopProjectSnapshot, setError, updateSettings]
+    [applyDesktopProjectSnapshot, refreshDesktopGraphDiagnostics, setError, updateSettings]
   );
 
   useEffect(() => {
@@ -226,9 +239,11 @@ export function useDesktopProject({
     if (!bridge || !selectedProject) {
       return;
     }
-    const nextGraph = await bridge.getGraphViewModel(desktopCanvasReference(selectedProject, selectedCanvasId));
+    const canvasRef = desktopCanvasReference(selectedProject, selectedCanvasId);
+    const nextGraph = await bridge.getGraphViewModel(canvasRef);
     setGraph(nextGraph);
-  }, [selectedCanvasId, selectedProject]);
+    await refreshDesktopGraphDiagnostics(canvasRef);
+  }, [refreshDesktopGraphDiagnostics, selectedCanvasId, selectedProject]);
 
   const refreshProjectDerivedState = useCallback(async (options: ApplyDesktopProjectSnapshotOptions = {}) => {
     if (!bridge || !selectedProject) {
@@ -237,10 +252,15 @@ export function useDesktopProject({
     const canvasRef = desktopCanvasReference(selectedProject, selectedCanvasId);
     const snapshot = await bridge.getDesktopProjectSnapshot(canvasRef);
     const errors = applyDesktopProjectSnapshot(snapshot, options);
+    if (snapshot.graph) {
+      await refreshDesktopGraphDiagnostics(canvasRef);
+    } else {
+      setGraphDiagnostics([]);
+    }
     if (errors.length > 0) {
       setError(errors.join("\n"));
     }
-  }, [applyDesktopProjectSnapshot, selectedCanvasId, selectedProject, setError]);
+  }, [applyDesktopProjectSnapshot, refreshDesktopGraphDiagnostics, selectedCanvasId, selectedProject, setError]);
 
   const refreshRuntimeState = useCallback(async () => {
     if (!bridge || !selectedProject) {
@@ -253,10 +273,11 @@ export function useDesktopProject({
       return;
     }
     const errors = applyRuntimeRefreshSnapshot(snapshot);
+    await refreshDesktopGraphDiagnostics(canvasRef);
     if (errors.length > 0) {
       setError(errors.join("\n"));
     }
-  }, [applyRuntimeRefreshSnapshot, selectedCanvasId, selectedProject, setError]);
+  }, [applyRuntimeRefreshSnapshot, refreshDesktopGraphDiagnostics, selectedCanvasId, selectedProject, setError]);
 
   const refreshGraphAndLayout = useCallback(async () => {
     await refreshProjectDerivedState({ includeLayout: true });
@@ -402,6 +423,7 @@ export function useDesktopProject({
       setExecutionPlan(null);
       setStatistics(null);
       setProjectDiagnostics([]);
+      setGraphDiagnostics([]);
       setRuntimeDiagnostics([]);
       setRuntimeRefreshSnapshot(null);
       setProjectPromptMarkdown(null);
@@ -457,6 +479,7 @@ export function useDesktopProject({
       setExecutionPlan(null);
       setStatistics(null);
       setProjectDiagnostics([]);
+      setGraphDiagnostics([]);
       setRuntimeDiagnostics([]);
       setRuntimeRefreshSnapshot(null);
       setProjectPromptMarkdown(null);
@@ -469,6 +492,7 @@ export function useDesktopProject({
     expandedProjectId,
     executionPlan,
     graph,
+    graphDiagnostics,
     handleOpenProject,
     layout,
     loadProject,

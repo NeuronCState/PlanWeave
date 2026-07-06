@@ -159,6 +159,8 @@ export const enCatalog = {
     desktopDiagnostics: "Desktop diagnostics",
     desktopDiagnosticsHint: "Review desktop diagnostics by source.",
     desktopDiagnosticsNoIssues: "No desktop diagnostics to review",
+    diagnosticApplyFix: "Apply",
+    diagnosticCopyCommand: "Copy command",
     performanceDiagnostics: "Performance diagnostics",
     packageDiagnostics: "Package diagnostics",
     searchDiagnostics: "Search diagnostics",

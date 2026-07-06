@@ -5,6 +5,7 @@ export type DesktopDiagnostic = ValidationIssue & {
   severity?: string;
   suggestedTool?: string;
   fixId?: string;
+  affectedIds?: string[];
 };
 
 export type DesktopDiagnosticSource =

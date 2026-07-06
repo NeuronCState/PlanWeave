@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type Dispatch, type PointerEvent, type Ref, type SetStateAction } from "react";
-import type { DesktopAutoRunRetrospectiveSummary, DesktopAutoRunState, DesktopProjectSummary, ValidationIssue } from "@planweave-ai/runtime";
+import type { DesktopAutoRunRetrospectiveSummary, DesktopAutoRunState, DesktopCanvasReference, DesktopProjectSummary, ValidationIssue } from "@planweave-ai/runtime";
 import { MoveIcon, RotateCcwIcon, SquareIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ type FloatingAutoRunControlProps = {
   projectDiagnostics: ValidationIssue[];
   dirtyPromptCount: number;
   dirtyPromptRefs: string[];
+  applyCanvasLaneLayout?: (ref: DesktopCanvasReference) => Promise<void>;
+  copyText?: (text: string) => Promise<void>;
   autoRunPreflightExecutorHint: string | null;
   handleAutoRunClick: () => Promise<void>;
   handleAutoRunNextAction: (action: AutoRunNextActionDescriptor) => Promise<void>;
@@ -32,6 +34,7 @@ type FloatingAutoRunControlProps = {
   moveAutoRunControl: (event: PointerEvent<HTMLButtonElement>) => void;
   onOpenFileSyncRef: (ref: string) => void;
   refreshPackageFiles: () => Promise<void>;
+  refreshProjectDerivedState?: () => Promise<void>;
   refreshedPromptCount: number;
   refreshConcurrency: number | null;
   watcherBackendKind?: "native" | "polling";
@@ -43,6 +46,7 @@ type FloatingAutoRunControlProps = {
   selectedProject: DesktopProjectSummary | null;
   selectedTaskPanelId: string | null;
   setAutoRunScopeMode: Dispatch<SetStateAction<AutoRunScopeMode>>;
+  setError?: (message: string | null) => void;
   setMiniRunPanelOpen: Dispatch<SetStateAction<boolean>>;
   startAutoRunControlDrag: (event: PointerEvent<HTMLButtonElement>) => void;
   stopAutoRunClick: () => Promise<void>;
@@ -78,6 +82,8 @@ export function FloatingAutoRunControl({
   projectDiagnostics,
   dirtyPromptCount,
   dirtyPromptRefs,
+  applyCanvasLaneLayout,
+  copyText,
   autoRunPreflightExecutorHint,
   handleAutoRunClick,
   handleAutoRunNextAction,
@@ -86,6 +92,7 @@ export function FloatingAutoRunControl({
   moveAutoRunControl,
   onOpenFileSyncRef,
   refreshPackageFiles,
+  refreshProjectDerivedState,
   refreshedPromptCount,
   refreshConcurrency,
   watcherBackendKind,
@@ -97,6 +104,7 @@ export function FloatingAutoRunControl({
   selectedProject,
   selectedTaskPanelId,
   setAutoRunScopeMode,
+  setError,
   setMiniRunPanelOpen,
   startAutoRunControlDrag,
   stopAutoRunClick,
@@ -128,6 +136,18 @@ export function FloatingAutoRunControl({
   const [fileSyncPopoverOpen, setFileSyncPopoverOpen] = useState(false);
   const [viewedFileSyncChangeKey, setViewedFileSyncChangeKey] = useState<string | null>(null);
   const showFileSyncUnreadCount = fileSyncIssueCount > 0 && currentFileSyncChangeKey !== viewedFileSyncChangeKey;
+  const diagnosticActionContext =
+    selectedProject && selectedCanvasId && applyCanvasLaneLayout && copyText && refreshProjectDerivedState && setError
+      ? {
+          projectId: selectedProject.projectId,
+          projectRoot: selectedProject.rootPath,
+          canvasId: selectedCanvasId,
+          applyCanvasLaneLayout,
+          copyText,
+          refreshProjectDerivedState,
+          setError
+        }
+      : null;
 
   useEffect(() => {
     if (fileSyncPopoverOpen) {
@@ -167,7 +187,7 @@ export function FloatingAutoRunControl({
         watcherChangedPathCount={watcherChangedPathCount}
         watcherRefreshElapsedMs={watcherRefreshElapsedMs}
       />
-      <DesktopDiagnosticsPopover diagnostics={projectDiagnostics} disabled={!hasProject} t={t} />
+      <DesktopDiagnosticsPopover actionContext={diagnosticActionContext} diagnostics={projectDiagnostics} disabled={!hasProject} t={t} />
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <span>

@@ -14,6 +14,7 @@ import {
 import type {
   DesktopAutoRunRetrospectiveSummary,
   DesktopAutoRunState,
+  DesktopCanvasReference,
   DesktopGraphViewModel,
   DesktopPackageFileSyncResult,
   DesktopProjectSummary,
@@ -41,6 +42,8 @@ type GraphViewProps = {
   fileSyncResult: DesktopPackageFileSyncResult | null;
   graph: DesktopGraphViewModel | null;
   projectDiagnostics: ValidationIssue[];
+  applyCanvasLaneLayout: (ref: DesktopCanvasReference) => Promise<void>;
+  copyText: (text: string) => Promise<void>;
   handleAutoRunClick: () => Promise<void>;
   handleAutoRunNextAction: (action: AutoRunNextActionDescriptor) => Promise<void>;
   handleOpenBlockInspector: (ref: string, canvasId?: string | null) => Promise<void>;
@@ -64,12 +67,14 @@ type GraphViewProps = {
   onNodesChange: OnNodesChange<AppFlowNode>;
   onTaskPanelSelect: (taskId: string | null) => void;
   refreshPackageFiles: () => Promise<void>;
+  refreshProjectDerivedState: () => Promise<void>;
   selectedBlockPresent: boolean;
   selectedCanvasId: string | null;
   selectedProject: DesktopProjectSummary | null;
   selectedTaskPanelId: string | null;
   setAutoRunScopeMode: Dispatch<SetStateAction<AutoRunScopeMode>>;
   setFlowInstance: Dispatch<SetStateAction<ReactFlowInstance<AppFlowNode, Edge> | null>>;
+  setError: (message: string | null) => void;
   setMiniRunPanelOpen: Dispatch<SetStateAction<boolean>>;
   setActiveView: Dispatch<SetStateAction<AppView>>;
   startAutoRunControlDrag: (event: PointerEvent<HTMLButtonElement>) => void;
@@ -92,6 +97,8 @@ export function GraphView({
   fileSyncResult,
   graph,
   projectDiagnostics,
+  applyCanvasLaneLayout,
+  copyText,
   handleAutoRunClick,
   handleAutoRunNextAction,
   handleOpenBlockInspector,
@@ -116,12 +123,14 @@ export function GraphView({
   onNodesChange,
   onTaskPanelSelect,
   refreshPackageFiles,
+  refreshProjectDerivedState,
   selectedBlockPresent,
   selectedCanvasId,
   selectedProject,
   selectedTaskPanelId,
   setActiveView,
   setAutoRunScopeMode,
+  setError,
   setFlowInstance,
   setMiniRunPanelOpen,
   startAutoRunControlDrag,
@@ -302,6 +311,8 @@ export function GraphView({
         controlRef={autoRunControlRef}
         affectedTasks={fileSyncResult?.affectedTasks ?? []}
         diagnostics={fileSyncResult?.diagnostics ?? []}
+        applyCanvasLaneLayout={applyCanvasLaneLayout}
+        copyText={copyText}
         projectDiagnostics={projectDiagnostics}
         dirtyPromptRefs={dirtyPromptRefs}
         dirtyPromptCount={dirtyPromptCount}
@@ -313,6 +324,7 @@ export function GraphView({
         moveAutoRunControl={moveAutoRunControl}
         onOpenFileSyncRef={handleOpenFileSyncRef}
         refreshPackageFiles={refreshPackageFiles}
+        refreshProjectDerivedState={refreshProjectDerivedState}
         refreshedPromptCount={fileSyncResult?.refreshedPromptCount ?? 0}
         refreshConcurrency={fileSyncResult?.refreshConcurrency ?? null}
         watcherBackendKind={fileSyncResult?.watcherBackendKind}
@@ -324,6 +336,7 @@ export function GraphView({
         selectedProject={selectedProject}
         selectedTaskPanelId={selectedTaskPanelId}
         setAutoRunScopeMode={setAutoRunScopeMode}
+        setError={setError}
         setMiniRunPanelOpen={setMiniRunPanelOpen}
         startAutoRunControlDrag={startAutoRunControlDrag}
         stopAutoRunClick={stopAutoRunClick}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type Edge, type ReactFlowInstance, useEdgesState, useNodesState } from "@xyflow/react";
-import type { DesktopPackageFileChangeEvent, DesktopPackageFileSyncResult, DesktopProjectSummary } from "@planweave-ai/runtime";
+import type { DesktopCanvasReference, DesktopPackageFileChangeEvent, DesktopPackageFileSyncResult, DesktopProjectSummary } from "@planweave-ai/runtime";
 import { bridge } from "./bridge";
 import { edgeTypes, nodeTypes } from "./graph/flowModel";
 import { createTranslator } from "./i18n";
@@ -580,9 +580,23 @@ export function App() {
     stopAutoRunControlDrag
   });
   const fileSync = createFileSyncController({
+    applyCanvasLaneLayout: async (ref: DesktopCanvasReference) => {
+      if (!bridge) {
+        throw new Error(t("bridgeUnavailable"));
+      }
+      await bridge.applyCanvasLaneLayout(ref);
+    },
+    copyText: async (text: string) => {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error(t("manualCommandUnavailable"));
+      }
+      await navigator.clipboard.writeText(text);
+    },
     fileSyncResult,
     projectDiagnostics: visibleProjectDiagnostics,
-    refreshPackageFiles
+    refreshPackageFiles,
+    refreshProjectDerivedState: async () => refreshProjectDerivedState({ includeLayout: true }),
+    setError
   });
   const search = createSearchController({
     handleSearchResultOpen,

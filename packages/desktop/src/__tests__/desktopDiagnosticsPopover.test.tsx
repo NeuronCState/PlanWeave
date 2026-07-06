@@ -1,14 +1,28 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { DiagnosticFixContext } from "../renderer/diagnosticFixActions";
 import { createTranslator } from "../renderer/i18n";
 import { DesktopDiagnosticsPopover } from "../renderer/run/DesktopDiagnosticsPopover";
 import { cleanupRendererTestEnvironment } from "./helpers/rendererTestEnvironment";
 
 const t = createTranslator("en");
+
+function diagnosticFixContext(patch: Partial<DiagnosticFixContext> = {}): DiagnosticFixContext {
+  return {
+    projectId: "project-1",
+    projectRoot: "/tmp/project",
+    canvasId: "default",
+    applyCanvasLaneLayout: vi.fn().mockResolvedValue(undefined),
+    copyText: vi.fn().mockResolvedValue(undefined),
+    refreshProjectDerivedState: vi.fn().mockResolvedValue(undefined),
+    setError: vi.fn(),
+    ...patch
+  };
+}
 
 afterEach(() => {
   cleanupRendererTestEnvironment();
@@ -114,5 +128,60 @@ describe("DesktopDiagnosticsPopover", () => {
 
     expect(screen.getByRole("button", { name: "View desktop diagnostics" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "View desktop diagnostics" }).querySelector("svg")).toHaveClass("lucide-gauge");
+  });
+
+  it("applies the safe canvas lane layout fix and refreshes derived state", async () => {
+    const actionContext = diagnosticFixContext();
+    render(
+      <DesktopDiagnosticsPopover
+        actionContext={actionContext}
+        diagnostics={[
+          {
+            code: "layout_single_column_risk",
+            message: "Large canvases with very few task dependencies are likely to render as a hard-to-scan flat layout.",
+            source: "graph_quality",
+            fixId: "apply_canvas_lane_layout"
+          }
+        ]}
+        disabled={false}
+        t={t}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "View desktop diagnostics" }));
+    await userEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => expect(actionContext.applyCanvasLaneLayout).toHaveBeenCalledWith({ projectRoot: "/tmp/project", canvasId: "default" }));
+    expect(actionContext.refreshProjectDerivedState).toHaveBeenCalledTimes(1);
+    expect(actionContext.copyText).not.toHaveBeenCalled();
+  });
+
+  it("copies commands for high-risk fixes instead of applying them", async () => {
+    const actionContext = diagnosticFixContext();
+    render(
+      <DesktopDiagnosticsPopover
+        actionContext={actionContext}
+        diagnostics={[
+          {
+            code: "task_missing_review_block",
+            message: "Some tasks do not include a review block.",
+            source: "graph_quality",
+            suggestedTool: "create_block",
+            fixId: "add_review_blocks",
+            affectedIds: ["T-001"]
+          }
+        ]}
+        disabled={false}
+        t={t}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "View desktop diagnostics" }));
+    await userEvent.click(screen.getByRole("button", { name: "Copy command" }));
+
+    await waitFor(() => expect(actionContext.copyText).toHaveBeenCalledTimes(1));
+    expect(actionContext.copyText).toHaveBeenCalledWith(expect.stringContaining("PlanWeave MCP tool: create_block"));
+    expect(actionContext.copyText).toHaveBeenCalledWith(expect.stringContaining("affectedIds: T-001"));
+    expect(actionContext.applyCanvasLaneLayout).not.toHaveBeenCalled();
   });
 });

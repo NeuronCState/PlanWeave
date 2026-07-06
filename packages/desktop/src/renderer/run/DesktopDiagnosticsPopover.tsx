@@ -1,12 +1,14 @@
 import { useState, type ReactNode } from "react";
-import { ChevronDownIcon, ChevronRightIcon, GaugeIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronRightIcon, CopyIcon, GaugeIcon, Wand2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
+import { diagnosticFixActionFor, type DiagnosticFixAction, type DiagnosticFixContext } from "../diagnosticFixActions";
 import { groupDesktopDiagnostics, type DesktopDiagnostic, type DesktopDiagnosticSource } from "../diagnostics";
 import type { TranslationKey } from "../i18n";
 import type { FloatingAutoRunTranslator } from "./floatingAutoRunTypes";
 
 type DesktopDiagnosticsPopoverProps = {
+  actionContext?: DiagnosticFixContext | null;
   diagnostics: DesktopDiagnostic[];
   disabled: boolean;
   t: FloatingAutoRunTranslator;
@@ -42,34 +44,96 @@ function DisclosureSection({
   );
 }
 
-function DesktopDiagnosticsList({
-  diagnostics,
-  itemTestId
+function errorMessage(caught: unknown): string {
+  return caught instanceof Error ? caught.message : String(caught);
+}
+
+function DiagnosticActionButton({
+  action,
+  actionKey,
+  actionContext,
+  disabled,
+  onFinish,
+  onStart,
+  t
 }: {
+  action: DiagnosticFixAction;
+  actionKey: string;
+  actionContext: DiagnosticFixContext;
+  disabled: boolean;
+  onFinish: () => void;
+  onStart: (actionKey: string) => void;
+  t: FloatingAutoRunTranslator;
+}) {
+  return (
+    <Button
+      className="mt-1 h-6 gap-1 px-1.5 text-[11px]"
+      data-testid={`diagnostic-${action.kind}-action`}
+      disabled={disabled}
+      size="sm"
+      type="button"
+      variant="outline"
+      onClick={() => {
+        onStart(actionKey);
+        void action.run().catch((caught: unknown) => {
+          actionContext.setError(errorMessage(caught));
+        }).finally(onFinish);
+      }}
+    >
+      {action.kind === "apply" ? <Wand2Icon data-icon="inline-start" /> : <CopyIcon data-icon="inline-start" />}
+      {t(action.labelKey)}
+    </Button>
+  );
+}
+
+function DesktopDiagnosticsList({
+  actionContext,
+  diagnostics,
+  itemTestId,
+  t
+}: {
+  actionContext?: DiagnosticFixContext | null;
   diagnostics: DesktopDiagnostic[];
   itemTestId: string;
+  t: FloatingAutoRunTranslator;
 }) {
+  const [pendingActionKey, setPendingActionKey] = useState<string | null>(null);
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex max-h-28 flex-col overflow-y-auto">
-        {diagnostics.map((diagnostic, index) => (
-          <div
-            className="border-b border-border/70 px-2 py-1.5 text-xs last:border-b-0"
-            data-testid={itemTestId}
-            key={`${diagnostic.code}:${diagnostic.path ?? ""}:${index}`}
-          >
-            <div className="font-medium text-text-strong">{diagnostic.code}</div>
-            <div className="break-words text-muted-foreground">{diagnostic.message}</div>
-            {diagnostic.path ? <div className="mt-1 break-all text-text-faint">{diagnostic.path}</div> : null}
-            {(diagnostic.severity || diagnostic.suggestedTool || diagnostic.fixId) ? (
-              <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-text-faint">
-                {diagnostic.severity ? <span>{diagnostic.severity}</span> : null}
-                {diagnostic.suggestedTool ? <span>{diagnostic.suggestedTool}</span> : null}
-                {diagnostic.fixId ? <span>{diagnostic.fixId}</span> : null}
-              </div>
-            ) : null}
-          </div>
-        ))}
+        {diagnostics.map((diagnostic, index) => {
+          const action = actionContext ? diagnosticFixActionFor(diagnostic, actionContext) : null;
+          const actionKey = `${diagnostic.code}:${diagnostic.path ?? ""}:${diagnostic.fixId ?? ""}:${index}`;
+          return (
+            <div
+              className="border-b border-border/70 px-2 py-1.5 text-xs last:border-b-0"
+              data-testid={itemTestId}
+              key={`${diagnostic.code}:${diagnostic.path ?? ""}:${index}`}
+            >
+              <div className="font-medium text-text-strong">{diagnostic.code}</div>
+              <div className="break-words text-muted-foreground">{diagnostic.message}</div>
+              {diagnostic.path ? <div className="mt-1 break-all text-text-faint">{diagnostic.path}</div> : null}
+              {(diagnostic.severity || diagnostic.suggestedTool || diagnostic.fixId) ? (
+                <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-text-faint">
+                  {diagnostic.severity ? <span>{diagnostic.severity}</span> : null}
+                  {diagnostic.suggestedTool ? <span>{diagnostic.suggestedTool}</span> : null}
+                  {diagnostic.fixId ? <span>{diagnostic.fixId}</span> : null}
+                </div>
+              ) : null}
+              {action && actionContext ? (
+                <DiagnosticActionButton
+                  action={action}
+                  actionContext={actionContext}
+                  actionKey={actionKey}
+                  disabled={pendingActionKey !== null}
+                  onFinish={() => setPendingActionKey(null)}
+                  onStart={setPendingActionKey}
+                  t={t}
+                />
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -85,7 +149,7 @@ const diagnosticTitleKeys = {
   other: "otherDiagnostics"
 } satisfies Record<DesktopDiagnosticSource, TranslationKey>;
 
-export function DesktopDiagnosticsPopover({ diagnostics, disabled, t }: DesktopDiagnosticsPopoverProps) {
+export function DesktopDiagnosticsPopover({ actionContext, diagnostics, disabled, t }: DesktopDiagnosticsPopoverProps) {
   const groups = groupDesktopDiagnostics(diagnostics);
   const defaultOpenSource = groups.find((group) => group.source === "performance")?.source ?? groups[0]?.source ?? null;
   const hasDiagnostics = groups.length > 0;
@@ -120,8 +184,10 @@ export function DesktopDiagnosticsPopover({ diagnostics, disabled, t }: DesktopD
                   key={group.source}
                 >
                   <DesktopDiagnosticsList
+                    actionContext={actionContext}
                     diagnostics={group.diagnostics}
                     itemTestId={`desktop-${group.source}-diagnostic`}
+                    t={t}
                   />
                 </DisclosureSection>
               );

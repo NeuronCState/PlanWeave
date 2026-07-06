@@ -10,6 +10,7 @@ import type {
 import type {
   DesktopAutoRunRetrospectiveSummary,
   DesktopAutoRunState,
+  DesktopCanvasReference,
   DesktopGraphViewModel,
   DesktopPackageFileSyncResult,
   DesktopProjectExecutionPlan,
@@ -99,9 +100,13 @@ export type WorkspaceTabsAutoRunProps = {
 };
 
 export type WorkspaceTabsFileSyncProps = {
+  applyCanvasLaneLayout: (ref: DesktopCanvasReference) => Promise<void>;
+  copyText: (text: string) => Promise<void>;
   fileSyncResult: DesktopPackageFileSyncResult | null;
   projectDiagnostics: ValidationIssue[];
   refreshPackageFiles: () => Promise<void>;
+  refreshProjectDerivedState: () => Promise<void>;
+  setError: (message: string | null) => void;
 };
 
 export type WorkspaceTabsSearchProps = {

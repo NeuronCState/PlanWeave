@@ -238,6 +238,7 @@ export type DesktopBridgeApi = {
   getDesktopLayout(ref: DesktopCanvasReference): Promise<DesktopLayout>;
   saveDesktopLayout(ref: DesktopCanvasReference, layout: DesktopLayout): Promise<DesktopLayout>;
   resetDesktopLayout(ref: DesktopCanvasReference): Promise<DesktopLayout>;
+  applyCanvasLaneLayout(ref: DesktopCanvasReference): Promise<DesktopLayout>;
   createPackageFileSnapshot(ref: DesktopCanvasReference): Promise<DesktopPackageFileSnapshotRef>;
   detectPackageFileChanges(ref: DesktopCanvasReference, snapshotId?: string | null): Promise<DesktopPackageFileSyncResult>;
   refreshChangedPackagePrompts(ref: DesktopCanvasReference, snapshotId?: string | null): Promise<DesktopPackageFileSyncResult>;

@@ -3,6 +3,7 @@ import {
   addBlock,
   addDependencyEdge,
   addTaskNode,
+  applyCanvasLaneLayout,
   createDesktopPackageFileSnapshot,
   createProjectFromTaskCanvas,
   createTaskCanvas,
@@ -369,6 +370,7 @@ export const runtimeBridgeHandlers = {
   getDesktopLayout: async (_event, ref) => getDesktopLayout(await resolveDesktopCanvasReference(ref)),
   saveDesktopLayout: async (_event, ref, layout: DesktopLayout) => saveDesktopLayout(await resolveDesktopCanvasReference(ref), layout),
   resetDesktopLayout: async (_event, ref) => resetDesktopLayout(await resolveDesktopCanvasReference(ref)),
+  applyCanvasLaneLayout: async (_event, ref) => applyCanvasLaneLayout(await resolveDesktopCanvasReference(ref)),
   createPackageFileSnapshot: async (_event, ref) => createDesktopPackageFileSnapshot(await resolveDesktopCanvasReference(ref)),
   detectPackageFileChanges: async (_event, ref, snapshotId) => detectDesktopPackageFileChanges(await resolveDesktopCanvasReference(ref), snapshotId),
   refreshChangedPackagePrompts: async (_event, ref, snapshotId) =>

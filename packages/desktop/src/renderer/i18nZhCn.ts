@@ -161,6 +161,8 @@ export const zhCnCatalog = {
     desktopDiagnostics: "桌面诊断",
     desktopDiagnosticsHint: "按来源查看桌面诊断。",
     desktopDiagnosticsNoIssues: "暂无需要查看的桌面诊断",
+    diagnosticApplyFix: "应用",
+    diagnosticCopyCommand: "复制命令",
     performanceDiagnostics: "性能诊断",
     packageDiagnostics: "Package 诊断",
     searchDiagnostics: "搜索诊断",

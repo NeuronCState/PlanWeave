@@ -50,6 +50,7 @@ const runtimeMock = vi.hoisted(() => {
   const autoRunEventListeners = new Set<AutoRunEventListener>();
   return {
     autoRunEventListeners,
+    applyCanvasLaneLayout: vi.fn(async (workspace: unknown) => ({ workspace, nodes: [] })),
     getDesktopGraphDiagnostics: vi.fn(async (workspace: unknown) => ({ workspace, diagnostics: [] })),
     getDesktopProjectSnapshot: vi.fn(async (ref: unknown) => ({ ref })),
     getDesktopRuntimeRefresh: vi.fn(async (ref: unknown) => ({ ref, latestAutoRun: null, diagnostics: [], errors: [] })),
@@ -135,6 +136,7 @@ vi.mock("@planweave-ai/runtime", async () => {
   const actual = await vi.importActual<typeof import("@planweave-ai/runtime")>("@planweave-ai/runtime");
   return {
     ...actual,
+    applyCanvasLaneLayout: runtimeMock.applyCanvasLaneLayout,
     getDesktopProjectSnapshot: runtimeMock.getDesktopProjectSnapshot,
     getDesktopGraphDiagnostics: runtimeMock.getDesktopGraphDiagnostics,
     getDesktopRuntimeRefresh: runtimeMock.getDesktopRuntimeRefresh,
@@ -171,6 +173,7 @@ describe("runtime bridge handlers", () => {
     });
     delete process.env.PLANWEAVE_DESKTOP_SMOKE;
     runtimeMock.autoRunEventListeners.clear();
+    runtimeMock.applyCanvasLaneLayout.mockClear();
     runtimeMock.getDesktopGraphDiagnostics.mockClear();
     runtimeMock.getDesktopProjectSnapshot.mockClear();
     runtimeMock.getDesktopRuntimeRefresh.mockClear();
@@ -249,6 +252,23 @@ describe("runtime bridge handlers", () => {
 
     expect(runtimeMock.resolveTaskCanvasWorkspace).toHaveBeenCalledWith("/tmp/project", "canvas-a");
     expect(runtimeMock.getDesktopGraphDiagnostics).toHaveBeenCalledWith({
+      projectRoot: "/tmp/project",
+      canvasId: "canvas-a",
+      source: "task"
+    });
+  });
+
+  it("resolves desktop canvas references before applying canvas lane layout", async () => {
+    const { registerRuntimeBridgeHandlers } = await import("../main/runtimeBridgeHandlers");
+    registerRuntimeBridgeHandlers();
+
+    const handler = electronMock.handlers.get(desktopBridgeInvokeChannels.applyCanvasLaneLayout);
+    expect(handler).toBeDefined();
+
+    await handler?.(null, { projectRoot: "/tmp/project", canvasId: "canvas-a" });
+
+    expect(runtimeMock.resolveTaskCanvasWorkspace).toHaveBeenCalledWith("/tmp/project", "canvas-a");
+    expect(runtimeMock.applyCanvasLaneLayout).toHaveBeenCalledWith({
       projectRoot: "/tmp/project",
       canvasId: "canvas-a",
       source: "task"

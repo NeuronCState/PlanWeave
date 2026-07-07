@@ -53,8 +53,8 @@ describe("agent skill contract docs", () => {
     const skill = await readFile(join(repoRoot, "skills/plan-maker/SKILL.md"), "utf8");
 
     expect(skill).toContain("Use when the user asks to make, draft, design, break down, or plan PlanWeave work");
-    expect(skill).toContain("Do not execute work, audit an existing package, or write a Plan Package unless the user explicitly asks.");
-    expect(skill).toContain("If strong source docs exist and the main job is extraction/import, use `plan-importer`.");
+    expect(skill).toContain("Do not execute work, audit an existing package, or write a Plan Package unless the user explicitly asks to materialize the plan.");
+    expect(skill).toContain("If strong source docs exist and the main job is converting them into a Plan Package, use `plan-importer`.");
     expect(skill).toContain("Design around core object lifecycles");
     expect(skill).toContain("Do not import other projects' skills");
     expect(skill).toContain("model orchestration as a formal project graph");
@@ -62,7 +62,10 @@ describe("agent skill contract docs", () => {
     expect(skill).toContain("formal graph dependencies must not exist only in prose");
     expect(skill).toContain("complex blocks must include architecture boundaries");
     expect(skill).toContain("## Task Graph");
-    expect(skill).toContain("This skill produces a plan draft, not runtime state.");
+    expect(skill).toContain("package file plan rather than a new schema");
+    expect(skill).toContain("The Markdown report is only an explanatory view.");
+    expect(skill).toContain("This skill produces a package-shaped plan draft, not runtime state.");
+    expect(skill).toContain("A package-shaped plan draft can be validated or materialized directly when the user asks to write or materialize it.");
     expect(skill).toContain("Use CLI/runtime commands for mechanical workspace operations");
     expect(skill).toContain("Edit Plan Package semantic files directly inside CLI-returned workspace paths");
   });

@@ -1,11 +1,11 @@
 ---
 name: plan-importer
-description: Import existing project documentation into a block-level PlanWeave Plan Package and validate it through the PlanWeave CLI. Use when importing plans, PRDs, roadmaps, issue sets, or architecture notes into a PlanWeave package.
+description: Import existing project documentation into a block-level PlanWeave Plan Package and validate it through the PlanWeave CLI. Use when importing PRDs, roadmaps, issue sets, architecture notes, or another strong source plan.
 ---
 
 # Plan Importer
 
-Use this skill to turn strong project planning material into a PlanWeave Plan Package.
+Use this skill to turn existing project planning material into a PlanWeave Plan Package.
 
 ## Command Entry
 
@@ -70,7 +70,7 @@ Use the CLI for command discovery, workspace/path resolution, and validation in 
 - Identify core objects and trace create, structure, validation, transform, state, storage, consumer, side effects, final output, failure, retry, rollback, and manual intervention.
 - Keep schema, types, APIs, CLI flags, events, files, and prompt inputs/outputs consistent across producers and consumers.
 - Contract-changing tasks must cover callers, tests, fixtures, docs, and migrations when relevant; do not hide missing contracts with fallback, default values, `any`, or mock-only paths.
-- Model the real execution order: parallel tasks must be independent, sequential gates must be explicit, and each canvas must map to a phase, capability area, or parallel work group.
+- Model the real execution order: parallel tasks must be independent, sequential gates must be explicit, and each canvas must map to a stage, capability area, subsystem, workflow, or parallel work group.
 - For multi-canvas imports, canvas-level order must be encoded as formal project graph edges, and cross-canvas task blockers must be encoded as explicit `crossTaskEdges`.
 - Do not rely on project/global prompt prose as the only source of canvas order or cross-canvas blockers.
 - Reject fake completion such as schema with no runtime use, API with no caller, UI with no behavior, config never read, provider abstraction without live client, queue without consumer, file path without file, dry-run without live path, or fixture-only testing.
@@ -99,9 +99,9 @@ Use the CLI for command discovery, workspace/path resolution, and validation in 
 ## Multi-Canvas Strategy
 
 - For small plans, use one package canvas.
-- For large plans, especially 100+ tasks/nodes, split by phase, subsystem, workflow, or owner into task canvases.
+- For large plans, especially 100+ tasks/nodes, split by stage, capability area, subsystem, workflow, or owner into task canvases.
 - Keep each canvas scannable, usually 10-30 tasks when the source plan allows it.
-- Materialize large or multi-phase imports as a formal `project-graph.json` plus one `manifest.json` per canvas.
+- Materialize large or multi-stage imports as a formal `project-graph.json` plus one `manifest.json` per canvas.
 - Use project graph canvas dependency edges for canvas-level order.
 - Use explicit `crossTaskEdges` for task-to-task blockers across canvases.
 - Keep single-canvas `manifest.json` semantics unchanged; do not place cross-canvas edges inside a canvas manifest.
@@ -114,7 +114,7 @@ When writing a formal multi-canvas plan, include:
 
 - `project-graph.json` at the PlanWeave project/workspace root.
 - `canvases` entries with stable ids, titles, package directories, state/results paths when required by the schema, and no invisible legacy-only canvas records.
-- canvas dependency edges for phase/subsystem order.
+- canvas dependency edges for stage, capability, subsystem, or workflow order.
 - explicit `crossTaskEdges` for blockers from one canvas task to another canvas task.
 - no context nodes, feedback nodes, runtime state, or layout-only graph mirrors.
 

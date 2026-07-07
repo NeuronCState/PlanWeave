@@ -38,6 +38,7 @@ export function projectSnapshot(overrides: Partial<DesktopProjectSnapshot> = {})
     todoGroups: null,
     executionPlan: null,
     statistics: null,
+    pendingImportRecoveries: [],
     diagnostics: [],
     errors: [],
     ...overrides

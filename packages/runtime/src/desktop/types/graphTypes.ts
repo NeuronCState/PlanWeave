@@ -11,6 +11,7 @@ import type {
 } from "../../types.js";
 import type { PromptSourceSummary } from "../../taskManager/promptRenderer.js";
 import type { ProjectPromptPolicy } from "../../projectPromptPolicy.js";
+import type { PendingImportTransaction } from "../../package/importRecovery.js";
 
 export type DesktopTaskException = {
   ref: string;
@@ -305,6 +306,7 @@ export type DesktopProjectSnapshot = {
   todoGroups: DesktopTodoGroups | null;
   executionPlan: DesktopProjectExecutionPlan | null;
   statistics: DesktopStatistics | null;
+  pendingImportRecoveries: PendingImportTransaction[];
   diagnostics: ValidationIssue[];
   errors: string[];
 };

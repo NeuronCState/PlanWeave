@@ -1,4 +1,6 @@
 import { resolve } from "node:path";
+import { listPendingImportTransactions } from "../../package/importRecovery.js";
+import { requireInitializedProjectWorkspace } from "../../project.js";
 import { readProjectPrompt, readProjectPromptPolicy } from "../../projectPromptPolicy.js";
 import { createProjectGraphClaimGuardFromAggregation } from "../../taskManager/projectGraphClaimGuard.js";
 import { getDesktopLayout, getDesktopLayoutForPackage } from "../layoutApi.js";
@@ -115,7 +117,8 @@ export async function getDesktopProjectSnapshot(ref: DesktopCanvasReference): Pr
     layout,
     todoGroups,
     executionPlan,
-    statistics
+    statistics,
+    pendingImportRecoveries
   ] = await Promise.all([
     captureSnapshotPart(diagnostics, "projectPromptMarkdown", () => readProjectPrompt(ref.projectRoot)),
     captureSnapshotPart(diagnostics, "projectPromptPolicy", () => readProjectPromptPolicy(ref.projectRoot)),
@@ -135,6 +138,10 @@ export async function getDesktopProjectSnapshot(ref: DesktopCanvasReference): Pr
       );
       appendDesktopDiagnostics(diagnostics, projection.diagnostics);
       return projection.statistics;
+    }),
+    captureSnapshotPart(diagnostics, "pendingImportRecoveries", async () => {
+      const workspace = await requireInitializedProjectWorkspace(ref.projectRoot);
+      return listPendingImportTransactions(workspace.workspaceRoot);
     })
   ]);
 
@@ -146,6 +153,7 @@ export async function getDesktopProjectSnapshot(ref: DesktopCanvasReference): Pr
     todoGroups,
     executionPlan,
     statistics,
+    pendingImportRecoveries: pendingImportRecoveries ?? [],
     diagnostics,
     errors: diagnostics.map(formatDesktopDiagnostic)
   };

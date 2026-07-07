@@ -12,6 +12,7 @@ import {
   getTaskDetail,
   getTaskExecutionOrder,
   getTodoGroups,
+  listPendingImportRecoveries,
   resolveTaskCanvasWorkspace,
   createDesktopPackageFileSnapshot,
   detectDesktopPackageFileChanges,
@@ -23,6 +24,7 @@ import {
   updateTaskPrompt
 } from "../desktop/index.js";
 import { buildDesktopGraphViewModelContext, buildGraphViewModel } from "../desktop/graph/readModel.js";
+import { ImportTransaction } from "../package/importTransaction.js";
 import { buildExecutionStatus } from "../taskManager/executionStatus.js";
 import { loadRuntime } from "../taskManager/runtimeContext.js";
 import { readJsonFile, writeJsonFile } from "../json.js";
@@ -357,6 +359,51 @@ describe("desktop graph read API", () => {
     await expect(getTodoGroups(root)).resolves.toEqual(snapshot.todoGroups);
     await expect(getProjectExecutionPlan(root)).resolves.toEqual(snapshot.executionPlan);
     await expect(getStatistics(root)).resolves.toEqual(snapshot.statistics);
+    await expect(listPendingImportRecoveries(root)).resolves.toEqual(snapshot.pendingImportRecoveries);
+  });
+
+  it("includes pending import recoveries in desktop project snapshots", async () => {
+    const { root, init } = await createTestWorkspace();
+    const transactionId = "desktop-snapshot-recovery";
+    const target = join(init.workspace.workspaceRoot, "desktop", "snapshot-recovery-target.txt");
+    const staged = join(init.workspace.workspaceRoot, "desktop", "snapshot-recovery-staged.txt");
+    await mkdir(join(init.workspace.workspaceRoot, "desktop"), { recursive: true });
+    await writeFile(target, "old target\n", "utf8");
+    await writeFile(staged, "new target\n", "utf8");
+    const transaction = await ImportTransaction.create({
+      workspaceRoot: init.workspace.workspaceRoot,
+      transactionId
+    });
+    await transaction.replacePath(target, staged);
+
+    const snapshot = await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
+
+    expect(snapshot.diagnostics).toEqual([]);
+    expect(snapshot.errors).toEqual([]);
+    expect(snapshot.pendingImportRecoveries).toMatchObject([
+      {
+        transactionId,
+        recoveryRoot: join(init.workspace.workspaceRoot, "desktop", "recovery", "package-import", transactionId),
+        operationCount: 1,
+        phases: ["installed"]
+      }
+    ]);
+  });
+
+  it("reports pending import recovery read failures as snapshot diagnostics", async () => {
+    const { root, init } = await createTestWorkspace();
+    await mkdir(join(init.workspace.workspaceRoot, "desktop", "recovery"), { recursive: true });
+    await writeFile(join(init.workspace.workspaceRoot, "desktop", "recovery", "package-import"), "not a directory", "utf8");
+
+    const snapshot = await getDesktopProjectSnapshot({ projectRoot: root, canvasId: null });
+
+    expect(snapshot.pendingImportRecoveries).toEqual([]);
+    expect(snapshot.diagnostics).toEqual([
+      expect.objectContaining({ code: "desktop_snapshot_part_failed", path: "pendingImportRecoveries" })
+    ]);
+    expect(snapshot.errors).toEqual([
+      expect.stringContaining("pendingImportRecoveries:")
+    ]);
   });
 
   it("keeps snapshot fields when one first-screen part fails", async () => {

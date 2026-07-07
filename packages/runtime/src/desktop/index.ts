@@ -85,6 +85,7 @@ export type { ProjectGraphEditResult } from "./projectGraphEditApi.js";
 export { readProjectPrompt, readProjectPromptPolicy, updateProjectPrompt, updateProjectPromptPolicy } from "../projectPromptPolicy.js";
 export type { ProjectPromptPolicy } from "../projectPromptPolicy.js";
 export { getDesktopGraphDiagnostics } from "./diagnosticsApi.js";
+export { listPendingImportRecoveries, rollbackPendingImportRecovery } from "./importRecoveryApi.js";
 export { applyCanvasLaneLayout, getDesktopLayout, resetDesktopLayout, saveDesktopLayout } from "./layoutApi.js";
 export type { ApplyCanvasLaneLayoutOptions } from "./layoutApi.js";
 export {

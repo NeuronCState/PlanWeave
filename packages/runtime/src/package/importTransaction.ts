@@ -29,6 +29,15 @@ type ImportTransactionRecoveryFile = {
   operations: ImportTransactionOperation[];
 };
 
+export type ImportTransactionRecoverySummary = {
+  transactionId: string;
+  recoveryRoot: string;
+  workspaceRoot: string;
+  createdAt: string;
+  operationCount: number;
+  phases: string[];
+};
+
 type ImportTransactionFileSystem = {
   mkdir: typeof mkdir;
   rename: typeof rename;
@@ -49,6 +58,19 @@ const nodeFileSystem: ImportTransactionFileSystem = {
 
 function errorSummary(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function assertValidImportTransactionId(transactionId: string): void {
+  if (
+    transactionId.length === 0 ||
+    transactionId === "." ||
+    transactionId === ".." ||
+    transactionId.includes("/") ||
+    transactionId.includes("\\") ||
+    /\s/.test(transactionId)
+  ) {
+    throw new Error(`Invalid import transaction id '${transactionId}'. Import transaction ids must be single recovery directory names.`);
+  }
 }
 
 function assertWorkspaceTarget(workspaceRoot: string, target: string): void {
@@ -133,6 +155,7 @@ function parseRecoveryFile(raw: unknown, recoveryFile: string): ImportTransactio
   if (typeof transactionId !== "string" || transactionId.length === 0) {
     throw new Error(`Invalid import transaction id in ${recoveryFile}.`);
   }
+  assertValidImportTransactionId(transactionId);
   if (typeof workspaceRoot !== "string" || workspaceRoot.length === 0) {
     throw new Error(`Invalid import transaction workspaceRoot in ${recoveryFile}.`);
   }
@@ -148,6 +171,52 @@ function parseRecoveryFile(raw: unknown, recoveryFile: string): ImportTransactio
     workspaceRoot: resolve(workspaceRoot),
     createdAt,
     operations: operations.map((operation) => parseOperation(operation, recoveryFile))
+  };
+}
+
+async function readValidatedRecoveryFile(options: {
+  workspaceRoot: string;
+  transactionId: string;
+  fs: ImportTransactionFileSystem;
+}): Promise<{
+  workspaceRoot: string;
+  recoveryRoot: string;
+  recovery: ImportTransactionRecoveryFile;
+}> {
+  const workspaceRoot = resolve(options.workspaceRoot);
+  assertValidImportTransactionId(options.transactionId);
+  const recoveryRoot = join(workspaceRoot, "desktop", "recovery", "package-import", options.transactionId);
+  const recoveryFile = join(recoveryRoot, "recovery.json");
+  const recovery = parseRecoveryFile(await options.fs.readJsonFile<unknown>(recoveryFile), recoveryFile);
+  if (recovery.transactionId !== options.transactionId) {
+    throw new Error(`Import transaction recovery id mismatch: expected '${options.transactionId}', found '${recovery.transactionId}'.`);
+  }
+  if (recovery.workspaceRoot !== workspaceRoot) {
+    throw new Error(`Import transaction recovery workspace mismatch: expected '${workspaceRoot}', found '${recovery.workspaceRoot}'.`);
+  }
+  for (const operation of recovery.operations) {
+    assertWorkspaceTarget(workspaceRoot, operation.target);
+    assertRecoveryBackupPath(recoveryRoot, operation.backupPath);
+  }
+  return { workspaceRoot, recoveryRoot, recovery };
+}
+
+export async function readImportTransactionRecoverySummary(options: {
+  workspaceRoot: string;
+  transactionId: string;
+}): Promise<ImportTransactionRecoverySummary> {
+  const { workspaceRoot, recoveryRoot, recovery } = await readValidatedRecoveryFile({
+    workspaceRoot: options.workspaceRoot,
+    transactionId: options.transactionId,
+    fs: nodeFileSystem
+  });
+  return {
+    transactionId: recovery.transactionId,
+    recoveryRoot,
+    workspaceRoot,
+    createdAt: recovery.createdAt,
+    operationCount: recovery.operations.length,
+    phases: [...new Set(recovery.operations.map((operation) => operation.phase))]
   };
 }
 
@@ -177,9 +246,11 @@ export class ImportTransaction {
     transactionId?: string;
     fs?: ImportTransactionFileSystem;
   }): Promise<ImportTransaction> {
+    const transactionId = options.transactionId ?? randomUUID();
+    assertValidImportTransactionId(transactionId);
     const transaction = new ImportTransaction({
       workspaceRoot: options.workspaceRoot,
-      transactionId: options.transactionId ?? randomUUID(),
+      transactionId,
       fs: options.fs ?? nodeFileSystem
     });
     await transaction.fs.mkdir(transaction.recoveryRoot, { recursive: true });
@@ -193,20 +264,11 @@ export class ImportTransaction {
     fs?: ImportTransactionFileSystem;
   }): Promise<ImportTransaction> {
     const fs = options.fs ?? nodeFileSystem;
-    const workspaceRoot = resolve(options.workspaceRoot);
-    const recoveryRoot = join(workspaceRoot, "desktop", "recovery", "package-import", options.transactionId);
-    const recoveryFile = join(recoveryRoot, "recovery.json");
-    const recovery = parseRecoveryFile(await fs.readJsonFile<unknown>(recoveryFile), recoveryFile);
-    if (recovery.transactionId !== options.transactionId) {
-      throw new Error(`Import transaction recovery id mismatch: expected '${options.transactionId}', found '${recovery.transactionId}'.`);
-    }
-    if (recovery.workspaceRoot !== workspaceRoot) {
-      throw new Error(`Import transaction recovery workspace mismatch: expected '${workspaceRoot}', found '${recovery.workspaceRoot}'.`);
-    }
-    for (const operation of recovery.operations) {
-      assertWorkspaceTarget(workspaceRoot, operation.target);
-      assertRecoveryBackupPath(recoveryRoot, operation.backupPath);
-    }
+    const { workspaceRoot, recovery } = await readValidatedRecoveryFile({
+      workspaceRoot: options.workspaceRoot,
+      transactionId: options.transactionId,
+      fs
+    });
     const transaction = new ImportTransaction({
       workspaceRoot,
       transactionId: recovery.transactionId,

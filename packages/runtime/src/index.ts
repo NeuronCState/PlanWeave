@@ -51,6 +51,10 @@ export {
   previewPackageDraftImport,
   validatePackageDraft
 } from "./package/packageDraftImport.js";
+export {
+  listPendingImportTransactions,
+  rollbackPendingImportTransaction
+} from "./package/importRecovery.js";
 export type {
   PackageDraftCanvasReport,
   PackageDraftFileDiff,
@@ -59,6 +63,7 @@ export type {
   PackageDraftMode,
   PackageDraftValidationResult
 } from "./package/packageDraftImport.js";
+export type { PendingImportTransaction } from "./package/importRecovery.js";
 export {
   compileProjectGraph,
   applyDefaultCanvasWorkspaceMigration,
@@ -210,6 +215,7 @@ export {
   getSourceDefaultProject,
   listSourceDefaultProjectCandidates,
   listBlockRunRecords,
+  listPendingImportRecoveries,
   openProject,
   refreshChangedDesktopPackagePrompts,
   refreshPackageFileChanges,
@@ -230,6 +236,7 @@ export {
   pauseAutoRun,
   resetDesktopRuntimeState,
   resumeAutoRun,
+  rollbackPendingImportRecovery,
   resetCanvasMapLayout,
   resetDesktopLayout,
   resolveSourceDefaultProjectRoot,

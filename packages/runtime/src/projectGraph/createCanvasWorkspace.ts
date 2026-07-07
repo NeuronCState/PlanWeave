@@ -35,13 +35,13 @@ export type CreateCanvasWorkspaceResult = {
   canvasRoot: string;
   packageDir: string;
   manifestPath: string;
-  projectPromptPath: string;
   taskPromptsDir: string;
   blockPromptsDir: string;
   statePath: string;
   resultsDir: string;
-  validationCommand: string;
-  qualityCommand: string;
+  canvasValidationArgs: string[];
+  projectValidationArgs: string[];
+  qualityArgs: string[];
 };
 
 const fallbackSlugPrefix = "canvas";
@@ -112,7 +112,6 @@ function resultForCanvas(input: {
   canvas: ProjectCanvasNode;
   title: string;
   projectGraphPath: string;
-  projectPromptPath: string;
   created: boolean;
   activated: boolean;
   canvasRoot: string;
@@ -131,13 +130,13 @@ function resultForCanvas(input: {
     canvasRoot: input.canvasRoot,
     packageDir: input.packageDir,
     manifestPath: input.manifestPath,
-    projectPromptPath: input.projectPromptPath,
     taskPromptsDir: nodesDir,
     blockPromptsDir: nodesDir,
     statePath: input.statePath,
     resultsDir: input.resultsDir,
-    validationCommand: `planweave validate --canvas ${input.canvas.id} --json`,
-    qualityCommand: `planweave graph quality --canvas ${input.canvas.id} --json`
+    canvasValidationArgs: ["validate", "--canvas", input.canvas.id, "--json"],
+    projectValidationArgs: ["validate", "--json"],
+    qualityArgs: ["graph", "quality", "--canvas", input.canvas.id, "--json"]
   };
 }
 
@@ -176,7 +175,6 @@ export async function createCanvasWorkspace(options: CreateCanvasWorkspaceOption
       canvas,
       title,
       projectGraphPath: graphPath,
-      projectPromptPath: loaded.workspace.projectPromptFile,
       created: false,
       activated: false,
       canvasRoot: canvasWorkspace.workspaceRoot,
@@ -217,7 +215,6 @@ export async function createCanvasWorkspace(options: CreateCanvasWorkspaceOption
     canvas,
     title,
     projectGraphPath: graphPath,
-    projectPromptPath: loaded.workspace.projectPromptFile,
     created: true,
     activated: options.activate === true,
     canvasRoot: canvasWorkspace.workspaceRoot,

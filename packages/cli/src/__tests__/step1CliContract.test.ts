@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, chmod, cp, mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -12,6 +12,13 @@ const cliWorkflowTimeoutMs = 120_000;
 async function runCli(args: string[], env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string }> {
   return execFileAsync("pnpm", ["--silent", "--filter", "@planweave-ai/cli", "planweave", ...args], {
     cwd: repoRoot,
+    env
+  });
+}
+
+async function runShellCommand(command: string, env: NodeJS.ProcessEnv, cwd: string): Promise<{ stdout: string; stderr: string }> {
+  return execFileAsync("sh", ["-c", command], {
+    cwd,
     env
   });
 }
@@ -45,6 +52,21 @@ function withoutInitCwd(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return next;
 }
 
+function shellQuoteArg(value: string): string {
+  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+async function installPlanweaveShim(binDir: string): Promise<void> {
+  await mkdir(binDir, { recursive: true });
+  const shimPath = join(binDir, "planweave");
+  await writeFile(
+    shimPath,
+    `#!/bin/sh\nexec ${shellQuoteArg(join(repoRoot, "node_modules", ".bin", "tsx"))} ${shellQuoteArg(join(repoRoot, "packages", "cli", "src", "index.ts"))} "$@"\n`,
+    "utf8"
+  );
+  await chmod(shimPath, 0o755);
+}
+
 type ExampleStatus = {
   tasks: Array<{ taskId: string; status: string; openFeedbackCount: number }>;
   blocks: Array<{ ref: string; status: string }>;
@@ -63,12 +85,31 @@ type ExampleStatus = {
 
 type ValidationReport = {
   ok: boolean;
+  errors: Array<{ code: string }>;
   warnings: Array<{ code: string }>;
 };
 
 type GraphQualityJsonReport = {
   ok: boolean;
   diagnostics: Array<{ code: string }>;
+};
+
+type CreateCanvasWorkspaceJsonResult = {
+  canvasId: string;
+  title: string;
+  created: boolean;
+  activated: boolean;
+  projectGraphPath: string;
+  canvasRoot: string;
+  packageDir: string;
+  manifestPath: string;
+  taskPromptsDir: string;
+  blockPromptsDir: string;
+  statePath: string;
+  resultsDir: string;
+  canvasValidationCommand: string;
+  projectValidationCommand: string;
+  qualityCommand: string;
 };
 
 type GraphTestBlock = {
@@ -183,6 +224,192 @@ describe("STEP-1 CLI contract", () => {
       source: "project_graph",
       canvasCount: 1
     });
+  }, 20_000);
+
+  it("creates a canvas through the CLI and returns stable JSON paths", async () => {
+    const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    const root = await mkdtemp(join(tmpdir(), "planweave project-"));
+    const env = withoutInitCwd({ ...process.env, PLANWEAVE_HOME: home });
+    const rootArgs = ["--project-root", root];
+    await runCli([...rootArgs, "init", "--project-graph", "--json"], env);
+
+    const result = JSON.parse(
+      (await runCli([...rootArgs, "canvas", "create", "--title", "Optimization Plan", "--json"], env)).stdout
+    ) as CreateCanvasWorkspaceJsonResult;
+
+    expect(Object.keys(result)).toEqual([
+      "canvasId",
+      "title",
+      "created",
+      "activated",
+      "projectGraphPath",
+      "canvasRoot",
+      "packageDir",
+      "manifestPath",
+      "taskPromptsDir",
+      "blockPromptsDir",
+      "statePath",
+      "resultsDir",
+      "canvasValidationCommand",
+      "projectValidationCommand",
+      "qualityCommand"
+    ]);
+    expect(result).toMatchObject({
+      canvasId: "optimization-plan",
+      title: "Optimization Plan",
+      created: true,
+      activated: false,
+      canvasValidationCommand: `planweave --project-root ${shellQuoteArg(root)} validate --canvas optimization-plan --json`,
+      projectValidationCommand: `planweave --project-root ${shellQuoteArg(root)} validate --json`,
+      qualityCommand: `planweave --project-root ${shellQuoteArg(root)} graph quality --canvas optimization-plan --json`
+    });
+    await expect(access(result.manifestPath)).resolves.toBeUndefined();
+    await expect(access(result.statePath)).resolves.toBeUndefined();
+    await expect(access(result.resultsDir)).resolves.toBeUndefined();
+
+    const shimBin = await mkdtemp(join(tmpdir(), "planweave-bin-"));
+    await installPlanweaveShim(shimBin);
+    const replayEnv = { ...env, PATH: `${shimBin}:${env.PATH ?? ""}` };
+    const unrelatedCwd = await mkdtemp(join(tmpdir(), "planweave-unrelated-"));
+
+    const validation = JSON.parse((await runShellCommand(result.canvasValidationCommand, replayEnv, unrelatedCwd)).stdout) as ValidationReport;
+    expect(validation.ok).toBe(true);
+    const projectValidation = JSON.parse((await runShellCommand(result.projectValidationCommand, replayEnv, unrelatedCwd)).stdout) as ValidationReport;
+    expect(projectValidation.ok).toBe(true);
+    const quality = JSON.parse((await runShellCommand(result.qualityCommand, replayEnv, unrelatedCwd)).stdout) as GraphQualityJsonReport;
+    expect(quality.ok).toBe(true);
+  }, 20_000);
+
+  it("returns replayable canvas commands when project root was passed as a relative path", async () => {
+    const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    const root = await mkdtemp(join(tmpdir(), "planweave-relative-project-"));
+    const env = withoutInitCwd({ ...process.env, PLANWEAVE_HOME: home });
+    await runCli(["--project-root", root, "init", "--project-graph", "--json"], env);
+
+    const shimBin = await mkdtemp(join(tmpdir(), "planweave-bin-"));
+    await installPlanweaveShim(shimBin);
+    const replayEnv = { ...env, PATH: `${shimBin}:${env.PATH ?? ""}` };
+    const result = JSON.parse(
+      (await runShellCommand(`planweave --project-root . canvas create --title ${shellQuoteArg("Relative Root Plan")} --json`, replayEnv, root)).stdout
+    ) as CreateCanvasWorkspaceJsonResult;
+    const replayProjectRoot = await realpath(root);
+
+    expect(result).toMatchObject({
+      canvasId: "relative-root-plan",
+      canvasValidationCommand: `planweave --project-root ${shellQuoteArg(replayProjectRoot)} validate --canvas relative-root-plan --json`,
+      projectValidationCommand: `planweave --project-root ${shellQuoteArg(replayProjectRoot)} validate --json`,
+      qualityCommand: `planweave --project-root ${shellQuoteArg(replayProjectRoot)} graph quality --canvas relative-root-plan --json`
+    });
+
+    const unrelatedCwd = await mkdtemp(join(tmpdir(), "planweave-unrelated-"));
+    const validation = JSON.parse((await runShellCommand(result.canvasValidationCommand, replayEnv, unrelatedCwd)).stdout) as ValidationReport;
+    expect(validation.ok).toBe(true);
+    const projectValidation = JSON.parse((await runShellCommand(result.projectValidationCommand, replayEnv, unrelatedCwd)).stdout) as ValidationReport;
+    expect(projectValidation.ok).toBe(true);
+    const quality = JSON.parse((await runShellCommand(result.qualityCommand, replayEnv, unrelatedCwd)).stdout) as GraphQualityJsonReport;
+    expect(quality.ok).toBe(true);
+  }, 20_000);
+
+  it("dedupes conflicting canvas ids through the CLI", async () => {
+    const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    const root = await mkdtemp(join(tmpdir(), "planweave-project-"));
+    const env = withoutInitCwd({ ...process.env, PLANWEAVE_HOME: home });
+    const rootArgs = ["--project-root", root];
+    await runCli([...rootArgs, "init", "--project-graph", "--json"], env);
+
+    const first = JSON.parse(
+      (await runCli([...rootArgs, "canvas", "create", "--id", "release-plan", "--title", "Release Plan", "--json"], env)).stdout
+    ) as CreateCanvasWorkspaceJsonResult;
+    const second = JSON.parse(
+      (await runCli([...rootArgs, "canvas", "create", "--id", "release-plan", "--title", "Release Plan Again", "--json"], env)).stdout
+    ) as CreateCanvasWorkspaceJsonResult;
+
+    expect(first.canvasId).toBe("release-plan");
+    expect(second.canvasId).toBe("release-plan-2");
+    await expect(access(first.canvasRoot)).resolves.toBeUndefined();
+    await expect(access(second.canvasRoot)).resolves.toBeUndefined();
+  }, 20_000);
+
+  it("keeps canvas create dry-runs free of filesystem side effects", async () => {
+    const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    const root = await mkdtemp(join(tmpdir(), "planweave-project-"));
+    const env = withoutInitCwd({ ...process.env, PLANWEAVE_HOME: home });
+    const rootArgs = ["--project-root", root];
+    const init = JSON.parse((await runCli([...rootArgs, "init", "--project-graph", "--json"], env)).stdout);
+    const graphBefore = await readFile(init.projectGraph.path, "utf8");
+
+    const result = JSON.parse(
+      (await runCli([...rootArgs, "canvas", "create", "--title", "Dry Run Plan", "--dry-run", "--json"], env)).stdout
+    ) as CreateCanvasWorkspaceJsonResult;
+
+    expect(result).toMatchObject({
+      canvasId: "dry-run-plan",
+      created: false,
+      activated: false
+    });
+    await expect(access(result.canvasRoot)).rejects.toThrow();
+    await expect(readFile(init.projectGraph.path, "utf8")).resolves.toBe(graphBefore);
+  }, 20_000);
+
+  it("activates a newly created canvas when requested", async () => {
+    const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    const root = await mkdtemp(join(tmpdir(), "planweave-project-"));
+    const env = withoutInitCwd({ ...process.env, PLANWEAVE_HOME: home });
+    const rootArgs = ["--project-root", root];
+    await runCli([...rootArgs, "init", "--project-graph", "--json"], env);
+
+    const result = JSON.parse(
+      (await runCli([...rootArgs, "canvas", "create", "--title", "Active Plan", "--activate", "--json"], env)).stdout
+    ) as CreateCanvasWorkspaceJsonResult;
+    const paths = JSON.parse((await runCli([...rootArgs, "paths", "--json"], env)).stdout) as { activeCanvasId: string | null };
+
+    expect(result).toMatchObject({
+      canvasId: "active-plan",
+      created: true,
+      activated: true
+    });
+    expect(paths.activeCanvasId).toBe("active-plan");
+  }, 20_000);
+
+  it("scopes validation only when --canvas is passed", async () => {
+    const home = await mkdtemp(join(tmpdir(), "planweave-home-"));
+    const root = await mkdtemp(join(tmpdir(), "planweave-project-"));
+    const env = { ...process.env, PLANWEAVE_HOME: home, INIT_CWD: root, PLANWEAVE_CANVAS_ID: "valid-canvas" };
+    const init = JSON.parse((await runCli(["--project-root", root, "init", "--project-graph", "--json"], env)).stdout);
+    const validCanvasId = "valid-canvas";
+    const validPackageDir = join(init.workspace.workspaceRoot, "canvases", validCanvasId, "package");
+
+    await mkdir(join(init.workspace.workspaceRoot, "canvases", validCanvasId), { recursive: true });
+    await cp(join(repoRoot, "examples/basic-plan-package/package"), validPackageDir, { recursive: true, force: true });
+    await writeFile(
+      join(init.workspace.workspaceRoot, "canvases", validCanvasId, "state.json"),
+      JSON.stringify({ currentRefs: [], currentFeedbackId: null, currentReviewBlockRef: null, tasks: {}, blocks: {}, feedback: {} }, null, 2),
+      "utf8"
+    );
+    await mkdir(join(init.workspace.workspaceRoot, "canvases", validCanvasId, "results"), { recursive: true });
+    const projectGraph = JSON.parse(await readFile(init.projectGraph.path, "utf8")) as {
+      canvases: Array<Record<string, unknown>>;
+    };
+    projectGraph.canvases.push({
+      id: validCanvasId,
+      type: "canvas",
+      title: "Valid canvas",
+      packageDir: `canvases/${validCanvasId}/package`,
+      stateFile: `canvases/${validCanvasId}/state.json`,
+      resultsDir: `canvases/${validCanvasId}/results`
+    });
+    await writeFile(init.projectGraph.path, `${JSON.stringify(projectGraph, null, 2)}\n`, "utf8");
+    await writeFile(init.workspace.manifestFile, "{ invalid json", "utf8");
+
+    const scopedValidation = JSON.parse(
+      (await runCli(["--project-root", init.project.rootPath, "validate", "--canvas", validCanvasId, "--json"], env)).stdout
+    ) as ValidationReport;
+    expect(scopedValidation.ok).toBe(true);
+
+    const fullValidationFailure = await runCliExpectFailure(["--project-root", init.project.rootPath, "validate", "--json"], env);
+    const fullValidation = JSON.parse(fullValidationFailure.stdout) as ValidationReport;
+    expect(fullValidation.ok).toBe(false);
+    expect(fullValidation.errors.map((error) => error.code)).toContain("manifest_read_failed");
   }, 20_000);
 
   it("rejects project-graph migrate before init", async () => {

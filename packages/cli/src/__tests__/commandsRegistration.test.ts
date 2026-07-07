@@ -30,6 +30,7 @@ describe("planweave CLI command registration", () => {
         "run-session",
         "executors",
         "run-status",
+        "canvas",
         "project-graph",
         "graph",
         "package-draft",
@@ -64,6 +65,10 @@ describe("planweave CLI command registration", () => {
     expect(commandOptionLongs("init")).toContain("--reset-package");
     expect(commandOptionLongs("init")).toContain("--reset-results");
     expect(commandOptionLongs("validate")).toContain("--json");
+    expect(commandOptionLongs("validate")).toContain("--canvas");
+    expect(subcommandOptionLongs("canvas", "create")).toEqual(
+      expect.arrayContaining(["--id", "--title", "--activate", "--dry-run", "--json"])
+    );
     expect(commandOptionLongs("status")).toContain("--json");
     expect(commandOptionLongs("status")).toContain("--canvas");
     expect(commandOptionLongs("use")).toEqual(expect.arrayContaining(["--source-root", "--clear", "--json"]));

@@ -35,8 +35,12 @@ describe("createCanvasWorkspace", () => {
 
     expect(first.canvasId).toBe("optimization-plan");
     expect(second.canvasId).toBe("optimization-plan-2");
-    expect(first.validationCommand).toBe("planweave validate --canvas optimization-plan --json");
-    expect(second.qualityCommand).toBe("planweave graph quality --canvas optimization-plan-2 --json");
+    expect(first.canvasValidationArgs).toEqual(["validate", "--canvas", "optimization-plan", "--json"]);
+    expect(first.projectValidationArgs).toEqual(["validate", "--json"]);
+    expect(second.qualityArgs).toEqual(["graph", "quality", "--canvas", "optimization-plan-2", "--json"]);
+    expect(first).not.toHaveProperty("projectPromptPath");
+    expect(first).not.toHaveProperty("validationCommand");
+    expect(first).not.toHaveProperty("qualityCommand");
   });
 
   it("uses a stable hash fallback when title has no ASCII slug", async () => {
@@ -99,7 +103,6 @@ describe("createCanvasWorkspace", () => {
       activated: false,
       packageDir: join(init.workspace.workspaceRoot, "canvases", "runtime-canvas", "package"),
       manifestPath: join(init.workspace.workspaceRoot, "canvases", "runtime-canvas", "package", "manifest.json"),
-      projectPromptPath: join(init.workspace.workspaceRoot, "policy", "project-prompt.md"),
       taskPromptsDir: join(init.workspace.workspaceRoot, "canvases", "runtime-canvas", "package", "nodes"),
       blockPromptsDir: join(init.workspace.workspaceRoot, "canvases", "runtime-canvas", "package", "nodes")
     });

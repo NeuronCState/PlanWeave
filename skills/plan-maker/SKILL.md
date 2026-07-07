@@ -14,11 +14,11 @@ Use this skill to design a PlanWeave package-shaped draft from incomplete input.
 3. Gather lightweight context from README, current code, schemas, tests, examples, and nearby docs.
 4. Identify core objects, lifecycle stages, contracts, risks, and validation paths.
 5. Draft canvases, tasks, blocks, formal project graph dependencies, prompt placement, review gates, verification, and the package files that would be written.
-6. End with open assumptions and the recommended handoff: refine with the user, audit with `plan-auditor`, or materialize by writing a draft root and running package draft validate/quality/import.
+6. End with open assumptions and the recommended next action: refine with the user, audit with `plan-auditor`, or materialize the draft when explicitly requested.
 
 ## Context Discovery
 
-- If strong source docs exist, prefer `plan-importer` instead of this skill.
+- If strong source docs exist and the main job is extraction/import, use `plan-importer`.
 - If no docs exist, inspect the current codebase enough to avoid invented architecture.
 - Search producers and consumers for likely core objects before splitting tasks.
 - Treat user goals as authority, but mark uncertain scope, missing domain rules, and unknown external dependencies.
@@ -77,17 +77,13 @@ Small plans may stay single-canvas and omit `project-graph.json` materialization
 
 Only materialize when the user explicitly asks to create/write/import the plan.
 
-1. Write the draft under a temporary draft root, not into the active PlanWeave package.
-2. Run `planweave package-draft validate --draft-root <draft> --json`.
-3. Run `planweave package-draft quality --draft-root <draft> --json`.
-4. Fix validation errors and serious quality errors in the draft root.
-5. Run `planweave package import --from <draft> --dry-run --json` and report the preview.
-6. Apply with `planweave package import --from <draft> --apply --json` only after confirmation when confirmation is required by the surrounding workflow.
-7. Re-check the imported package with `planweave validate --json` and `planweave graph quality --json`.
+1. Run `planweave init --json` and `planweave paths --json` from the target project root.
+2. Use CLI-returned workspace paths as the write boundary.
+3. Write `project-graph.json` when needed, plus each canvas `manifest.json`, task prompts, and block prompts under the declared package directories.
+4. Run `planweave validate --json`; fix validation errors.
+5. Run `planweave graph quality --json`; fix serious quality errors and report remaining warnings.
 
-For MCP clients, use `validate_package_draft`, `preview_package_import`, and `import_package_draft` with `apply: true` for the same flow.
-
-Do not route a plan-maker Markdown report through `plan-importer` as the normal materialization path. `plan-importer` is for strong existing source documents, not for reinterpreting this skill's own package-shaped draft.
+Use CLI/runtime commands for mechanical workspace operations: canvas creation, path allocation, id dedupe, active canvas selection, validation, recovery transactions, and runtime state/results changes. Edit Plan Package semantic files directly inside CLI-returned workspace paths: `project-graph.json` canvas intent and dependencies, each canvas `manifest.json` tasks/blocks/edges/acceptance/prompt paths, and source prompt Markdown. Use narrow CLI edit commands when they exactly express the semantic change; otherwise update the source package files and prompts directly. After direct plan edits, run canvas-scoped validation for edited canvases and project validation when `project-graph.json`, canvas edges, or `crossTaskEdges` changed.
 
 ## Prompt Placement
 

@@ -5,7 +5,7 @@ description: Review one assigned PlanWeave review gate and produce a pass or nee
 
 # Plan Reviewer
 
-Use this skill after the coordinator assigns one review gate. Judge the assigned work; do not implement fixes, claim new work, coordinate the plan, or repair runtime state.
+Use this skill after the coordinator assigns one review gate. Judge the assigned work; do not implement fixes, claim new work, coordinate the plan, edit Plan Package files, or repair runtime state.
 
 ## Required Packet
 
@@ -41,7 +41,13 @@ If key evidence is missing, ask the coordinator for it instead of guessing.
 
 - Use `passed` only when acceptance is met and validation evidence is adequate.
 - Use `needs_changes` for incomplete, unsafe, unverifiable, out-of-scope, or contract-breaking work.
-- Do not encode blocked, diverged, missing evidence, or tool failure as a review verdict; return `NEEDS_COORDINATOR`.
+- Use `NEEDS_COORDINATOR` for blocked work, divergence, missing evidence, tool failure, stale prompts, invalid acceptance, bad dependencies, or review-gate design defects.
+- Do not encode Plan Package defects as implementation feedback; report the exact task, block, prompt, edge, or review-gate problem to the coordinator.
+
+## Boundaries
+
+- Do not edit implementation files, `project-graph.json`, canvas `manifest.json`, source prompt Markdown, `state.json`, or `results/`.
+- Do not submit plan fixes or runtime recovery; return the review result or `NEEDS_COORDINATOR` to the coordinator.
 
 ## Result Shape
 

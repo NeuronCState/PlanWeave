@@ -5,7 +5,7 @@ description: Review an already-authored PlanWeave plan for goal coverage, data-f
 
 # Plan Auditor
 
-Use this skill to audit an existing PlanWeave plan. Do not import a new plan, execute blocks, repair state, or rewrite the package unless the user explicitly asks.
+Use this skill to audit an existing PlanWeave plan. The default output is findings and revision order; do not import a new plan, execute blocks, repair state, or rewrite the package while auditing.
 
 ## Quick Start
 1. Find the authority sources: user request, PRD, schema, design docs, current code, and the PlanWeave package.
@@ -14,6 +14,12 @@ Use this skill to audit an existing PlanWeave plan. Do not import a new plan, ex
 4. Compare the plan against real goals, data-flow coverage, object lifecycles, contracts, execution order, prompts, failure paths, and verification criteria.
 5. Report a verdict first: `PASS`, `NEEDS_REVISION`, or `BLOCKED`.
 6. List findings by severity, with evidence and concrete plan changes.
+
+## Plan Update Boundary
+
+- Audit findings name the needed task, block, edge, prompt, review, or validation update; they do not apply the change.
+- If the user explicitly asks to apply revisions, finish the audit first, then use the Plan Package semantic editing boundary: resolve CLI workspace paths, edit only `project-graph.json`, canvas `manifest.json`, and source prompt Markdown needed for the revision, and run canvas-scoped plus project validation.
+- Do not edit runtime `state.json`, `results/`, active canvas selection, recovery transactions, or implementation artifacts from this skill.
 
 ## Required Output
 

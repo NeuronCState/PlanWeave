@@ -1,11 +1,11 @@
 ---
 name: plan-importer
-description: Generate a block-level PlanWeave package draft from project documentation, validate it, preview import, and apply it through the PlanWeave draft import flow. Use when importing plans, PRDs, roadmaps, issue sets, or architecture notes into a PlanWeave package.
+description: Import existing project documentation into a block-level PlanWeave Plan Package and validate it through the PlanWeave CLI. Use when importing plans, PRDs, roadmaps, issue sets, or architecture notes into a PlanWeave package.
 ---
 
 # Plan Importer
 
-Use this skill to turn strong project planning material into a PlanWeave package draft and import it through PlanWeave's dry-run and transactional import path. Do not use this skill as the normal next step after `plan-maker`; `plan-maker` should materialize its own package-shaped draft when asked.
+Use this skill to turn strong project planning material into a PlanWeave Plan Package.
 
 ## Command Entry
 
@@ -18,6 +18,16 @@ Resolve the command before writing files:
 
 Write examples as `<pw> ...`, where `<pw>` is the resolved command.
 
+Use the CLI to resolve the target workspace before writing files:
+
+```text
+<pw> init --json
+<pw> paths --json
+<pw> validate --json
+```
+
+Use the CLI for command discovery, workspace/path resolution, and validation in this workflow. Materialize imports by writing package files directly into the CLI-returned PlanWeave workspace paths.
+
 ## Workspace
 
 - Run `<pw>` from the target project root, not from the PlanWeave repo unless PlanWeave itself is the target project.
@@ -26,29 +36,32 @@ Write examples as `<pw> ...`, where `<pw>` is the resolved command.
   - macOS: `~/.planweave`
   - Linux: `~/.planweave`
   - Windows: `%USERPROFILE%\.planweave`
-- Read exact workspace paths from `<pw> init --json` or `<pw> paths --json`.
-- For draft imports, write first to a temporary draft root, not the active package.
-- Use `workspace.packageDir` / `packageDir` only to understand the current target package path for preview/apply validation; do not write there directly before import.
-- A single-canvas draft root contains `manifest.json`, prompt files, and optional layout files.
-- A formal multi-canvas draft root contains `project-graph.json` plus each canvas package under the package directories named by that project graph.
+- Read exact workspace paths from `<pw> init --json` and `<pw> paths --json`.
+- Write only inside CLI-returned PlanWeave workspace paths, such as `workspaceRoot`, `projectGraphPath`, and package directories under that workspace.
+- For a single-canvas import with an explicit existing target canvas, write only inside that canvas package directory.
+- For a single-canvas import without an explicit target canvas, do not overwrite the existing default/current canvas. Create a new formal canvas entry in `project-graph.json`, allocate a collision-free canvas id, and write the imported package under that canvas package directory.
+- For formal multi-canvas plans, write `project-graph.json` at the returned project/workspace root and write each canvas package only under the package directories named by that project graph.
 - Treat CLI-returned project/workspace and package directories as the only writable PlanWeave locations.
-- For the draft import workflow, write to active CLI-returned locations only after dry-run preview and confirmed apply.
+
+## Plan File Editing Boundary
+
+- Use CLI/runtime commands for mechanical workspace operations: canvas creation, path allocation, id dedupe, active canvas selection, validation, recovery transactions, and runtime state/results changes.
+- Edit Plan Package semantic files directly inside CLI-returned workspace paths: `project-graph.json` canvas intent and dependencies, each canvas `manifest.json` tasks/blocks/edges/acceptance/prompt paths, and source prompt Markdown.
+- Use narrow CLI edit commands when they exactly express the semantic change; otherwise update the source package files and prompts directly.
+- After direct plan edits, run canvas-scoped validation for edited canvases and project validation when `project-graph.json`, canvas edges, or `crossTaskEdges` changed.
 
 ## Import Workflow
 
 1. Scan README, planning docs, ADRs, issues, specs, domain notes, and referenced source files.
 2. Record the scanned source list before writing.
-3. Extract executable Task Nodes and Blocks; task canvas graphs are task-only.
+3. Extract the PlanWeave package structure: project graph, canvases, tasks, blocks, dependencies, prompt placement, layout hints, and verification strategy.
 4. Do not create context nodes. Put goals, requirements, constraints, risks, references, and architecture gates into project/global prompt, task acceptance, task prompt, or block prompt.
 5. Run the Plan Quality Gate below before writing. Build a coverage map: each task has concrete acceptance, each block has verifiable done criteria, and key requirements have an explicit prompt placement.
-6. Choose one canvas or a formal multi-canvas project graph. For multi-canvas imports, plan `project-graph.json` first, then each canvas `manifest.json`.
-7. Write the draft to a temporary draft root. Do not write directly into the active package.
-8. Run `<pw> package-draft validate --draft-root <draft> --json`; fix validation errors.
-9. Run `<pw> package-draft quality --draft-root <draft> --json`; fix serious quality errors and record warnings.
-10. Run `<pw> package import --from <draft> --dry-run --json`; inspect the file/effect preview and confirm it targets the intended project/canvas.
-11. Apply with `<pw> package import --from <draft> --apply --json` only after confirmation when the surrounding workflow requires it.
-12. Re-run `<pw> validate --json` and `<pw> graph quality --json` after import.
-13. Output a Plan Import Report listing source docs, command entry, draft root, project graph path when present, package paths, prompt placement, canvas strategy, review strategy, import preview, apply result, and validation/quality result.
+6. Choose an explicit existing canvas, a new single imported canvas, or a formal multi-canvas project graph. If the user did not explicitly ask to replace an existing canvas, create a new canvas instead of writing into `default`.
+7. Run `<pw> init --json` and `<pw> paths --json`; use those outputs as the authority for workspace location.
+8. Materialize the plan: update `project-graph.json` when creating a new canvas or multi-canvas plan, then write each canvas `manifest.json`, task prompts, and block prompts under the declared package directories.
+9. Run `<pw> validate --json`; fix validation errors and weak importer-created coverage.
+10. Output a Plan Import Report listing source docs, command entry, project graph path when present, package paths, prompt placement, canvas strategy, review strategy, and validation result.
 
 ## Plan Quality Gate
 
@@ -105,7 +118,7 @@ When writing a formal multi-canvas plan, include:
 - explicit `crossTaskEdges` for blockers from one canvas task to another canvas task.
 - no context nodes, feedback nodes, runtime state, or layout-only graph mirrors.
 
-After writing the draft, validate with `<pw> package-draft validate --draft-root <draft> --json` and `<pw> package-draft quality --draft-root <draft> --json`; project graph schema/read/compile diagnostics such as missing canvas refs, missing cross-task refs, and cycles must be fixed before reporting success.
+After writing, validate with `<pw> validate --json`; project graph schema/read/compile diagnostics such as missing canvas refs, missing cross-task refs, and cycles must be fixed before reporting success.
 
 ## Block Shape
 
@@ -114,6 +127,7 @@ Each block needs `id`, `type`, `title`, `prompt`, `depends_on`, parallel safety/
 ## Rules
 
 - Treat `project-graph.json` (when present), each canvas `manifest.json`, source prompts, and task/block prompt files as plan content source of truth.
+- If the user provides existing package-shaped files, verify their structure and materialize them directly into the target workspace files.
 - Do not create `feedback` block types; feedback is runtime state.
 - Do not write implementation state into the manifest.
 - Use `state.json` only for runtime task/block/feedback state.

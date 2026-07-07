@@ -5,7 +5,7 @@ description: Coordinate end-to-end PlanWeave execution as the main agent by insp
 
 # Plan Coordinator
 
-Use this skill as the main agent/controller for a PlanWeave package. The coordinator thread is a dispatcher only: it must not implement blocks, review gates, feedback fixes, edit target source files, or write implementation/review artifacts itself.
+Use this skill as the main agent/controller for a PlanWeave package. The coordinator thread is a dispatcher only: it must not implement blocks, review gates, feedback fixes, edit target source files, edit Plan Package files, or write implementation/review artifacts itself.
 
 `plan-runner`, `plan-reviewer`, and `plan-recovery` are role instructions for worker subagents. They are not permission for the coordinator to switch roles inside the same thread. If current-agent or manual work cannot be handed to a native subagent mechanism, stop and report `NEEDS_COORDINATOR` unless the user explicitly authorizes coordinator fallback.
 
@@ -87,6 +87,7 @@ Every subagent handoff should include:
 - submit command or instruction to return the artifact to the coordinator.
 - validation commands or observable completion criteria.
 - scope boundaries and files not to touch.
+- for plan update handoffs, CLI-returned workspace paths, exact semantic files expected to change, and canvas-scoped plus project validation commands when project graph dependencies may change.
 
 The coordinator may submit an artifact after a worker returns it, but must not author the implementation report, feedback report, or review-result JSON itself.
 
@@ -109,10 +110,11 @@ The coordinator may submit an artifact after a worker returns it, but must not a
 
 ## Recovery Boundary
 
-- Use `plan-recovery` before running repair commands or editing package/state files.
+- Use `plan-recovery` before runtime repair commands, state/results changes, or Plan Package reconciliation.
 - Keep plan defects separate from PlanWeave toolchain defects.
 - Treat `doctor` as a state/results consistency probe, not a general plan repair tool.
-- For bad dependencies, wrong parallelization, missing prompts, or review-gate design problems, route to manual Plan Package adjustment instead of `doctor --repair`.
+- For bad dependencies, wrong parallelization, missing prompts, or review-gate design problems, stop dependent dispatch and hand off a Plan Package update instead of `doctor --repair`.
+- The coordinator must not directly edit `project-graph.json`, canvas `manifest.json`, or source prompt Markdown; include the target paths and validation commands in the worker handoff.
 - Do not hide partial success, duplicate runs, stale current refs, or orphan artifacts.
 - If package changes are needed to resolve divergence, pause dependent execution until the package is reconciled.
 

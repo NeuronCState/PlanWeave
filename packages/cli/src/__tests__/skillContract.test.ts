@@ -14,9 +14,12 @@ describe("agent skill contract docs", () => {
     expect(skill).toContain("Linux: `~/.planweave`");
     expect(skill).toContain("Windows: `%USERPROFILE%\\.planweave`");
     expect(skill).toContain("<pw> paths --json");
-    expect(skill).toContain("workspace.packageDir");
+    expect(skill).toContain("package directories under that workspace");
     expect(skill).toContain("project-graph.json");
     expect(skill).toContain("Treat CLI-returned project/workspace and package directories as the only writable PlanWeave locations.");
+    expect(skill).toContain("Plan File Editing Boundary");
+    expect(skill).toContain("Use CLI/runtime commands for mechanical workspace operations");
+    expect(skill).toContain("Edit Plan Package semantic files directly inside CLI-returned workspace paths");
   });
 
   it("documents importer task-only defaults, prompt placement, and canvas/review strategy", async () => {
@@ -51,7 +54,7 @@ describe("agent skill contract docs", () => {
 
     expect(skill).toContain("Use when the user asks to make, draft, design, break down, or plan PlanWeave work");
     expect(skill).toContain("Do not execute work, audit an existing package, or write a Plan Package unless the user explicitly asks.");
-    expect(skill).toContain("If strong source docs exist, prefer `plan-importer` instead of this skill.");
+    expect(skill).toContain("If strong source docs exist and the main job is extraction/import, use `plan-importer`.");
     expect(skill).toContain("Design around core object lifecycles");
     expect(skill).toContain("Do not import other projects' skills");
     expect(skill).toContain("model orchestration as a formal project graph");
@@ -60,6 +63,8 @@ describe("agent skill contract docs", () => {
     expect(skill).toContain("complex blocks must include architecture boundaries");
     expect(skill).toContain("## Task Graph");
     expect(skill).toContain("This skill produces a plan draft, not runtime state.");
+    expect(skill).toContain("Use CLI/runtime commands for mechanical workspace operations");
+    expect(skill).toContain("Edit Plan Package semantic files directly inside CLI-returned workspace paths");
   });
 
   it("documents execution-stage skill split for coordinator, reviewer, and recovery", async () => {
@@ -82,16 +87,23 @@ describe("agent skill contract docs", () => {
     expect(coordinator).toContain("Surface inherited prompt sources before dispatching");
     expect(coordinator).toContain("If the active tool exposes close, archive, or stop controls for subagents, close completed, failed, or idle subagents after their report is captured.");
     expect(coordinator).toContain("Treat `doctor` as a state/results consistency probe, not a general plan repair tool.");
-    expect(reviewer).toContain("do not implement fixes, claim new work, coordinate the plan, or repair runtime state");
+    expect(coordinator).toContain("edit Plan Package files");
+    expect(coordinator).toContain("for plan update handoffs, CLI-returned workspace paths");
+    expect(coordinator).toContain("stop dependent dispatch and hand off a Plan Package update instead of `doctor --repair`");
+    expect(coordinator).toContain("must not directly edit `project-graph.json`, canvas `manifest.json`, or source prompt Markdown");
+    expect(reviewer).toContain("do not implement fixes, claim new work, coordinate the plan, edit Plan Package files, or repair runtime state");
     expect(reviewer).toContain("Do not run `claim-next`");
     expect(reviewer).toContain("submit only if the coordinator explicitly asked you to submit");
-    expect(reviewer).toContain("Do not encode blocked, diverged, missing evidence, or tool failure as a review verdict");
+    expect(reviewer).toContain("Use `NEEDS_COORDINATOR` for blocked work, divergence, missing evidence, tool failure, stale prompts, invalid acceptance, bad dependencies, or review-gate design defects.");
+    expect(reviewer).toContain("Do not encode Plan Package defects as implementation feedback");
+    expect(reviewer).toContain("Do not edit implementation files, `project-graph.json`, canvas `manifest.json`, source prompt Markdown, `state.json`, or `results/`");
     expect(recovery).toContain("Do not perform normal implementation or review work.");
     expect(recovery).toContain("`doctor --repair` is not a general plan repair tool.");
     expect(recovery).toContain("schema-invalid package structure");
     expect(recovery).toContain("invalid project graph");
     expect(recovery).toContain("planweave schema project/manifest/state/layout");
     expect(recovery).toContain("For plan defects, report `NEEDS_PLAN_UPDATE`");
+    expect(recovery).toContain("edit Plan Package semantic files directly inside CLI-returned workspace paths when the repair is a plan update");
     expect(recovery).toContain("verdict: `RECOVERED`, `NEEDS_PLAN_UPDATE`, or `BLOCKED`.");
   });
 
@@ -113,6 +125,8 @@ describe("agent skill contract docs", () => {
     expect(skill).toContain("submit only if the coordinator explicitly asked you to submit");
     expect(skill).toContain("Do not treat mock, dry-run, fixture-only tests, or uncalled APIs as live completion");
     expect(skill).toContain("return `NEEDS_COORDINATOR`");
+    expect(skill).toContain("bad dependencies, missing prompts, invalid acceptance, wrong review gate design, or stale task scope");
+    expect(skill).toContain("Do not edit `project-graph.json`, canvas `manifest.json`, source prompt Markdown, or other Plan Package files");
     expect(skill).toContain("Do not coordinate multiple blocks, canvases, or subagents; use `plan-coordinator`.");
   });
 
@@ -120,7 +134,11 @@ describe("agent skill contract docs", () => {
     const skill = await readFile(join(repoRoot, "skills/plan-auditor/SKILL.md"), "utf8");
 
     expect(skill).toContain("Use when auditing, reviewing, checking, or challenging a PlanWeave plan before execution.");
-    expect(skill).toContain("Do not import a new plan, execute blocks, repair state, or rewrite the package");
+    expect(skill).toContain("The default output is findings and revision order");
+    expect(skill).toContain("Plan Update Boundary");
+    expect(skill).toContain("Audit findings name the needed task, block, edge, prompt, review, or validation update; they do not apply the change.");
+    expect(skill).toContain("If the user explicitly asks to apply revisions, finish the audit first");
+    expect(skill).toContain("Do not edit runtime `state.json`, `results/`, active canvas selection, recovery transactions, or implementation artifacts from this skill.");
     expect(skill).toContain("Before judging task completeness");
     expect(skill).toContain("Flow Coverage table before findings.");
     expect(skill).toContain("| Flow | Trigger/Input | Core Processing | External Dependency | State/Storage | Interface/Consumer | Output/Side Effect | Failure Path | Verification | Gaps |");

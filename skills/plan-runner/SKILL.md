@@ -5,7 +5,7 @@ description: Execute one assigned PlanWeave implementation block with scoped cod
 
 # Plan Runner
 
-Use this skill after the coordinator assigns one implementation block. Focus on completing that block precisely; do not schedule, discover, or repair PlanWeave state.
+Use this skill after the coordinator assigns one implementation block. Focus on completing that block precisely; do not schedule, discover, repair PlanWeave state, or reconcile the Plan Package.
 
 ## Required Packet
 
@@ -37,6 +37,7 @@ If any required item is missing, ask the coordinator for it instead of claiming 
 - Keep schema/type/API/CLI/file/prompt contracts aligned between producers and consumers.
 - Preserve unrelated files and behavior.
 - If the prompt is empty, contradictory, stale, blocked, diverged, or points at missing source files, stop and return `NEEDS_COORDINATOR`.
+- If the assigned block cannot be completed because the plan has bad dependencies, missing prompts, invalid acceptance, wrong review gate design, or stale task scope, stop and return `NEEDS_COORDINATOR` with the exact plan defect.
 
 ## Report
 
@@ -53,5 +54,6 @@ Include:
 
 - Do not execute review gates; use `plan-reviewer`.
 - Do not coordinate multiple blocks, canvases, or subagents; use `plan-coordinator`.
+- Do not edit `project-graph.json`, canvas `manifest.json`, source prompt Markdown, or other Plan Package files; report plan defects to the coordinator.
 - Do not run `doctor --repair`, unblock, resolve divergence, or edit `state.json` / `results/`; use `plan-recovery`.
 - Do not create feedback blocks; feedback is runtime state.

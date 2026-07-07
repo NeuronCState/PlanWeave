@@ -11,9 +11,9 @@ Use this skill for abnormal PlanWeave execution state. Do not perform normal imp
 
 1. Stop dispatching dependent work.
 2. Resolve the CLI entry and run `<pw> help recovery` for exact commands.
-3. Inspect current/status/explain output; run doctor only for state/results consistency questions.
+3. Inspect package, state, results, and current/status/explain output; run doctor only for state/results consistency questions.
 4. Separate plan defects from runtime state/results drift.
-5. Prefer CLI repair and explicit recovery commands over direct file edits.
+5. Use exact recovery commands for state writes when they express the needed repair; inspect files directly for evidence.
 6. Report what was repaired, what remains unsafe, and the next coordinator action.
 
 ## Doctor Boundary
@@ -39,7 +39,7 @@ Check:
 ## Recovery Actions
 
 - Use doctor before state/results repair; use repair only when the reported fix is narrow and evidence-backed.
-- Continue using CLI when status/current/explain agree with package files; treat CLI as a reference only when they conflict.
+- Read package/state/results directly when CLI output is incomplete, contradictory, or too summarized for diagnosis.
 - If CLI cannot safely claim/submit, have the coordinator read package/state/results and manually assign exact refs until write-back is safe.
 - Use blocked/unblocked commands for external prerequisites or temporary stops.
 - Use diverged/resolve-divergence when implementation reality no longer matches the Plan Package.
@@ -50,12 +50,16 @@ Check:
 
 ## Manual Fallback
 
-Direct file inspection is allowed when CLI output contradicts files:
+Direct file inspection is part of recovery:
 
 - read `project-graph.json` when present, each canvas `package/manifest.json`, source prompts, `state.json`, `results/`, and `planweave schema project/manifest/state/layout` when structure is suspect.
 - verify metadata belongs to the same task/block/run before trusting indexes.
-- do not edit `state.json` or `results/` directly unless CLI repair cannot express the fix and the user accepts the risk.
-- preserve evidence paths and explain why CLI write-back was unavailable.
+- use CLI/runtime commands for mechanical workspace operations, validation, recovery transactions, and runtime state/results changes.
+- edit Plan Package semantic files directly inside CLI-returned workspace paths when the repair is a plan update: `project-graph.json` dependencies, canvas `manifest.json` tasks/blocks/edges/acceptance/prompt paths, and source prompt Markdown.
+- use narrow CLI edit commands when they exactly express the semantic change; otherwise update the source package files and prompts directly.
+- edit `state.json` or `results/` directly only when no recovery command expresses the fix, the exact invariant is known, and the user accepts the risk.
+- after direct plan edits, run canvas-scoped validation for edited canvases and project validation when `project-graph.json`, canvas edges, or `crossTaskEdges` changed.
+- preserve evidence paths and explain any direct state/results write.
 
 ## Stop Conditions
 

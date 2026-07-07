@@ -124,11 +124,22 @@ export type FloatingControlDrag = {
   maxTop: number;
 };
 
-export type NotificationItem = {
+type BaseNotificationItem = {
   id: string;
   title: string;
   detail: string;
   tone: "destructive" | "secondary" | "outline";
+};
+
+export type NotificationItemDraft =
+  | (BaseNotificationItem & {
+      kind?: "fileSync" | "promptConflict" | "default";
+    })
+  | (BaseNotificationItem & {
+      kind: "importRecovery";
+      transactionId: string;
+    });
+
+export type NotificationItem = NotificationItemDraft & {
   read: boolean;
-  kind?: "fileSync" | "promptConflict" | "default";
 };

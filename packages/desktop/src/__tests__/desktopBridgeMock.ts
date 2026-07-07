@@ -8,6 +8,7 @@ export function createDesktopBridgeMock(overrides: Partial<DesktopBridgeApi> = {
     getDesktopRuntimeRefresh: vi.fn().mockResolvedValue({ latestAutoRun: null, diagnostics: [], errors: [] }),
     getLatestAutoRunSummaryWithDiagnostics: vi.fn().mockResolvedValue({ state: null, diagnostics: [] }),
     getRunTerminalAvailability: vi.fn().mockResolvedValue([]),
+    listPendingImportRecoveries: vi.fn().mockResolvedValue([]),
     onAutoRunChanged: () => () => undefined,
     onPackageFileChanged: () => () => undefined,
     onRuntimeStateChanged: () => () => undefined

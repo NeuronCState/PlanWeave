@@ -86,6 +86,15 @@ const runtimeMock = vi.hoisted(() => {
         tmuxSessionName: "planweave-T-001-B-001-RUN-001-abcd1234"
       }
     })),
+    listPendingImportRecoveries: vi.fn(async () => [
+      {
+        transactionId: "import-tx-1",
+        recoveryRoot: "/tmp/project/desktop/recovery/package-import/import-tx-1",
+        createdAt: "2026-07-06T00:00:00.000Z",
+        operationCount: 2,
+        phases: ["prepared", "applied"]
+      }
+    ]),
     resetDesktopRuntimeState: vi.fn(async (projectRoot: string, canvasId: string | null | undefined, options: unknown) => ({
       projectRoot,
       canvasId,
@@ -101,6 +110,7 @@ const runtimeMock = vi.hoisted(() => {
       canvasId,
       source: "task"
     })),
+    rollbackPendingImportRecovery: vi.fn(async () => undefined),
     testExecutorProfile: vi.fn(async (options: unknown) => ({
       name: "codex",
       adapter: "codex-exec",
@@ -142,9 +152,11 @@ vi.mock("@planweave-ai/runtime", async () => {
     getDesktopRuntimeRefresh: runtimeMock.getDesktopRuntimeRefresh,
     getGraphViewModel: runtimeMock.getGraphViewModel,
     getRunRecord: runtimeMock.getRunRecord,
+    listPendingImportRecoveries: runtimeMock.listPendingImportRecoveries,
     resetDesktopRuntimeState: runtimeMock.resetDesktopRuntimeState,
     resolveProjectCanvasWorkspace: runtimeMock.resolveProjectCanvasWorkspace,
     resolveTaskCanvasWorkspace: runtimeMock.resolveTaskCanvasWorkspace,
+    rollbackPendingImportRecovery: runtimeMock.rollbackPendingImportRecovery,
     testExecutorProfile: runtimeMock.testExecutorProfile,
     subscribeAutoRunEvents: runtimeMock.subscribeAutoRunEvents
   };
@@ -179,9 +191,11 @@ describe("runtime bridge handlers", () => {
     runtimeMock.getDesktopRuntimeRefresh.mockClear();
     runtimeMock.getGraphViewModel.mockClear();
     runtimeMock.getRunRecord.mockClear();
+    runtimeMock.listPendingImportRecoveries.mockClear();
     runtimeMock.resetDesktopRuntimeState.mockClear();
     runtimeMock.resolveProjectCanvasWorkspace.mockClear();
     runtimeMock.resolveTaskCanvasWorkspace.mockClear();
+    runtimeMock.rollbackPendingImportRecovery.mockClear();
     runtimeMock.testExecutorProfile.mockClear();
     runtimeMock.subscribeAutoRunEvents.mockClear();
   });
@@ -288,6 +302,40 @@ describe("runtime bridge handlers", () => {
 
     expect(runtimeMock.resolveTaskCanvasWorkspace).not.toHaveBeenCalled();
     expect(runtimeMock.resetDesktopRuntimeState).toHaveBeenCalledWith("/tmp/project", "canvas-a", options);
+  });
+
+  it("lists pending import recoveries through the runtime recovery API", async () => {
+    const { registerRuntimeBridgeHandlers } = await import("../main/runtimeBridgeHandlers");
+    registerRuntimeBridgeHandlers();
+
+    const handler = electronMock.handlers.get(desktopBridgeInvokeChannels.listPendingImportRecoveries);
+    expect(handler).toBeDefined();
+
+    await expect(handler?.(null, "/tmp/project")).resolves.toEqual([
+      {
+        transactionId: "import-tx-1",
+        recoveryRoot: "/tmp/project/desktop/recovery/package-import/import-tx-1",
+        createdAt: "2026-07-06T00:00:00.000Z",
+        operationCount: 2,
+        phases: ["prepared", "applied"]
+      }
+    ]);
+
+    expect(runtimeMock.resolveTaskCanvasWorkspace).not.toHaveBeenCalled();
+    expect(runtimeMock.listPendingImportRecoveries).toHaveBeenCalledWith("/tmp/project");
+  });
+
+  it("rolls back a pending import recovery through the runtime recovery API", async () => {
+    const { registerRuntimeBridgeHandlers } = await import("../main/runtimeBridgeHandlers");
+    registerRuntimeBridgeHandlers();
+
+    const handler = electronMock.handlers.get(desktopBridgeInvokeChannels.rollbackPendingImportRecovery);
+    expect(handler).toBeDefined();
+
+    await handler?.(null, "/tmp/project", "import-tx-1");
+
+    expect(runtimeMock.resolveTaskCanvasWorkspace).not.toHaveBeenCalled();
+    expect(runtimeMock.rollbackPendingImportRecovery).toHaveBeenCalledWith("/tmp/project", "import-tx-1");
   });
 
   it("resolves canvas references before testing executor profiles", async () => {

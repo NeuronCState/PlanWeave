@@ -33,6 +33,7 @@ import type {
   DesktopReviewPipeline,
   DesktopUpdateReviewPipelineInput
 } from "./reviewPipelineTypes.js";
+import type { PendingImportTransaction } from "../../package/importRecovery.js";
 import type {
   DesktopPackageFileChangeEvent,
   DesktopPackageFileRefreshOptions,
@@ -192,6 +193,8 @@ export type DesktopBridgeApi = {
   updateProjectPrompt(projectRoot: string, markdown: string): Promise<string>;
   readProjectPromptPolicy(projectRoot: string): Promise<ProjectPromptPolicy>;
   updateProjectPromptPolicy(projectRoot: string, patch: Partial<ProjectPromptPolicy>): Promise<ProjectPromptPolicy>;
+  listPendingImportRecoveries(projectRoot: string): Promise<PendingImportTransaction[]>;
+  rollbackPendingImportRecovery(projectRoot: string, transactionId: string): Promise<void>;
   listBlockRunRecords(ref: DesktopCanvasReference, blockRef: string): Promise<DesktopBlockRunRecordSummary[]>;
   getRunRecord(ref: DesktopCanvasReference, recordId: string): Promise<DesktopRunRecord>;
   getReviewAttempts(ref: DesktopCanvasReference, blockRef: string): Promise<DesktopReviewAttemptSummary[]>;

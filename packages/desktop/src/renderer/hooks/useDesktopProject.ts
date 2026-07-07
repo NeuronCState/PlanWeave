@@ -9,6 +9,7 @@ import type {
   DesktopRuntimeStateChangeEvent,
   DesktopStatistics,
   DesktopTodoGroups,
+  PendingImportTransaction,
   ValidationIssue,
   ProjectPromptPolicy
 } from "@planweave-ai/runtime";
@@ -74,6 +75,7 @@ export function useDesktopProject({
   const [runtimeRefreshSnapshot, setRuntimeRefreshSnapshot] = useState<DesktopRuntimeRefreshSnapshot | null>(null);
   const [projectPromptMarkdown, setProjectPromptMarkdown] = useState<string | null>(null);
   const [projectPromptPolicy, setProjectPromptPolicy] = useState<ProjectPromptPolicy | null>(null);
+  const [pendingImportRecoveries, setPendingImportRecoveries] = useState<PendingImportTransaction[]>([]);
   const externalRefreshInFlightRef = useRef(false);
   const currentCanvasRef = useRef<{
     canvasId: string | null;
@@ -132,6 +134,14 @@ export function useDesktopProject({
     setGraphDiagnostics(diagnostics.diagnostics);
   }, []);
 
+  const refreshPendingImportRecoveries = useCallback(async (projectRoot: string | null | undefined) => {
+    if (!bridge || !projectRoot) {
+      setPendingImportRecoveries([]);
+      return;
+    }
+    setPendingImportRecoveries(await bridge.listPendingImportRecoveries(projectRoot));
+  }, []);
+
   const loadProject = useCallback(
     async (project: DesktopProjectSummary, requestedCanvasId?: string | null) => {
       if (!bridge) {
@@ -164,6 +174,7 @@ export function useDesktopProject({
         setRuntimeRefreshSnapshot(null);
         setProjectPromptMarkdown(null);
         setProjectPromptPolicy(null);
+        setPendingImportRecoveries([]);
       }
       const canvasRef = desktopCanvasReference(project, canvasId);
       const errors: string[] = [];
@@ -184,13 +195,18 @@ export function useDesktopProject({
       } catch (caught) {
         errors.push(errorMessage(caught));
       }
+      try {
+        await refreshPendingImportRecoveries(project.rootPath);
+      } catch (caught) {
+        errors.push(errorMessage(caught));
+      }
       if (errors.length > 0) {
         setError(errors.join("\n"));
       }
       updateSettings({ runtimePath: project.workspaceRoot });
       setProjectLoading(false);
     },
-    [applyDesktopProjectSnapshot, refreshDesktopGraphDiagnostics, setError, updateSettings]
+    [applyDesktopProjectSnapshot, refreshDesktopGraphDiagnostics, refreshPendingImportRecoveries, setError, updateSettings]
   );
 
   useEffect(() => {
@@ -282,6 +298,19 @@ export function useDesktopProject({
   const refreshGraphAndLayout = useCallback(async () => {
     await refreshProjectDerivedState({ includeLayout: true });
   }, [refreshProjectDerivedState]);
+
+  const rollbackPendingImportRecovery = useCallback(async (transactionId: string) => {
+    if (!bridge || !selectedProject) {
+      return;
+    }
+    try {
+      await bridge.rollbackPendingImportRecovery(selectedProject.rootPath, transactionId);
+      await refreshProjectDerivedState({ includeLayout: true });
+      await refreshPendingImportRecoveries(selectedProject.rootPath);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  }, [refreshPendingImportRecoveries, refreshProjectDerivedState, selectedProject, setError]);
 
   const runExternalRuntimeRefresh = useCallback(() => {
     if (!documentIsVisible() || externalRefreshInFlightRef.current) {
@@ -428,6 +457,7 @@ export function useDesktopProject({
       setRuntimeRefreshSnapshot(null);
       setProjectPromptMarkdown(null);
       setProjectPromptPolicy(null);
+      setPendingImportRecoveries([]);
       setError(null);
     } catch (caught) {
       setError(errorMessage(caught));
@@ -484,6 +514,7 @@ export function useDesktopProject({
       setRuntimeRefreshSnapshot(null);
       setProjectPromptMarkdown(null);
       setProjectPromptPolicy(null);
+      setPendingImportRecoveries([]);
     },
     [loadProject, selectedProject?.projectId]
   );
@@ -496,6 +527,7 @@ export function useDesktopProject({
     handleOpenProject,
     layout,
     loadProject,
+    pendingImportRecoveries,
     projectLoading,
     projects,
     projectDiagnostics,
@@ -508,6 +540,7 @@ export function useDesktopProject({
     refreshGraphAndLayout,
     refreshProjectDerivedState,
     refreshRuntimeState,
+    rollbackPendingImportRecovery,
     runtimeDiagnostics,
     runtimeRefreshSnapshot,
     removeProject,

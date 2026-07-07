@@ -9,6 +9,7 @@ import type {
   DesktopProjectSummary,
   DesktopStatistics,
   DesktopTodoGroups,
+  PendingImportTransaction,
   ValidationIssue
 } from "@planweave-ai/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -142,6 +143,145 @@ describe("desktop renderer hook interfaces", () => {
     expect(bridge.getTodoGroups).not.toHaveBeenCalled();
     expect(bridge.watchPackageFiles).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
     expect(updateSettings).toHaveBeenCalledWith({ runtimePath: project.workspaceRoot });
+  });
+
+  it("loads pending import recoveries after opening a project", async () => {
+    const pendingImportRecoveries: PendingImportTransaction[] = [
+      {
+        transactionId: "import-tx-1",
+        recoveryRoot: "/tmp/demo/desktop/recovery/package-import/import-tx-1",
+        createdAt: "2026-07-06T00:00:00.000Z",
+        operationCount: 2,
+        phases: ["prepared", "applied"]
+      }
+    ];
+    const listPendingImportRecoveries = vi.fn().mockResolvedValue(pendingImportRecoveries);
+    const bridge = createDesktopBridgeMock({
+      listProjects: vi.fn().mockResolvedValue([project]),
+      getDesktopProjectSnapshot: vi.fn().mockResolvedValue(projectSnapshot()),
+      listPendingImportRecoveries,
+      refreshPackageFileChanges: vi.fn().mockResolvedValue({ diagnostics: [], dirtyPromptRefs: [] }),
+      watchPackageFiles: vi.fn().mockResolvedValue(undefined)
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
+
+    const setError = vi.fn();
+    const { result } = renderHook(() =>
+      useDesktopProject({
+        setError,
+        t: createTranslator("en"),
+        updateSettings: vi.fn()
+      })
+    );
+
+    await waitFor(() => expect(result.current.pendingImportRecoveries).toEqual(pendingImportRecoveries));
+    expect(listPendingImportRecoveries).toHaveBeenCalledWith(project.rootPath);
+  });
+
+  it("rolls back pending import recovery and refreshes derived project state", async () => {
+    const firstPendingImportRecoveries: PendingImportTransaction[] = [
+      {
+        transactionId: "import-tx-1",
+        recoveryRoot: "/tmp/demo/desktop/recovery/package-import/import-tx-1",
+        createdAt: "2026-07-06T00:00:00.000Z",
+        operationCount: 2,
+        phases: ["prepared", "applied"]
+      }
+    ];
+    let rolledBack = false;
+    const listPendingImportRecoveries = vi.fn(async () => (rolledBack ? [] : firstPendingImportRecoveries));
+    const rollbackPendingImportRecovery = vi.fn(async () => {
+      rolledBack = true;
+    });
+    const getDesktopProjectSnapshot = vi.fn().mockResolvedValue(projectSnapshot());
+    const bridge = createDesktopBridgeMock({
+      listProjects: vi.fn().mockResolvedValue([]),
+      getDesktopProjectSnapshot,
+      listPendingImportRecoveries,
+      rollbackPendingImportRecovery,
+      refreshPackageFileChanges: vi.fn().mockResolvedValue({ diagnostics: [], dirtyPromptRefs: [] }),
+      watchPackageFiles: vi.fn().mockResolvedValue(undefined)
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
+
+    const setError = vi.fn();
+    const { result } = renderHook(() =>
+      useDesktopProject({
+        setError,
+        t: createTranslator("en"),
+        updateSettings: vi.fn()
+      })
+    );
+
+    await waitFor(() => expect(result.current.projectLoading).toBe(false));
+    await act(async () => {
+      await result.current.loadProject(project, "canvas-main");
+    });
+    await waitFor(() => expect(result.current.pendingImportRecoveries).toEqual(firstPendingImportRecoveries));
+    getDesktopProjectSnapshot.mockClear();
+    await act(async () => {
+      await result.current.rollbackPendingImportRecovery("import-tx-1");
+    });
+
+    expect(rollbackPendingImportRecovery).toHaveBeenCalledWith(project.rootPath, "import-tx-1");
+    expect(getDesktopProjectSnapshot).toHaveBeenCalledWith({ projectRoot: project.rootPath, canvasId: "canvas-main" });
+    expect(result.current.pendingImportRecoveries).toEqual([]);
+  });
+
+  it("keeps pending import recovery visible when rollback fails", async () => {
+    const pendingImportRecoveries: PendingImportTransaction[] = [
+      {
+        transactionId: "import-tx-1",
+        recoveryRoot: "/tmp/demo/desktop/recovery/package-import/import-tx-1",
+        createdAt: "2026-07-06T00:00:00.000Z",
+        operationCount: 2,
+        phases: ["prepared", "applied"]
+      }
+    ];
+    const rollbackError = new Error("rollback failed");
+    const listPendingImportRecoveries = vi.fn().mockResolvedValue(pendingImportRecoveries);
+    const rollbackPendingImportRecovery = vi.fn().mockRejectedValue(rollbackError);
+    const getDesktopProjectSnapshot = vi.fn().mockResolvedValue(projectSnapshot());
+    const bridge = createDesktopBridgeMock({
+      listProjects: vi.fn().mockResolvedValue([]),
+      getDesktopProjectSnapshot,
+      listPendingImportRecoveries,
+      rollbackPendingImportRecovery,
+      refreshPackageFileChanges: vi.fn().mockResolvedValue({ diagnostics: [], dirtyPromptRefs: [] }),
+      watchPackageFiles: vi.fn().mockResolvedValue(undefined)
+    });
+    vi.stubGlobal("planweave", bridge);
+    vi.resetModules();
+    const { useDesktopProject } = await import("../renderer/hooks/useDesktopProject");
+
+    const setError = vi.fn();
+    const { result } = renderHook(() =>
+      useDesktopProject({
+        setError,
+        t: createTranslator("en"),
+        updateSettings: vi.fn()
+      })
+    );
+
+    await waitFor(() => expect(result.current.projectLoading).toBe(false));
+    await act(async () => {
+      await result.current.loadProject(project, "canvas-main");
+    });
+    await waitFor(() => expect(result.current.pendingImportRecoveries).toEqual(pendingImportRecoveries));
+    getDesktopProjectSnapshot.mockClear();
+
+    await act(async () => {
+      await result.current.rollbackPendingImportRecovery("import-tx-1");
+    });
+
+    expect(rollbackPendingImportRecovery).toHaveBeenCalledWith(project.rootPath, "import-tx-1");
+    expect(setError).toHaveBeenCalledWith("rollback failed");
+    expect(getDesktopProjectSnapshot).not.toHaveBeenCalled();
+    expect(result.current.pendingImportRecoveries).toEqual(pendingImportRecoveries);
   });
 
   it("polls lightweight runtime state for external runtime updates", async () => {

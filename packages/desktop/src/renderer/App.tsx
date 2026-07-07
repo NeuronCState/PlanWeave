@@ -102,6 +102,7 @@ export function App() {
     handleOpenProject,
     layout,
     projects,
+    pendingImportRecoveries,
     projectLoading,
     projectDiagnostics,
     projectPromptMarkdown,
@@ -111,6 +112,7 @@ export function App() {
     refreshProjectSummary,
     refreshGraph,
     refreshProjectDerivedState,
+    rollbackPendingImportRecovery,
     runtimeDiagnostics,
     removeProject,
     selectedCanvasId,
@@ -494,11 +496,19 @@ export function App() {
     fileSyncDiagnostics,
     graph,
     lastFileChange,
+    pendingImportRecoveries,
     promptConflicts,
     settings,
     t,
     updateSettings
   });
+  const handleRollbackImportRecovery = useCallback(async (transactionId: string) => {
+    try {
+      await rollbackPendingImportRecovery(transactionId);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [rollbackPendingImportRecovery, setError]);
   const settingsRouteProps = buildAppSettingsRouteProps({
     graph,
     agents: agentDetections,
@@ -640,7 +650,8 @@ export function App() {
     onApplyLocalPromptConflicts: applyLocalPromptConflicts,
     onKeepLocalPromptConflicts: keepLocalPromptConflicts,
     onMarkNotificationRead: handleMarkNotificationRead,
-    onReloadPromptConflicts: reloadPromptConflicts
+    onReloadPromptConflicts: reloadPromptConflicts,
+    onRollbackImportRecovery: handleRollbackImportRecovery
   };
   const planning = {
     statistics,

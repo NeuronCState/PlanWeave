@@ -1,13 +1,14 @@
-import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopPackageFileChangeEvent } from "@planweave-ai/runtime";
+import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopPackageFileChangeEvent, PendingImportTransaction } from "@planweave-ai/runtime";
 import type { createTranslator } from "./i18n";
 import type { PromptConflictRef } from "./hooks/usePromptDrafts";
-import type { DesktopUiSettings, NotificationItem } from "./types";
+import type { DesktopUiSettings, NotificationItem, NotificationItemDraft } from "./types";
 
 export function buildNotificationItems({
   autoRunState,
   fileSyncDiagnostics,
   graph,
   lastFileChange,
+  pendingImportRecoveries = [],
   promptConflicts,
   settings,
   t
@@ -16,12 +17,13 @@ export function buildNotificationItems({
   fileSyncDiagnostics: string[];
   graph: DesktopGraphViewModel | null;
   lastFileChange: DesktopPackageFileChangeEvent | null;
+  pendingImportRecoveries?: PendingImportTransaction[];
   promptConflicts: PromptConflictRef[];
   settings: DesktopUiSettings;
   t: ReturnType<typeof createTranslator>;
 }): NotificationItem[] {
   const readNotificationIds = new Set(settings.readNotificationIds);
-  const notificationItems: Omit<NotificationItem, "read">[] = [];
+  const notificationItems: NotificationItemDraft[] = [];
   if (settings.notifications.autoRunFailure && autoRunState?.error) {
     notificationItems.push({ id: `auto-run-error:${autoRunState.error}`, title: t("notifyAutoRun"), detail: autoRunState.error, tone: "destructive" });
   }
@@ -58,5 +60,15 @@ export function buildNotificationItems({
       notificationItems.push({ id: `sync-${diagnostic}`, title: t("fileSyncConflict"), detail: diagnostic, tone: "destructive", kind: "fileSync" });
     }
   }
-  return notificationItems.map((item) => ({ ...item, read: readNotificationIds.has(item.id) }));
+  for (const recovery of pendingImportRecoveries) {
+    notificationItems.push({
+      id: `import-recovery:${recovery.transactionId}`,
+      title: t("importRecoveryFound"),
+      detail: `${t("importRecoveryTransactionId")}: ${recovery.transactionId} · ${t("importRecoveryOperationCount")}: ${recovery.operationCount} · ${t("importRecoveryPhases")}: ${recovery.phases.join(", ")}`,
+      tone: "destructive",
+      kind: "importRecovery",
+      transactionId: recovery.transactionId
+    });
+  }
+  return notificationItems.map((item): NotificationItem => ({ ...item, read: readNotificationIds.has(item.id) }));
 }

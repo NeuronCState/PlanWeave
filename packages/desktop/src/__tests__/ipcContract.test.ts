@@ -79,6 +79,8 @@ describe("desktop IPC contract", () => {
     expect(desktopBridgeInvokeChannels.getDesktopGraphDiagnostics).toBe("planweave:getDesktopGraphDiagnostics");
     expect(desktopBridgeInvokeChannels.getDesktopProjectSnapshot).toBe("planweave:getDesktopProjectSnapshot");
     expect(desktopBridgeInvokeChannels.getDesktopRuntimeRefresh).toBe("planweave:getDesktopRuntimeRefresh");
+    expect(desktopBridgeInvokeChannels.listPendingImportRecoveries).toBe("planweave:listPendingImportRecoveries");
+    expect(desktopBridgeInvokeChannels.rollbackPendingImportRecovery).toBe("planweave:rollbackPendingImportRecovery");
     expect(desktopBridgeInvokeChannels.watchPackageFiles).toBe("planweave:watchPackageFiles");
     expect(desktopBridgeInvokeChannels.watchRuntimeState).toBe("planweave:watchRuntimeState");
     expect(desktopBridgeInvokeChannels.unwatchRuntimeState).toBe("planweave:unwatchRuntimeState");

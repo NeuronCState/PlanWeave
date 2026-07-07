@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopPackageFileChangeEvent } from "@planweave-ai/runtime";
+import type { DesktopAutoRunState, DesktopGraphViewModel, DesktopPackageFileChangeEvent, PendingImportTransaction } from "@planweave-ai/runtime";
 import type { createTranslator } from "../i18n";
 import { buildNotificationItems } from "../notifications";
 import type { DesktopSettingsUpdate, DesktopUiSettings } from "../types";
@@ -10,6 +10,7 @@ export function useAppNotifications({
   fileSyncDiagnostics,
   graph,
   lastFileChange,
+  pendingImportRecoveries,
   promptConflicts,
   settings,
   t,
@@ -19,6 +20,7 @@ export function useAppNotifications({
   fileSyncDiagnostics: string[];
   graph: DesktopGraphViewModel | null;
   lastFileChange: DesktopPackageFileChangeEvent | null;
+  pendingImportRecoveries: PendingImportTransaction[];
   promptConflicts: PromptConflictRef[];
   settings: DesktopUiSettings;
   t: ReturnType<typeof createTranslator>;
@@ -29,6 +31,7 @@ export function useAppNotifications({
     fileSyncDiagnostics,
     graph,
     lastFileChange,
+    pendingImportRecoveries,
     promptConflicts,
     settings,
     t

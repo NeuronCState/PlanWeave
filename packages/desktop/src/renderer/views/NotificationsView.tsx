@@ -11,6 +11,7 @@ type NotificationsViewProps = {
   onMarkNotificationRead: (notificationId: string) => void;
   onOpenGraph: () => void;
   onReloadPromptConflicts: () => Promise<void>;
+  onRollbackImportRecovery?: (transactionId: string) => Promise<void>;
   refreshPackageFiles: () => Promise<void>;
   t: ReturnType<typeof createTranslator>;
 };
@@ -22,6 +23,7 @@ export function NotificationsView({
   onMarkNotificationRead,
   onOpenGraph,
   onReloadPromptConflicts,
+  onRollbackImportRecovery,
   refreshPackageFiles,
   t
 }: NotificationsViewProps) {
@@ -72,6 +74,11 @@ export function NotificationsView({
                   >
                     {t("fileSyncApplyMine")}
                   </Button>
+                </div>
+              ) : null}
+              {item.kind === "importRecovery" ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => void onRollbackImportRecovery?.(item.transactionId)}>{t("importRecoveryRollback")}</Button>
                 </div>
               ) : null}
             </div>

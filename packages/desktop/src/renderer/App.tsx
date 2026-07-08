@@ -40,6 +40,15 @@ import { writeAgentScopePromptToClipboard } from "./agentPrompt";
 import { uniqueDesktopDiagnostics } from "./diagnostics";
 
 const emptyExecutorOptions: string[] = [];
+type TaskCanvasSummary = DesktopProjectSummary["taskCanvases"][number];
+
+function canvasPackageDir(project: DesktopProjectSummary, canvasId: string | null): string | null {
+  return project.taskCanvases.find((canvas) => canvas.canvasId === canvasId)?.packageDir ?? null;
+}
+
+function unavailablePackageDirMessage(canvasId: string): string {
+  return `Cannot copy agent prompt because packageDir is unavailable for canvas '${canvasId}'.`;
+}
 
 export function App() {
   const [error, setError] = useState<string | null>(null);
@@ -345,9 +354,16 @@ export function App() {
       if (!selectedProject) {
         return;
       }
+      const canvasId = selectedCanvasId ?? selectedProject.activeCanvasId ?? "default";
+      const packageDir = canvasPackageDir(selectedProject, canvasId);
+      if (!packageDir) {
+        setError(unavailablePackageDirMessage(canvasId));
+        return;
+      }
       void writeAgentScopePromptToClipboard({
         project: selectedProject,
-        canvasId: selectedCanvasId ?? selectedProject.activeCanvasId ?? "default",
+        canvasId,
+        packageDir,
         taskId
       })
         .then(() => setSuccessMessage(t("agentPromptCopied")))
@@ -356,10 +372,15 @@ export function App() {
     [selectedCanvasId, selectedProject, setError, t]
   );
   const handleCopyCanvasAgentPrompt = useCallback(
-    (project: DesktopProjectSummary, canvasId: string) => {
+    (project: DesktopProjectSummary, canvas: TaskCanvasSummary) => {
+      if (!canvas.packageDir) {
+        setError(unavailablePackageDirMessage(canvas.canvasId));
+        return;
+      }
       void writeAgentScopePromptToClipboard({
         project,
-        canvasId
+        canvasId: canvas.canvasId,
+        packageDir: canvas.packageDir
       })
         .then(() => setSuccessMessage(t("agentPromptCopied")))
         .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught)));

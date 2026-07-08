@@ -12,6 +12,8 @@ import { HistoryNavigationButtons } from "../components/HistoryNavigationButtons
 import { ProjectTree } from "./ProjectTree";
 import { SidebarNav } from "./SidebarNav";
 
+type TaskCanvasSummary = DesktopProjectSummary["taskCanvases"][number];
+
 type ProjectSidebarProps = {
   activeView: AppView;
   collapsed: boolean;
@@ -23,7 +25,7 @@ type ProjectSidebarProps = {
   handleDeleteTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
   handleDeleteTaskNode: (taskId: string) => Promise<void>;
   handleDuplicateTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
-  handleCopyCanvasAgentPrompt?: (project: DesktopProjectSummary, canvasId: string) => void;
+  handleCopyCanvasAgentPrompt?: (project: DesktopProjectSummary, canvas: TaskCanvasSummary) => void;
   handleDropSourceRoot: (project: DesktopProjectSummary, sourceRoot: string | null) => Promise<void>;
   handleOpenProject: () => Promise<void>;
   handleProjectNewGraph: (project: DesktopProjectSummary) => Promise<void>;

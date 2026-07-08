@@ -21,18 +21,18 @@ export function CanvasMapHealthDiagnostics({
     return null;
   }
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex min-w-0 max-w-full flex-col gap-1 overflow-hidden">
       <div className="text-xs text-muted-foreground">{t("projectGraphDiagnostics")}</div>
       {diagnostics.map((diagnostic) => (
         <div
           className={cn(
-            "rounded-md border p-2 text-xs",
+            "min-w-0 max-w-full overflow-hidden rounded-md border p-2 text-xs",
             severity === "error" ? "border-destructive/30 bg-destructive/10" : "border-state-warning/60 bg-state-warning-surface"
           )}
           key={`${diagnostic.code}-${diagnostic.path ?? ""}-${diagnostic.message}`}
         >
-          <div className="font-medium">{diagnostic.code}</div>
-          <div>{diagnostic.message}</div>
+          <div className="font-medium" style={{ overflowWrap: "anywhere" }}>{diagnostic.code}</div>
+          <div style={{ overflowWrap: "anywhere" }}>{diagnostic.message}</div>
         </div>
       ))}
     </div>
@@ -63,25 +63,26 @@ export function CanvasMapBlockedBlocksList({
     return null;
   }
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex min-w-0 max-w-full flex-col gap-2 overflow-hidden">
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
         <AlertTriangleIcon className="size-3" aria-hidden="true" />
         {t("dependencyBlockers")}
       </div>
       {blockers.map((item) => (
-        <div className="flex flex-col gap-2 rounded-md border bg-muted/40 p-2 text-xs" key={`${item.blocked.canvasId}:${item.blocked.blockRef}:${item.reason}`}>
-          <div>
+        <div className="flex min-w-0 max-w-full flex-col gap-2 overflow-hidden rounded-md border bg-muted/40 p-2 text-xs" key={`${item.blocked.canvasId}:${item.blocked.blockRef}:${item.reason}`}>
+          <div className="min-w-0">
             <div className="text-muted-foreground">{t("blockedBlock")}</div>
-            <div className="font-mono">{item.blocked.canvasId}:{item.blocked.blockRef}</div>
+            <div className="font-mono" style={{ overflowWrap: "anywhere" }}>{item.blocked.canvasId}:{item.blocked.blockRef}</div>
             <div className="truncate font-medium">{item.blocked.blockTitle}</div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-muted-foreground">{t("blockedBy")}</div>
             <div className="flex flex-col gap-1">
               {item.blockers.map((blocker) => (
                 <div className="flex min-w-0 items-center justify-between gap-2" key={`${item.blocked.canvasId}:${item.blocked.blockRef}:${blocker.kind}:${blocker.canvasId}${blocker.kind === "task" ? `:${blocker.taskId}` : ""}`}>
                   <span className="min-w-0 truncate">{blockerLabel(blocker)}</span>
                   <Button
+                    className="min-w-0 shrink-0"
                     size="sm"
                     variant="outline"
                     onClick={() => blocker.kind === "task" ? onTaskOpen(blocker.canvasId, blocker.taskId) : onCanvasOpen(blocker.canvasId)}
@@ -92,8 +93,8 @@ export function CanvasMapBlockedBlocksList({
               ))}
             </div>
           </div>
-          <div className="text-muted-foreground">{item.reason}</div>
-          <div className="flex gap-2">
+          <div className="text-muted-foreground" style={{ overflowWrap: "anywhere" }}>{item.reason}</div>
+          <div className="flex min-w-0 gap-2">
             <Button size="sm" variant="outline" onClick={() => onTaskOpen(item.blocked.canvasId, item.blocked.taskId)}>
               {t("openTask")}
             </Button>

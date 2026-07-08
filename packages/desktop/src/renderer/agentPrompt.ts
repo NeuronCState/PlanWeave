@@ -1,16 +1,38 @@
 import type { DesktopProjectSummary } from "@planweave-ai/runtime";
 
 export type AgentPromptScope = {
-  project: Pick<DesktopProjectSummary, "projectId" | "rootPath" | "sourceRoot">;
+  project: Pick<DesktopProjectSummary, "projectId" | "rootPath" | "sourceRoot" | "workspaceRoot">;
   canvasId: string;
+  packageDir: string;
   taskId?: string | null;
 };
 
-export function buildAgentScopePrompt({ project, canvasId, taskId }: AgentPromptScope): string {
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith("/") || path.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(path);
+}
+
+function joinWorkspacePath(workspaceRoot: string, packageDir: string): string {
+  if (isAbsolutePath(packageDir)) {
+    return packageDir;
+  }
+  const separator = workspaceRoot.includes("\\") && !workspaceRoot.includes("/") ? "\\" : "/";
+  return `${workspaceRoot.replace(/[\\/]+$/, "")}${separator}${packageDir.replace(/^[\\/]+/, "")}`;
+}
+
+function absolutePackageDir(workspaceRoot: string, packageDir: string): string {
+  if (!packageDir.trim()) {
+    throw new Error("Cannot build agent prompt because packageDir is unavailable.");
+  }
+  return joinWorkspacePath(workspaceRoot, packageDir);
+}
+
+export function buildAgentScopePrompt({ project, canvasId, packageDir, taskId }: AgentPromptScope): string {
   const lines = [
     `projectId: ${project.projectId}`,
     `projectRoot: ${project.rootPath}`,
+    `workspaceRoot: ${project.workspaceRoot}`,
     `canvasId: ${canvasId}`,
+    `packageDir: ${absolutePackageDir(project.workspaceRoot, packageDir)}`,
     `sourceRoot: ${project.sourceRoot ?? ""}`
   ];
   if (taskId) {

@@ -101,7 +101,7 @@ export type CanvasNodeData = {
   labels: CanvasNodeLabels;
   selected: boolean;
   onOpen: (canvasId: string) => void;
-  onAgentPromptCopy: (canvasId: string) => void;
+  onAgentPromptCopy: (canvas: DesktopCanvasNodeViewModel) => void;
   onSelect: (canvasId: string) => void;
 };
 

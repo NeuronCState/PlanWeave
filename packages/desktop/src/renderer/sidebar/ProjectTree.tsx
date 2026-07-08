@@ -6,6 +6,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { createTranslator } from "../i18n";
 import { ProjectTreeItem } from "./ProjectTreeItem";
 
+type TaskCanvasSummary = DesktopProjectSummary["taskCanvases"][number];
+
 type ProjectTreeProps = {
   collapsedCanvasIds: Set<string>;
   collapsedProjectIds: Set<string>;
@@ -17,7 +19,7 @@ type ProjectTreeProps = {
   handleDeleteTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
   handleDeleteTaskNode: (taskId: string) => Promise<void>;
   handleDuplicateTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
-  handleCopyCanvasAgentPrompt?: (project: DesktopProjectSummary, canvasId: string) => void;
+  handleCopyCanvasAgentPrompt?: (project: DesktopProjectSummary, canvas: TaskCanvasSummary) => void;
   handleDropSourceRoot: (project: DesktopProjectSummary, sourceRoot: string | null) => Promise<void>;
   handleOpenProject: () => Promise<void>;
   handleProjectNewGraph: (project: DesktopProjectSummary) => Promise<void>;

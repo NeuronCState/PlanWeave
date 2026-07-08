@@ -24,6 +24,8 @@ import type { createTranslator } from "../i18n";
 import { AnimatedTreeRegion } from "./AnimatedTreeRegion";
 import { CanvasTreeItem } from "./CanvasTreeItem";
 
+type TaskCanvasSummary = DesktopProjectSummary["taskCanvases"][number];
+
 type ProjectTreeItemProps = {
   collapsedCanvasIds: Set<string>;
   graph: DesktopGraphViewModel | null;
@@ -33,7 +35,7 @@ type ProjectTreeItemProps = {
   handleDeleteTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
   handleDeleteTaskNode: (taskId: string) => Promise<void>;
   handleDuplicateTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
-  handleCopyCanvasAgentPrompt?: (project: DesktopProjectSummary, canvasId: string) => void;
+  handleCopyCanvasAgentPrompt?: (project: DesktopProjectSummary, canvas: TaskCanvasSummary) => void;
   handleDropSourceRoot: (project: DesktopProjectSummary, sourceRoot: string | null) => Promise<void>;
   handleProjectNewGraph: (project: DesktopProjectSummary) => Promise<void>;
   handleRevealPlanWorkspace: (project: DesktopProjectSummary) => Promise<void>;

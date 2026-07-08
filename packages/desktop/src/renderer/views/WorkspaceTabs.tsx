@@ -256,7 +256,7 @@ function NotificationsRoute({ fileSync, notifications, shell }: Pick<WorkspaceTa
   );
 }
 
-function CanvasMapRoute({ graphWorkspace, shell }: Pick<WorkspaceTabsProps, "graphWorkspace" | "shell">) {
+function CanvasMapRoute({ fileSync, graphWorkspace, shell }: Pick<WorkspaceTabsProps, "fileSync" | "graphWorkspace" | "shell">) {
   return (
     <CanvasMapView
       handleOpenBlockInspector={graphWorkspace.handleOpenBlockInspector}
@@ -264,6 +264,7 @@ function CanvasMapRoute({ graphWorkspace, shell }: Pick<WorkspaceTabsProps, "gra
       loadProject={shell.loadProject}
       onAgentPromptCopied={graphWorkspace.onAgentPromptCopied}
       onTaskPanelSelect={graphWorkspace.onTaskPanelSelect}
+      refreshProjectDerivedState={fileSync.refreshProjectDerivedState}
       selectedCanvasId={shell.selectedCanvasId}
       selectedProject={shell.selectedProject}
       setActiveView={shell.setActiveView}
@@ -290,7 +291,7 @@ export function WorkspaceTabs(props: WorkspaceTabsProps) {
       case "notifications":
         return <NotificationsRoute fileSync={props.fileSync} notifications={props.notifications} shell={props.shell} />;
       case "canvas-map":
-        return <CanvasMapRoute graphWorkspace={props.graphWorkspace} shell={props.shell} />;
+        return <CanvasMapRoute fileSync={props.fileSync} graphWorkspace={props.graphWorkspace} shell={props.shell} />;
       case "graph":
       default:
         return (

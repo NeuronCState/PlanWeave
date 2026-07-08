@@ -36,7 +36,7 @@ type CanvasTreeItemProps = {
   handleDeleteTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
   handleDeleteTaskNode: (taskId: string) => Promise<void>;
   handleDuplicateTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
-  handleCopyCanvasAgentPrompt?: (project: DesktopProjectSummary, canvasId: string) => void;
+  handleCopyCanvasAgentPrompt?: (project: DesktopProjectSummary, canvas: TaskCanvasSummary) => void;
   handleCopyCanvasToNewProject: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
   handleProjectNewGraph: (project: DesktopProjectSummary) => Promise<void>;
   handleRevealTaskCanvas: (project: DesktopProjectSummary, canvasId: string) => Promise<void>;
@@ -180,7 +180,7 @@ export function CanvasTreeItem({
                 {t("newGraph")}
               </ContextMenuItem>
               {handleCopyCanvasAgentPrompt ? (
-                <ContextMenuItem onSelect={() => handleCopyCanvasAgentPrompt(project, canvas.canvasId)}>
+                <ContextMenuItem onSelect={() => handleCopyCanvasAgentPrompt(project, canvas)}>
                   <ClipboardIcon data-icon="inline-start" />
                   {t("copyAgentPrompt")}
                 </ContextMenuItem>

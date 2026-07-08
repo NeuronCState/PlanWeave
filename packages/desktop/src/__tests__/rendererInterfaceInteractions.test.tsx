@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { useState } from "react";
-import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { DesktopCanvasGraphViewModel, DesktopGraphViewModel, DesktopProjectSummary, DesktopTaskDraft } from "@planweave-ai/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -75,15 +75,21 @@ const settings: DesktopUiSettings = {
 const project: DesktopProjectSummary = {
   projectId: "P-001",
   name: "Demo",
+  kind: "managed",
   rootPath: "/tmp/demo",
+  sourceRoot: null,
   workspaceRoot: "/tmp/demo",
   activeCanvasId: "canvas-main",
   taskCanvases: [
     {
       canvasId: "canvas-main",
       name: "Main canvas",
+      packageDir: "canvases/main/package",
+      executionPolicy: { parallelEnabled: false, maxConcurrent: 1 },
       taskCount: 2,
+      missingPromptCount: 0,
       createdAt: "2026-05-23T00:00:00.000Z",
+      diagnostics: [],
       updatedAt: "2026-05-23T00:00:00.000Z"
     }
   ]
@@ -318,7 +324,7 @@ describe("desktop renderer interface interactions", () => {
     fireEvent.contextMenu(screen.getByRole("button", { name: /Main canvas\s*2/ }));
     await userEvent.click(await screen.findByText("Copy agent prompt"));
 
-    expect(handleCopyCanvasAgentPrompt).toHaveBeenCalledWith(project, "canvas-main");
+    expect(handleCopyCanvasAgentPrompt).toHaveBeenCalledWith(project, project.taskCanvases[0]);
   });
 
   it("duplicates a task canvas from the context menu", async () => {
@@ -689,6 +695,7 @@ describe("desktop renderer interface interactions", () => {
           canvasId: "canvas-main",
           title: "Main canvas",
           packageDir: "canvases/main/package",
+          executionPolicy: { parallelEnabled: false, maxConcurrent: 1 },
           diagnostics: []
         }
       ],
@@ -710,6 +717,7 @@ describe("desktop renderer interface interactions", () => {
         onClose={onClose}
         onBlockOpen={vi.fn()}
         onCanvasOpen={vi.fn()}
+        onExecutionPolicySave={vi.fn().mockResolvedValue(undefined)}
         onTaskOpen={vi.fn()}
         selectedCanvas={canvasGraph.canvases[0] ?? null}
         selectedCanvasId="canvas-main"
@@ -723,6 +731,110 @@ describe("desktop renderer interface interactions", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("saves selected canvas execution policy changes", async () => {
+    const onExecutionPolicySave = vi.fn().mockResolvedValue(undefined);
+    const canvasGraph: DesktopCanvasGraphViewModel = {
+      projectId: "P-001",
+      projectTitle: "Demo",
+      canvases: [
+        {
+          canvasId: "canvas-main",
+          title: "Main canvas",
+          packageDir: "canvases/main/package",
+          executionPolicy: { parallelEnabled: false, maxConcurrent: 1 },
+          diagnostics: []
+        }
+      ],
+      edges: [],
+      crossTaskEdges: [],
+      diagnostics: [],
+      health: {
+        severity: "ok",
+        canvases: [{ canvasId: "canvas-main", severity: "ok", blockerCount: 0, diagnosticCount: 0 }],
+        edges: [],
+        blockedBlocks: [],
+        diagnostics: []
+      }
+    };
+
+    render(
+      <CanvasMapInspector
+        graph={canvasGraph}
+        onClose={vi.fn()}
+        onBlockOpen={vi.fn()}
+        onCanvasOpen={vi.fn()}
+        onExecutionPolicySave={onExecutionPolicySave}
+        onTaskOpen={vi.fn()}
+        selectedCanvas={canvasGraph.canvases[0] ?? null}
+        selectedCanvasId="canvas-main"
+        selectedEdge={null}
+        t={t}
+      />
+    );
+
+    expect(screen.getByText("Parallel claims are disabled.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("switch", { name: "Parallel execution" }));
+    await userEvent.clear(screen.getByRole("spinbutton", { name: "Max concurrent blocks" }));
+    await userEvent.type(screen.getByRole("spinbutton", { name: "Max concurrent blocks" }), "4");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(onExecutionPolicySave).toHaveBeenCalledWith("canvas-main", {
+      parallelEnabled: true,
+      maxConcurrent: 4
+    }));
+  });
+
+  it("blocks invalid selected canvas execution policy input", async () => {
+    const onExecutionPolicySave = vi.fn().mockResolvedValue(undefined);
+    const canvasGraph: DesktopCanvasGraphViewModel = {
+      projectId: "P-001",
+      projectTitle: "Demo",
+      canvases: [
+        {
+          canvasId: "canvas-main",
+          title: "Main canvas",
+          packageDir: "canvases/main/package",
+          executionPolicy: { parallelEnabled: true, maxConcurrent: 2 },
+          diagnostics: []
+        }
+      ],
+      edges: [],
+      crossTaskEdges: [],
+      diagnostics: [],
+      health: {
+        severity: "ok",
+        canvases: [{ canvasId: "canvas-main", severity: "ok", blockerCount: 0, diagnosticCount: 0 }],
+        edges: [],
+        blockedBlocks: [],
+        diagnostics: []
+      }
+    };
+
+    render(
+      <CanvasMapInspector
+        graph={canvasGraph}
+        onClose={vi.fn()}
+        onBlockOpen={vi.fn()}
+        onCanvasOpen={vi.fn()}
+        onExecutionPolicySave={onExecutionPolicySave}
+        onTaskOpen={vi.fn()}
+        selectedCanvas={canvasGraph.canvases[0] ?? null}
+        selectedCanvasId="canvas-main"
+        selectedEdge={null}
+        t={t}
+      />
+    );
+
+    await userEvent.clear(screen.getByRole("spinbutton", { name: "Max concurrent blocks" }));
+    await userEvent.type(screen.getByRole("spinbutton", { name: "Max concurrent blocks" }), "0");
+
+    expect(screen.getByText("Enter a positive whole number, minimum 1.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+    expect(onExecutionPolicySave).not.toHaveBeenCalled();
+  });
+
   it("renders project graph fallback diagnostics as warnings in the canvas map inspector", () => {
     const canvasGraph: DesktopCanvasGraphViewModel = {
       projectId: "P-001",
@@ -732,6 +844,7 @@ describe("desktop renderer interface interactions", () => {
           canvasId: "canvas-main",
           title: "Main canvas",
           packageDir: "canvases/main/package",
+          executionPolicy: { parallelEnabled: false, maxConcurrent: 1 },
           diagnostics: []
         }
       ],
@@ -759,6 +872,7 @@ describe("desktop renderer interface interactions", () => {
         onClose={vi.fn()}
         onBlockOpen={vi.fn()}
         onCanvasOpen={vi.fn()}
+        onExecutionPolicySave={vi.fn().mockResolvedValue(undefined)}
         onTaskOpen={vi.fn()}
         selectedCanvas={canvasGraph.canvases[0] ?? null}
         selectedCanvasId="canvas-main"
@@ -786,12 +900,14 @@ describe("desktop renderer interface interactions", () => {
           canvasId: "canvas-main",
           title: "Main canvas",
           packageDir: "canvases/main/package",
+          executionPolicy: { parallelEnabled: true, maxConcurrent: 3 },
           diagnostics: []
         },
         {
           canvasId: "canvas-upstream",
           title: "Upstream canvas",
           packageDir: "canvases/upstream/package",
+          executionPolicy: { parallelEnabled: false, maxConcurrent: 1 },
           diagnostics: []
         }
       ],
@@ -840,6 +956,7 @@ describe("desktop renderer interface interactions", () => {
         onClose={vi.fn()}
         onBlockOpen={onBlockOpen}
         onCanvasOpen={onCanvasOpen}
+        onExecutionPolicySave={vi.fn().mockResolvedValue(undefined)}
         onTaskOpen={onTaskOpen}
         selectedCanvas={canvasGraph.canvases[0] ?? null}
         selectedCanvasId="canvas-main"

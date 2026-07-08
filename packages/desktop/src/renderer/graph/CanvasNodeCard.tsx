@@ -48,7 +48,7 @@ export function CanvasNodeCard({ data }: NodeProps<CanvasFlowNode>) {
           <CardContent className="flex min-w-0 items-center justify-between gap-3">
             <div className="min-w-0 text-xs text-text-muted">
               <div className="truncate">{data.canvas.canvasId}</div>
-              <div className="truncate">{data.canvas.packageDir}</div>
+              <div className="truncate" title={data.canvas.packageDir}>{data.canvas.packageDir}</div>
             </div>
             <Button
               className="border-border/80 bg-surface-base text-text-muted hover:bg-surface-muted hover:text-text-strong"
@@ -64,7 +64,7 @@ export function CanvasNodeCard({ data }: NodeProps<CanvasFlowNode>) {
         </Card>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        <ContextMenuItem onSelect={() => data.onAgentPromptCopy(data.canvas.canvasId)}>
+        <ContextMenuItem onSelect={() => data.onAgentPromptCopy(data.canvas)}>
           {data.labels.copyAgentPrompt}
         </ContextMenuItem>
       </ContextMenuContent>

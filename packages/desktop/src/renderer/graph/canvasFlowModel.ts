@@ -37,7 +37,7 @@ export function canvasMapNodes(
   labels: CanvasNodeData["labels"],
   selectedCanvasId: string | null,
   onCanvasOpen: (canvasId: string) => void,
-  onAgentPromptCopy: (canvasId: string) => void,
+  onAgentPromptCopy: CanvasNodeData["onAgentPromptCopy"],
   onCanvasSelect: (canvasId: string) => void
 ): CanvasFlowNode[] {
   const layoutByCanvas = new Map(layout?.nodes.map((node) => [node.canvasId, node]) ?? []);

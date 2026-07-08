@@ -21,11 +21,11 @@ import {
 import { resolveProjectWorkspace } from "../project.js";
 import { createEmptyState } from "../state.js";
 import type { ProjectWorkspace, ValidationIssue } from "../types.js";
-import { canvasDiagnostics } from "./canvasDiagnostics.js";
 import { normalizeRegistry, registryVersion, type TaskCanvasRecord, type TaskCanvasRegistry } from "./canvasRegistry.js";
 import { readActiveTaskCanvasSelection } from "./canvasSelectionStore.js";
-import { appendDesktopDiagnostics, desktopDiagnostic, errorMessage } from "./graph/desktopDiagnostics.js";
+import { desktopDiagnostic, errorMessage } from "./graph/desktopDiagnostics.js";
 import { invalidateDesktopProjectProjection } from "./graph/projectProjectionModel.js";
+import { summarizeTaskCanvasFromPackage } from "./canvasSummaryModel.js";
 import type { DesktopTaskCanvasSummary } from "./types.js";
 
 const defaultCanvasId = "default";
@@ -176,52 +176,27 @@ function selectedCanvasRecord(registry: TaskCanvasRegistry, canvasId?: string | 
   return registry.activeCanvasId ? requireCanvasRecord(registry, registry.activeCanvasId) : registry.canvases[0];
 }
 
-async function taskCount(workspace: ProjectWorkspace): Promise<{ count: number; diagnostics: ValidationIssue[] }> {
-  try {
-    const raw = asRecord(await readJsonFile<unknown>(workspace.manifestFile));
-    const nodes = Array.isArray(raw?.nodes) ? raw.nodes : [];
-    return { count: nodes.filter((node) => asRecord(node)?.type === "task").length, diagnostics: [] };
-  } catch (caught) {
-    return {
-      count: 0,
-      diagnostics: [
-        desktopDiagnostic("desktop_canvas_task_count_read_failed", `Canvas task count could not be read: ${errorMessage(caught)}`, workspace.manifestFile)
-      ]
-    };
-  }
-}
-
 async function summarizeLegacyCanvas(projectWorkspace: ProjectWorkspace, record: TaskCanvasRecord, extraDiagnostics: ValidationIssue[] = []): Promise<DesktopTaskCanvasSummary> {
   const workspace = legacyCanvasWorkspace(projectWorkspace, record);
-  const diagnostics = await canvasDiagnostics(workspace);
-  appendDesktopDiagnostics(diagnostics, extraDiagnostics);
-  const taskCountResult = await taskCount(workspace);
-  appendDesktopDiagnostics(diagnostics, taskCountResult.diagnostics);
-  return {
+  return summarizeTaskCanvasFromPackage({
     canvasId: record.canvasId,
     name: record.name,
-    taskCount: taskCountResult.count,
-    missingPromptCount: diagnostics.filter((diagnostic) => diagnostic.code === "prompt_missing").length,
-    diagnostics,
     createdAt: record.createdAt,
-    updatedAt: record.updatedAt
-  };
+    updatedAt: record.updatedAt,
+    workspace,
+    extraDiagnostics
+  });
 }
 
 async function summarizeProjectCanvas(projectWorkspace: ProjectWorkspace, canvas: ProjectCanvasNode): Promise<DesktopTaskCanvasSummary> {
   const workspace = workspaceForProjectCanvas(projectWorkspace, canvas);
-  const diagnostics = await canvasDiagnostics(workspace);
-  const taskCountResult = await taskCount(workspace);
-  appendDesktopDiagnostics(diagnostics, taskCountResult.diagnostics);
-  return {
+  return summarizeTaskCanvasFromPackage({
     canvasId: canvas.id,
     name: canvas.title,
-    taskCount: taskCountResult.count,
-    missingPromptCount: diagnostics.filter((diagnostic) => diagnostic.code === "prompt_missing").length,
-    diagnostics,
     createdAt: new Date(0).toISOString(),
-    updatedAt: new Date(0).toISOString()
-  };
+    updatedAt: new Date(0).toISOString(),
+    workspace
+  });
 }
 
 function nextCanvasName(existing: TaskCanvasRecord[]): string {

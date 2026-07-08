@@ -1,4 +1,3 @@
-import { readJsonFile } from "../../json.js";
 import {
   loadProjectCanvasRuntimeAggregation,
   projectBlockersForTask,
@@ -10,9 +9,8 @@ import {
 } from "../../projectGraph/runtimeAggregation.js";
 import type { ProjectCanvasNode } from "../../projectGraph/index.js";
 import type { ProjectWorkspace, ValidationIssue } from "../../types.js";
-import { canvasDiagnostics } from "../canvasDiagnostics.js";
+import { summarizeTaskCanvasFromPackage } from "../canvasSummaryModel.js";
 import type { DesktopTaskCanvasSummary } from "../types.js";
-import { appendDesktopDiagnostics, desktopDiagnostic, errorMessage } from "./desktopDiagnostics.js";
 
 export type ProjectTaskCanvasContext = {
   canvasId: string;
@@ -35,38 +33,14 @@ type ProjectCanvasAggregationOptions = {
   loadRuntimeSnapshot?: (workspace: ProjectWorkspace, canvasId: string) => Promise<ProjectCanvasRuntimeSnapshot>;
 };
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-}
-
-async function taskCount(workspace: ProjectWorkspace): Promise<{ count: number; diagnostics: ValidationIssue[] }> {
-  try {
-    const raw = asRecord(await readJsonFile<unknown>(workspace.manifestFile));
-    const nodes = Array.isArray(raw?.nodes) ? raw.nodes : [];
-    return { count: nodes.filter((node) => asRecord(node)?.type === "task").length, diagnostics: [] };
-  } catch (caught) {
-    return {
-      count: 0,
-      diagnostics: [
-        desktopDiagnostic("desktop_canvas_task_count_read_failed", `Canvas task count could not be read: ${errorMessage(caught)}`, workspace.manifestFile)
-      ]
-    };
-  }
-}
-
 async function canvasSummary(workspace: ProjectWorkspace, canvas: ProjectCanvasNode): Promise<DesktopTaskCanvasSummary> {
-  const diagnostics = await canvasDiagnostics(workspace);
-  const taskCountResult = await taskCount(workspace);
-  appendDesktopDiagnostics(diagnostics, taskCountResult.diagnostics);
-  return {
+  return summarizeTaskCanvasFromPackage({
     canvasId: canvas.id,
     name: canvas.title,
-    taskCount: taskCountResult.count,
-    missingPromptCount: diagnostics.filter((diagnostic) => diagnostic.code === "prompt_missing").length,
-    diagnostics,
     createdAt: new Date(0).toISOString(),
-    updatedAt: new Date(0).toISOString()
-  };
+    updatedAt: new Date(0).toISOString(),
+    workspace
+  });
 }
 
 export function projectCanvasDiagnosticNote(diagnostic: ValidationIssue): string {

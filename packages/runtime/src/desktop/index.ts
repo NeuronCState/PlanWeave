@@ -82,6 +82,7 @@ export {
   removeCrossTaskDependency
 } from "./projectGraphEditApi.js";
 export type { ProjectGraphEditResult } from "./projectGraphEditApi.js";
+export type { CanvasExecutionPolicyInput } from "./graph/editModel.js";
 export { readProjectPrompt, readProjectPromptPolicy, updateProjectPrompt, updateProjectPromptPolicy } from "../projectPromptPolicy.js";
 export type { ProjectPromptPolicy } from "../projectPromptPolicy.js";
 export { getDesktopGraphDiagnostics } from "./diagnosticsApi.js";

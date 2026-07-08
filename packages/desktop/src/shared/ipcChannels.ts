@@ -102,6 +102,7 @@ export const desktopBridgeInvokeChannels = {
   updateBlockExecutor: "planweave:updateBlockExecutor",
   updateBlockPrompt: "planweave:updateBlockPrompt",
   updateBlockTitle: "planweave:updateBlockTitle",
+  updateCanvasExecutionPolicy: "planweave:updateCanvasExecutionPolicy",
   updateProjectPrompt: "planweave:updateProjectPrompt",
   updateReviewPipeline: "planweave:updateReviewPipeline",
   updateTerminalPreferences: "planweave:updateTerminalPreferences",

@@ -5,6 +5,7 @@ export type {
   DesktopBulkRemoveGraphItemsInput,
   DesktopBulkUpdateBlockInput,
   DesktopBulkUpdateTaskInput,
+  CanvasExecutionPolicyInput,
   DesktopTaskFieldEditInput
 } from "./editModelTypes.js";
 

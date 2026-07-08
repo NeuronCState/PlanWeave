@@ -42,7 +42,7 @@ describe("desktop canvas graph API", () => {
     const { root, init } = await createTestWorkspace();
     const secondCanvas = await createTaskCanvas(root, { name: "Desktop plan" });
     const secondWorkspace = await resolveTaskCanvasWorkspace(root, secondCanvas.canvasId);
-    const secondManifest = basicManifest();
+    const secondManifest = basicManifest({ parallel: true, maxConcurrent: 3 });
     await writeJsonFile(secondWorkspace.manifestFile, secondManifest);
     await writePromptFiles(secondWorkspace.packageDir, secondManifest);
     await writeProjectGraph(init.workspace, {
@@ -72,6 +72,22 @@ describe("desktop canvas graph API", () => {
 
     expect(graph.projectId).toBe(init.workspace.id);
     expect(graph.canvases.map((canvas) => canvas.canvasId)).toEqual(["default", secondCanvas.canvasId]);
+    expect(graph.canvases.map((canvas) => ({
+      canvasId: canvas.canvasId,
+      packageDir: canvas.packageDir,
+      executionPolicy: canvas.executionPolicy
+    }))).toEqual([
+      {
+        canvasId: "default",
+        packageDir: "canvases/default/package",
+        executionPolicy: { parallelEnabled: false, maxConcurrent: 1 }
+      },
+      {
+        canvasId: secondCanvas.canvasId,
+        packageDir: `canvases/${secondCanvas.canvasId}/package`,
+        executionPolicy: { parallelEnabled: true, maxConcurrent: 3 }
+      }
+    ]);
     expect(graph.edges).toEqual([{ from: secondCanvas.canvasId, to: "default", type: "depends_on" }]);
     expect(graph.crossTaskEdges).toEqual([
       {

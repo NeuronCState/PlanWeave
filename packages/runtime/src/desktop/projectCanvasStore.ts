@@ -181,6 +181,7 @@ async function summarizeLegacyCanvas(projectWorkspace: ProjectWorkspace, record:
   return summarizeTaskCanvasFromPackage({
     canvasId: record.canvasId,
     name: record.name,
+    packageDir: record.packageDir,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     workspace,
@@ -193,6 +194,7 @@ async function summarizeProjectCanvas(projectWorkspace: ProjectWorkspace, canvas
   return summarizeTaskCanvasFromPackage({
     canvasId: canvas.id,
     name: canvas.title,
+    packageDir: canvas.packageDir,
     createdAt: new Date(0).toISOString(),
     updatedAt: new Date(0).toISOString(),
     workspace

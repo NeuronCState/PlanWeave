@@ -74,6 +74,7 @@ import {
   updateBlockExecutor,
   updateBlockPrompt,
   updateBlockTitle,
+  updateCanvasExecutionPolicy,
   updateProjectPrompt,
   updateProjectPromptPolicy,
   updateReviewPipeline,
@@ -358,6 +359,8 @@ export const runtimeBridgeHandlers = {
     invokeGraphEdit(updateTaskExecutor(await resolveDesktopCanvasReference(ref), taskId, executorName)),
   updateBlockExecutor: async (_event, ref, blockRef, executorName) =>
     invokeGraphEdit(updateBlockExecutor(await resolveDesktopCanvasReference(ref), blockRef, executorName)),
+  updateCanvasExecutionPolicy: async (_event, ref, input) =>
+    invokeGraphEdit(updateCanvasExecutionPolicy(await resolveDesktopCanvasReference(ref), input)),
   addDependencyEdge: async (_event, ref, fromTaskId, toTaskId, baseGraphVersion, layoutSnapshot) =>
     invokeGraphEdit(addDependencyEdge(await resolveDesktopCanvasReference(ref), fromTaskId, toTaskId, baseGraphVersion, layoutSnapshot)),
   removeDependencyEdge: async (_event, ref, fromTaskId, toTaskId, baseGraphVersion, layoutSnapshot) =>

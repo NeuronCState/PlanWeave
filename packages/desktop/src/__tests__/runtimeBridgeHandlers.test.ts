@@ -130,6 +130,12 @@ const runtimeMock = vi.hoisted(() => {
       checks: [],
       options
     })),
+    updateCanvasExecutionPolicy: vi.fn(async (workspace: unknown, input: unknown) => ({
+      ok: true,
+      affectedTasks: ["T-001"],
+      diagnostics: [],
+      graph: { workspace, input }
+    })),
     subscribeAutoRunEvents: vi.fn((listener: AutoRunEventListener) => {
       autoRunEventListeners.add(listener);
       return () => autoRunEventListeners.delete(listener);
@@ -169,6 +175,7 @@ vi.mock("@planweave-ai/runtime", async () => {
     resolveTaskCanvasWorkspace: runtimeMock.resolveTaskCanvasWorkspace,
     rollbackPendingImportRecovery: runtimeMock.rollbackPendingImportRecovery,
     testExecutorProfile: runtimeMock.testExecutorProfile,
+    updateCanvasExecutionPolicy: runtimeMock.updateCanvasExecutionPolicy,
     subscribeAutoRunEvents: runtimeMock.subscribeAutoRunEvents
   };
 });
@@ -208,6 +215,7 @@ describe("runtime bridge handlers", () => {
     runtimeMock.resolveTaskCanvasWorkspace.mockClear();
     runtimeMock.rollbackPendingImportRecovery.mockClear();
     runtimeMock.testExecutorProfile.mockClear();
+    runtimeMock.updateCanvasExecutionPolicy.mockClear();
     runtimeMock.subscribeAutoRunEvents.mockClear();
   });
 
@@ -264,6 +272,29 @@ describe("runtime bridge handlers", () => {
 
     expect(runtimeMock.resolveTaskCanvasWorkspace).not.toHaveBeenCalled();
     expect(runtimeMock.getDesktopRuntimeRefresh).toHaveBeenCalledWith(ref);
+  });
+
+  it("updates canvas execution policy through the resolved task canvas workspace", async () => {
+    const { registerRuntimeBridgeHandlers } = await import("../main/runtimeBridgeHandlers");
+    registerRuntimeBridgeHandlers();
+
+    const ref = { projectRoot: "/tmp/project", canvasId: "canvas-a" };
+    const input = { parallelEnabled: true, maxConcurrent: 3 };
+    await expect(electronMock.handlers.get(desktopBridgeInvokeChannels.updateCanvasExecutionPolicy)?.(null, ref, input)).resolves.toEqual({
+      ok: true,
+      affectedTasks: ["T-001"],
+      diagnostics: []
+    });
+
+    expect(runtimeMock.resolveTaskCanvasWorkspace).toHaveBeenCalledWith("/tmp/project", "canvas-a");
+    expect(runtimeMock.updateCanvasExecutionPolicy).toHaveBeenCalledWith(
+      {
+        projectRoot: "/tmp/project",
+        canvasId: "canvas-a",
+        source: "task"
+      },
+      input
+    );
   });
 
   it("resolves desktop canvas references before loading graph diagnostics", async () => {

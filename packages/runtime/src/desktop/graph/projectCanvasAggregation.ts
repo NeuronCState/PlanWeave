@@ -37,6 +37,7 @@ async function canvasSummary(workspace: ProjectWorkspace, canvas: ProjectCanvasN
   return summarizeTaskCanvasFromPackage({
     canvasId: canvas.id,
     name: canvas.title,
+    packageDir: canvas.packageDir,
     createdAt: new Date(0).toISOString(),
     updatedAt: new Date(0).toISOString(),
     workspace

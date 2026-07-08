@@ -53,6 +53,7 @@ import type {
   DesktopRuntimeResetResult
 } from "./runTypes.js";
 import type { ExecutorPreflightResult } from "../../autoRun/executorPreflightTypes.js";
+import type { CanvasExecutionPolicyInput } from "../graph/editModelTypes.js";
 
 export type DesktopAgentKind = "codex" | "claude-code" | "opencode" | "pi";
 
@@ -201,6 +202,7 @@ export type DesktopBridgeApi = {
   getFeedbackRecords(ref: DesktopCanvasReference, blockRef: string): Promise<DesktopFeedbackRecord[]>;
   getReviewPipeline(ref: DesktopCanvasReference, taskId: string): Promise<DesktopReviewPipeline>;
   updateReviewPipeline(ref: DesktopCanvasReference, taskId: string, input: DesktopUpdateReviewPipelineInput): Promise<DesktopGraphEditResult>;
+  updateCanvasExecutionPolicy(ref: DesktopCanvasReference, input: CanvasExecutionPolicyInput): Promise<DesktopGraphEditResult>;
   createTaskDraft(ref: DesktopCanvasReference, input: { mode: DesktopTaskDraftMode; text: string; targetTaskId?: string | null }): Promise<DesktopTaskDraft>;
   addTaskNode(ref: DesktopCanvasReference, input: DesktopAddTaskInput): Promise<DesktopGraphEditResult>;
   addBlock(ref: DesktopCanvasReference, input: DesktopAddBlockInput): Promise<DesktopGraphEditResult>;

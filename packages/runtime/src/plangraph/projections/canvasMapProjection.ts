@@ -38,6 +38,7 @@ export function buildCanvasMapProjection(options: {
       canvasId: canvas.canvasId,
       title: canvas.canvasName,
       packageDir: canvas.projectCanvas.packageDir,
+      executionPolicy: canvas.canvas.executionPolicy,
       diagnostics: [...canvas.canvas.diagnostics, ...diagnosticsForCanvas(canvas.canvasId, diagnostics)]
     };
   });

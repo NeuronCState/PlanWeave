@@ -1,8 +1,11 @@
 import type { ValidationIssue } from "../../types.js";
+import type { DesktopCanvasExecutionPolicy } from "./graphTypes.js";
 
 export type DesktopTaskCanvasSummary = {
   canvasId: string;
   name: string;
+  packageDir: string | null;
+  executionPolicy: DesktopCanvasExecutionPolicy | null;
   taskCount: number;
   missingPromptCount: number;
   diagnostics: ValidationIssue[];

@@ -32,6 +32,8 @@ function projectGraphDiagnosticCanvas(diagnostics: ValidationIssue[]): DesktopTa
   return {
     canvasId: "project-graph",
     name: "Project graph",
+    packageDir: null,
+    executionPolicy: null,
     taskCount: 0,
     missingPromptCount: 0,
     diagnostics,

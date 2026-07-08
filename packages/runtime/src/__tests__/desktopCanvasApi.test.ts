@@ -104,6 +104,7 @@ describe("desktop task canvas API", () => {
     expect(initialCanvases[0]).toMatchObject({
       canvasId: "default",
       name: "Test Plan",
+      packageDir: "canvases/default/package",
       taskCount: 1
     });
 
@@ -113,6 +114,7 @@ describe("desktop task canvas API", () => {
     expect(defaultWorkspace.resultsDir).toBe(init.workspace.resultsDir);
 
     const secondCanvas = await createTaskCanvas(root, { name: "Second plan" });
+    expect(secondCanvas.packageDir).toBe(`canvases/${secondCanvas.canvasId}/package`);
     const secondWorkspace = await resolveTaskCanvasWorkspace(root, secondCanvas.canvasId);
     expect(secondWorkspace.packageDir).toBe(join(init.workspace.workspaceRoot, "canvases", secondCanvas.canvasId, "package"));
     expect(secondWorkspace.stateFile).toBe(join(init.workspace.workspaceRoot, "canvases", secondCanvas.canvasId, "state.json"));

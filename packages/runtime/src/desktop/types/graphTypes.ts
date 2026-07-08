@@ -87,7 +87,13 @@ export type DesktopCanvasNodeViewModel = {
   canvasId: string;
   title: string;
   packageDir: string;
+  executionPolicy: DesktopCanvasExecutionPolicy | null;
   diagnostics: ValidationIssue[];
+};
+
+export type DesktopCanvasExecutionPolicy = {
+  parallelEnabled: boolean;
+  maxConcurrent: number;
 };
 
 export type DesktopCanvasHealthSeverity = "ok" | "warning" | "error";

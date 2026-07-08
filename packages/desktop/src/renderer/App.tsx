@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type Edge, type ReactFlowInstance, useEdgesState, useNodesState } from "@xyflow/react";
-import type { DesktopCanvasReference, DesktopPackageFileChangeEvent, DesktopPackageFileSyncResult, DesktopProjectSummary } from "@planweave-ai/runtime";
+import type { DesktopProjectSummary } from "@planweave-ai/runtime";
 import { bridge } from "./bridge";
 import { edgeTypes, nodeTypes } from "./graph/flowModel";
 import { createTranslator } from "./i18n";
@@ -10,10 +10,7 @@ import type { AppFlowNode, AppView } from "./types";
 import { WorkspaceTabs } from "./views/WorkspaceTabs";
 import { useReviewPipeline } from "./hooks/useReviewPipeline";
 import { useGraphPaletteActions } from "./hooks/useGraphPaletteActions";
-import { useAutoRunControl } from "./hooks/useAutoRunControl";
-import { usePackageFileSync } from "./hooks/usePackageFileSync";
 import { useSelectedBlock } from "./hooks/useSelectedBlock";
-import { useDesktopSearch } from "./hooks/useDesktopSearch";
 import { useTaskDraft } from "./hooks/useTaskDraft";
 import { useDesktopProject } from "./hooks/useDesktopProject";
 import { useDesktopProjectSession } from "./hooks/useDesktopProjectSession";
@@ -22,7 +19,6 @@ import { useAppViewHistory } from "./hooks/useAppViewHistory";
 import { useGraphDeleteActions } from "./hooks/useGraphDeleteActions";
 import { useDesktopSettingsEffects } from "./hooks/useDesktopSettingsEffects";
 import { useDesktopSettingsBridge } from "./hooks/useDesktopSettingsBridge";
-import { useVisibleGraphTasks } from "./hooks/useVisibleGraphTasks";
 import { useDetectedAgents } from "./hooks/useDetectedAgents";
 import { useRuntimeTools } from "./hooks/useRuntimeTools";
 import { useTaskNodeFocus } from "./hooks/useTaskNodeFocus";
@@ -30,16 +26,16 @@ import { useTaskExecutorActions } from "./hooks/useTaskExecutorActions";
 import { useDesktopProjectActions } from "./hooks/useDesktopProjectActions";
 import { useGraphFlowModel } from "./hooks/useGraphFlowModel";
 import { useGraphHistoryActions } from "./hooks/useGraphHistoryActions";
-import { useAppNotifications } from "./hooks/useAppNotifications";
 import { useResizableSidebarLayout } from "./hooks/useResizableSidebarLayout";
 import { useLerpedNodeDrag } from "./hooks/useLerpedNodeDrag";
 import { CollapsedSidebarControls, RightPaletteSidebar } from "./AppSidebars";
 import { AppSettingsRoute } from "./AppSettingsRoute";
 import { buildAppSettingsRouteProps } from "./AppSettingsRouteProps";
 import { AppOverlays } from "./components/AppOverlays";
-import { createAutoRunController, createFileSyncController } from "./controllers/AutoRunController";
-import { createGraphWorkspaceController } from "./controllers/GraphWorkspaceController";
-import { createSearchController } from "./controllers/SearchController";
+import { useAutoRunController, useFileSyncController } from "./controllers/AutoRunController";
+import { useGraphWorkspaceController } from "./controllers/GraphWorkspaceController";
+import { useNotificationController } from "./controllers/NotificationController";
+import { useSearchController } from "./controllers/SearchController";
 import { writeAgentScopePromptToClipboard } from "./agentPrompt";
 import { uniqueDesktopDiagnostics } from "./diagnostics";
 
@@ -54,9 +50,6 @@ export function App() {
   const [, setBlockInspectorOpen] = useState(false);
   const { agentDetectionRefreshing, agentDetections, refreshAgentDetections } = useDetectedAgents();
   const { refreshRuntimeTools, runtimeTools } = useRuntimeTools();
-  const [lastFileChange, setLastFileChange] = useState<DesktopPackageFileChangeEvent | null>(null);
-  const [fileSyncDiagnostics, setFileSyncDiagnostics] = useState<string[]>([]);
-  const [fileSyncResult, setFileSyncResult] = useState<DesktopPackageFileSyncResult | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<AppFlowNode, Edge> | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<AppFlowNode>([]);
@@ -190,24 +183,7 @@ export function App() {
     setSelectedRunRecord
   });
 
-  const {
-    autoRunControlRef,
-    autoRunControlStyle,
-    autoRunNextAction,
-    autoRunRetrospective,
-    autoRunScopeMode,
-    handleAutoRunClick,
-    handleAutoRunNextAction,
-    miniRunPanelOpen,
-    moveAutoRunControl,
-    resetRuntimeStateClick,
-    setAutoRunScopeMode,
-    setMiniRunPanelOpen,
-    startAutoRunWithScope,
-    startAutoRunControlDrag,
-    stopAutoRunClick,
-    stopAutoRunControlDrag
-  } = useAutoRunControl({
+  const autoRunController = useAutoRunController({
     autoRunState,
     onAutoRunDerivedStateRefresh: refreshGraph,
     selectedCanvasId,
@@ -243,19 +219,7 @@ export function App() {
     taskDraft
   } = useTaskDraft({ loadProject: openProjectInSession, selectedCanvasId, selectedProject, setActiveView, setError });
 
-  const {
-    desktopSearchResultKinds: searchResultKinds,
-    handleSearchResultOpen,
-    searchCanvasScope,
-    searchDiagnostics,
-    searchQuery,
-    searchResults,
-    searchStatus,
-    selectedSearchResultKinds,
-    setSearchCanvasScope,
-    setSearchQuery,
-    setSearchResultKindEnabled
-  } = useDesktopSearch({
+  const searchController = useSearchController({
     handleBlockSelect: handleOpenBlockInspector,
     handleOpenRunRecord,
     loadProject: openProjectInSession,
@@ -265,8 +229,8 @@ export function App() {
     setError
   });
   const visibleProjectDiagnostics = useMemo(
-    () => uniqueDesktopDiagnostics([...projectDiagnostics, ...graphDiagnostics, ...runtimeDiagnostics, ...searchDiagnostics, ...autoRunDiagnostics]),
-    [autoRunDiagnostics, graphDiagnostics, projectDiagnostics, runtimeDiagnostics, searchDiagnostics]
+    () => uniqueDesktopDiagnostics([...projectDiagnostics, ...graphDiagnostics, ...runtimeDiagnostics, ...searchController.diagnostics, ...autoRunDiagnostics]),
+    [autoRunDiagnostics, graphDiagnostics, projectDiagnostics, runtimeDiagnostics, searchController.diagnostics]
   );
 
   const {
@@ -446,7 +410,7 @@ export function App() {
       handleTaskExecutorChange,
       handleTitleChange,
       handleTitleSave,
-      startAutoRunWithScope
+      startAutoRunWithScope: autoRunController.startAutoRunWithScope
     }
   });
 
@@ -479,54 +443,33 @@ export function App() {
     settings,
     t
   });
-  const { refreshPackageFiles } = usePackageFileSync({
+  const fileSyncController = useFileSyncController({
+    projectDiagnostics: visibleProjectDiagnostics,
     refreshProjectDerivedState,
     reloadCurrentCanvas,
     selectedCanvasId,
     selectedProject,
     setError,
-    setFileSyncDiagnostics,
-    setFileSyncResult,
-    setLastFileChange
+    t
   });
-
-  const { visibleTaskIds, visibleTasks } = useVisibleGraphTasks(graph, searchQuery);
-  const { handleMarkNotificationRead, notificationItems } = useAppNotifications({
+  const notificationController = useNotificationController({
+    applyLocalPromptConflicts,
     autoRunState,
-    fileSyncDiagnostics,
+    fileSyncDiagnostics: fileSyncController.fileSyncDiagnostics,
     graph,
-    lastFileChange,
+    handleRevealPathInFinder,
+    keepLocalPromptConflicts,
+    lastFileChange: fileSyncController.lastFileChange,
     pendingImportRecoveries,
     promptConflicts,
+    reloadPromptConflicts,
+    rollbackPendingImportRecovery,
+    setError,
+    setSuccessMessage,
     settings,
     t,
     updateSettings
   });
-  const handleRevealImportRecoveryDirectory = useCallback(async (recoveryRoot: string) => {
-    await handleRevealPathInFinder(recoveryRoot);
-  }, [handleRevealPathInFinder]);
-  const handleCopyImportRecoveryTransactionId = useCallback(async (transactionId: string) => {
-    try {
-      if (!navigator.clipboard?.writeText) {
-        throw new Error(t("manualCommandUnavailable"));
-      }
-      await navigator.clipboard.writeText(transactionId);
-      setSuccessMessage(t("importRecoveryTransactionCopied"));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    }
-  }, [setError, t]);
-  const handleRollbackImportRecovery = useCallback(async (transactionId: string) => {
-    const result = await rollbackPendingImportRecovery(transactionId);
-    if (result.status === "rolledBack") {
-      handleMarkNotificationRead(`import-recovery:${transactionId}`);
-      setSuccessMessage(t("importRecoveryRollbackSucceeded"));
-      return;
-    }
-    if (result.status === "refreshFailed") {
-      handleMarkNotificationRead(`import-recovery:${transactionId}`);
-    }
-  }, [handleMarkNotificationRead, rollbackPendingImportRecovery, setSuccessMessage, t]);
   const settingsRouteProps = buildAppSettingsRouteProps({
     graph,
     agents: agentDetections,
@@ -562,7 +505,7 @@ export function App() {
     setError,
     t
   };
-  const graphWorkspace = createGraphWorkspaceController({
+  const graphWorkspaceController = useGraphWorkspaceController({
     edges,
     edgeTypes,
     executionPlan,
@@ -581,62 +524,12 @@ export function App() {
     onEdgesChange,
     onNodeDragStop: handleNodeDragStop,
     onNodesChange: lerpedNodeDrag.onNodesChange,
-    onTaskPanelSelect: handleTaskPanelSelect,
+    searchQuery: searchController.searchQuery,
+    handleTaskPanelSelect,
     selectedBlock,
     setSuccessMessage,
     setFlowInstance,
-    t,
-    visibleTaskIds,
-    visibleTasks
-  });
-  const autoRun = createAutoRunController({
-    autoRunControlRef,
-    autoRunControlStyle,
-    autoRunNextAction,
-    autoRunRetrospective,
-    autoRunScopeMode,
-    autoRunState,
-    handleAutoRunClick,
-    handleAutoRunNextAction,
-    miniRunPanelOpen,
-    moveAutoRunControl,
-    resetRuntimeStateClick,
-    setAutoRunScopeMode,
-    setMiniRunPanelOpen,
-    startAutoRunControlDrag,
-    stopAutoRunClick,
-    stopAutoRunControlDrag
-  });
-  const fileSync = createFileSyncController({
-    applyCanvasLaneLayout: async (ref: DesktopCanvasReference) => {
-      if (!bridge) {
-        throw new Error(t("bridgeUnavailable"));
-      }
-      await bridge.applyCanvasLaneLayout(ref);
-    },
-    copyText: async (text: string) => {
-      if (!navigator.clipboard?.writeText) {
-        throw new Error(t("manualCommandUnavailable"));
-      }
-      await navigator.clipboard.writeText(text);
-    },
-    fileSyncResult,
-    projectDiagnostics: visibleProjectDiagnostics,
-    refreshPackageFiles,
-    refreshProjectDerivedState: async () => refreshProjectDerivedState({ includeLayout: true }),
-    setError
-  });
-  const search = createSearchController({
-    handleSearchResultOpen,
-    searchCanvasScope,
-    searchQuery,
-    searchResultKinds,
-    searchResults,
-    searchStatus,
-    selectedSearchResultKinds,
-    setSearchCanvasScope,
-    setSearchQuery,
-    setSearchResultKindEnabled
+    t
   });
   const review = {
     addReviewStep,
@@ -662,16 +555,6 @@ export function App() {
     setNewTaskText,
     setTaskDraft,
     taskDraft
-  };
-  const notifications = {
-    notificationItems,
-    onApplyLocalPromptConflicts: applyLocalPromptConflicts,
-    onKeepLocalPromptConflicts: keepLocalPromptConflicts,
-    onMarkNotificationRead: handleMarkNotificationRead,
-    onCopyImportRecoveryTransactionId: handleCopyImportRecoveryTransactionId,
-    onReloadPromptConflicts: reloadPromptConflicts,
-    onRevealImportRecoveryDirectory: handleRevealImportRecoveryDirectory,
-    onRollbackImportRecovery: handleRollbackImportRecovery
   };
   const planning = {
     statistics,
@@ -715,7 +598,7 @@ export function App() {
           handleUnlinkSourceRoot={handleUnlinkSourceRoot}
           handleTaskPanelSelect={handleTaskPanelSelect}
           loadProject={openProjectInSession}
-          notificationItems={notificationItems}
+          notificationItems={notificationController.notificationItems}
           onResizeStart={(event) => startSidebarResize(event, "left")}
           onToggleSidebar={() => setLeftSidebarCollapsedPreference((current) => !current)}
           onTogglePinnedProject={handleTogglePinnedProject}
@@ -732,13 +615,13 @@ export function App() {
         />
         <WorkspaceTabs
           shell={workspaceShell}
-          graphWorkspace={graphWorkspace}
-          autoRun={autoRun}
-          fileSync={fileSync}
-          search={search}
+          graphWorkspace={graphWorkspaceController}
+          autoRun={autoRunController}
+          fileSync={fileSyncController}
+          search={searchController}
           review={review}
           newTask={newTask}
-          notifications={notifications}
+          notifications={notificationController}
           planning={planning}
         />
         {activeView === "canvas-map" ? null : (

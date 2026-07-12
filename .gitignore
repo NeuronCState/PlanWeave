@@ -6,4 +6,5 @@ packages/desktop/build/icon.iconset/
 .coverage/
 coverage/
 .worktrees/
+design-qa.md
 .octocode/rfc/lan-multi-user-collaboration

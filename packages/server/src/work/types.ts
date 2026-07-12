@@ -136,7 +136,7 @@ export type WorkErrorCode =
   | "validation_failed"
   | "version_conflict"
   | "state_conflict"
-  | "idempotency_key_reused"
+  | "forbidden"
   | "not_found";
 
 export type WorkErrorDetails = {

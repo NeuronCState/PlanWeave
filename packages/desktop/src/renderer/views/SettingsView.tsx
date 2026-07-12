@@ -8,6 +8,7 @@ import { SettingsGeneralSection } from "../settings/SettingsGeneralSection";
 import type { SettingsSection } from "../settings/SettingsNav";
 import { SettingsMcpSection } from "../settings/SettingsMcpSection";
 import { SettingsReviewSection } from "../settings/SettingsReviewSection";
+import { SettingsGitSection } from "../settings/SettingsGitSection";
 import type { createTranslator, Language } from "../i18n";
 import type { AppView, DesktopSettingsUpdate, DesktopUiSettings } from "../types";
 import { RemoteProfilesSection } from "../components/RemoteProfilesSection";
@@ -135,6 +136,16 @@ export function SettingsView({
             />
           ) : null}
           {section === "mcp" ? <><SettingsMcpSection setError={setError} t={t} /><RemoteProfilesSection profiles={remoteProfiles} onProfilesChange={setRemoteProfiles} /></> : null}
+          {section === "git" ? (
+            <SettingsGitSection
+              getGitHubAuthStatus={window.planweaveGitIntegration?.getGitHubAuthStatus ?? (async () => ({ authenticated: false, login: null, scopes: [], source: null }))}
+              getGitStatus={window.planweaveGitIntegration?.getGitStatus ?? (async () => ({ status: null, error: "Desktop bridge unavailable" }))}
+              gitHubLogin={window.planweaveGitIntegration?.gitHubLogin ?? (async () => ({ authenticated: false, login: null, scopes: [], source: null }))}
+              gitHubLogout={window.planweaveGitIntegration?.gitHubLogout ?? (async () => {})}
+              projectId={selectedProject?.projectId ?? null}
+              t={t}
+            />
+          ) : null}
           </div>
         </ScrollArea>
       </section>

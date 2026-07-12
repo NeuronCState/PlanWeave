@@ -2,6 +2,7 @@ import { app, BrowserWindow } from "electron";
 import { registerApplicationMenu } from "./appMenu.js";
 import { checkForAppUpdate, registerAppUpdateHandlers } from "./appUpdate.js";
 import { autoStartMcpTunnel, registerMcpTunnelHandlers, stopMcpTunnelProcesses } from "./mcpTunnel/mcpTunnelHandlers.js";
+import { registerGitIntegrationHandlers } from "./gitIntegrationHandlers.js";
 import { registerDesktopSettingsHandlers } from "./desktopSettingsHandlers.js";
 import { applyPersistedPlanweaveHomeSetting } from "./desktopSettingsStore.js";
 import { registerPackageWatchHandlers } from "./packageWatch.js";
@@ -43,6 +44,7 @@ registerRuntimeStateWatchHandlers();
 registerWindowAppearanceHandlers();
 registerAppUpdateHandlers();
 registerMcpTunnelHandlers();
+registerGitIntegrationHandlers();
 registerApplicationMenu({ checkForUpdates: checkForAppUpdate });
 
 app.whenReady().then(() => {

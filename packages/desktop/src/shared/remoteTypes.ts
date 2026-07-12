@@ -71,6 +71,7 @@ export type RemoteTask = {
   title: string
   status: string
   version: number
+  dependsOnTaskIds?: string[]
   policy: { parallel: boolean; locks: string[]; ownershipScopes: string[]; acceptanceChecks: string[]; reviewers: string[] }
 }
 

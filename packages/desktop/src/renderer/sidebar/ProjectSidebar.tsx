@@ -3,6 +3,7 @@ import {
   BlocksIcon,
   BotIcon,
   CableIcon,
+  GitForkIcon,
   GitPullRequestIcon,
   RotateCcwIcon,
   SettingsIcon
@@ -47,7 +48,9 @@ type ProjectSidebarProps = {
   notificationItems: NotificationItem[];
   mode: "personal" | "team";
   teamConnectionRole: "server" | "member" | null;
+  teamView: string;
   onModeChange: (mode: "personal" | "team") => void;
+  onTeamViewChange: (view: string) => void;
   onResizeStart?: (event: ReactPointerEvent) => void;
   onTogglePinnedProject: (projectId: string) => void;
   pinnedProjectIds: Set<string>;
@@ -92,7 +95,9 @@ export function ProjectSidebar({
   notificationItems,
   mode,
   teamConnectionRole,
+  teamView,
   onModeChange,
+  onTeamViewChange,
   onResizeStart,
   onTogglePinnedProject,
   pinnedProjectIds,
@@ -198,7 +203,9 @@ export function ProjectSidebar({
         notificationItems={notificationItems}
         mode={mode}
         teamConnectionRole={teamConnectionRole}
+        teamView={teamView}
         onModeChange={onModeChange}
+        onTeamViewChange={onTeamViewChange}
         onSelectView={setActiveView}
         t={t}
       />
@@ -260,7 +267,8 @@ export function ProjectSidebar({
               { key: "components", label: t("settingsComponents"), icon: BlocksIcon },
               { key: "review", label: t("settingsReview"), icon: GitPullRequestIcon },
               { key: "agents", label: t("settingsAgents"), icon: BotIcon },
-              { key: "mcp", label: t("settingsMcpTunnel"), icon: CableIcon }
+              { key: "mcp", label: t("settingsMcpTunnel"), icon: CableIcon },
+              { key: "git", label: t("gitAndGitHub"), icon: GitForkIcon }
             ].map(({ key, label, icon: Icon }) => (
               <DropdownMenuItem
                 className={`h-8 gap-2 px-2 ${activeView === "settings" && settingsSection === key ? "bg-state-selected-surface text-text-strong" : ""}`}

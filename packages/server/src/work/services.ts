@@ -253,6 +253,9 @@ export function createWorkServices(options: CreateWorkServicesOptions): WorkServ
         if (!current || current.projectId !== command.projectId) {
           throw new WorkError("not_found", `Assignment '${command.aggregateId}' does not exist.`, { aggregateType: "assignment", aggregateId: command.aggregateId });
         }
+        if (current.assigneeUserId !== command.actorId) {
+          throw new WorkError("forbidden", `Assignment '${command.aggregateId}' is not owned by the requesting actor.`, { aggregateType: "assignment", aggregateId: current.id });
+        }
         if (current.version !== command.expectedVersion) {
           throw new WorkError("version_conflict", "Assignment version mismatch.", {
             aggregateType: "assignment",
@@ -313,6 +316,9 @@ export function createWorkServices(options: CreateWorkServicesOptions): WorkServ
         const current = repository.loadAssignment(unit, command.aggregateId!);
         if (!current || current.projectId !== command.projectId) {
           throw new WorkError("not_found", `Assignment '${command.aggregateId}' does not exist.`, { aggregateType: "assignment", aggregateId: command.aggregateId });
+        }
+        if (current.assigneeUserId !== command.actorId) {
+          throw new WorkError("forbidden", `Assignment '${command.aggregateId}' is not owned by the requesting actor.`, { aggregateType: "assignment", aggregateId: current.id });
         }
         if (current.version !== command.expectedVersion) {
           throw new WorkError("version_conflict", "Assignment version mismatch.", {
@@ -486,6 +492,9 @@ export function createWorkServices(options: CreateWorkServicesOptions): WorkServ
         const current = repository.loadAssignment(unit, command.aggregateId!);
         if (!current || current.projectId !== command.projectId) {
           throw new WorkError("not_found", `Assignment '${command.aggregateId}' does not exist.`, { aggregateType: "assignment", aggregateId: command.aggregateId });
+        }
+        if (current.assigneeUserId !== command.actorId) {
+          throw new WorkError("forbidden", `Assignment '${command.aggregateId}' is not owned by the requesting actor.`, { aggregateType: "assignment", aggregateId: current.id });
         }
         if (current.version !== command.expectedVersion) {
           throw new WorkError("version_conflict", "Assignment version mismatch.", {

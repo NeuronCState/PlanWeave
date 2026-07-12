@@ -140,7 +140,10 @@ export function createWorktreeManager(): WorktreeManager {
     return { removedWorktrees, errors }
   }
 
+  const SAFE_BRANCH_RE = /^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,255}$/;
+
   const getTargetHead = async (bareRepoPath: string, branch: string): Promise<string> => {
+    if (!SAFE_BRANCH_RE.test(branch)) throw new MergeQueueError("validation_failed", `Invalid branch name: '${branch}'.`, { targetBranch: branch });
     try {
       const { stdout } = await gitBare(bareRepoPath, ["rev-parse", `refs/heads/${branch}`])
       return stdout.trim()
@@ -153,8 +156,9 @@ export function createWorktreeManager(): WorktreeManager {
   }
 
   const mergeEntry = async (worktreePath: string, headBranch: string, targetBranch: string): Promise<{ mergeCommit: string; conflict: boolean; conflictFiles: string[] }> => {
+    if (!SAFE_BRANCH_RE.test(targetBranch)) throw new MergeQueueError("validation_failed", `Invalid branch name: '${targetBranch}'.`, { targetBranch });
     try {
-      await gitWorktree(worktreePath, ["checkout", targetBranch])
+      await gitWorktree(worktreePath, ["checkout", "--", targetBranch])
     } catch {
       await gitWorktree(worktreePath, ["checkout", "-b", targetBranch, `origin/${targetBranch}`]).catch(() => {
         throw new MergeQueueError("worktree_error", `Failed to checkout target branch '${targetBranch}'.`, {

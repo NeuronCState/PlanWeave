@@ -28,12 +28,13 @@ type SidebarNavProps = {
   onSelectView: (view: AppView) => void;
   mode: "personal" | "team";
   teamConnectionRole: "server" | "member" | null;
+  teamView: string;
   onModeChange: (mode: "personal" | "team") => void;
+  onTeamViewChange: (view: string) => void;
   t: ReturnType<typeof createTranslator>;
 };
 
-export function SidebarNav({ activeView, canOpenCanvasMap, mode, notificationItems, onModeChange, onSelectView, t, teamConnectionRole }: SidebarNavProps) {
-  const [teamView, setTeamView] = useState("planning");
+export function SidebarNav({ activeView, canOpenCanvasMap, mode, notificationItems, onModeChange, onSelectView, onTeamViewChange, t, teamConnectionRole, teamView }: SidebarNavProps) {
   const [transitioning, setTransitioning] = useState(false);
   const transitionTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const unreadNotificationCount = notificationItems.filter((item) => !item.read).length;
@@ -48,7 +49,7 @@ export function SidebarNav({ activeView, canOpenCanvasMap, mode, notificationIte
 
   const handleModeChange = useCallback((newMode: "personal" | "team") => {
     if (newMode === mode || transitioning) return;
-    if (newMode === "personal") setTeamView("planning");
+    if (newMode === "personal") onTeamViewChange("planning");
     setTransitioning(true);
     transitionTimerRef.current = setTimeout(() => {
       onModeChange(newMode);
@@ -127,7 +128,7 @@ export function SidebarNav({ activeView, canOpenCanvasMap, mode, notificationIte
                 className="h-8 justify-start px-2 text-text-muted data-[variant=secondary]:bg-state-selected-surface data-[variant=secondary]:text-violet-700 dark:data-[variant=secondary]:text-violet-200"
                 key={key}
                 variant={teamView === key ? "secondary" : "ghost"}
-                onClick={() => setTeamView(key)}
+                onClick={() => onTeamViewChange(key)}
               >
                 <Icon data-icon="inline-start" />
                 {label}

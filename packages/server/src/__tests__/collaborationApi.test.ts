@@ -41,7 +41,10 @@ describe("real multi-user collaboration HTTP API", () => {
 
     const auth = { authorization: `Bearer ${bob.session.id}` };
     const members = await fetch(`${base}/api/v1/projects/project-team/members`, { headers: auth });
-    expect(await members.json()).toEqual(expect.arrayContaining([expect.objectContaining({ userId: "alice" }), expect.objectContaining({ userId: "bob" })]));
+    expect(await members.json()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ userId: "alice", online: true }),
+      expect.objectContaining({ userId: "bob", online: true })
+    ]));
 
     const rooms = await fetch(`${base}/api/v1/projects/project-team/rooms`, { headers: auth });
     const roomList = await rooms.json() as Array<{ id: string }>;

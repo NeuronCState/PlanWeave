@@ -15,6 +15,7 @@ import type { McpTunnelStatus, PlanWeaveMcpTunnelApi } from "../shared/mcpTunnel
 import { mcpTunnelChangedChannel, mcpTunnelInvokeChannels } from "../shared/mcpTunnel.js";
 import { windowAppearanceInvokeChannels, type PlanWeaveWindowApi } from "../shared/windowAppearance.js";
 import { remoteCollaborationInvokeChannels, remoteConnectChannel, remoteEventChannel, type PlanWeaveRemoteApi } from "../shared/remoteTypes.js";
+import { gitIntegrationInvokeChannels, type PlanWeaveGitIntegrationApi } from "../shared/gitIntegration.js";
 import { createDesktopBridgeInvokeApi } from "./bridgeInvocation.js";
 
 const invokeApi = createDesktopBridgeInvokeApi((channel, ...args) => ipcRenderer.invoke(channel, ...args));
@@ -131,6 +132,15 @@ const remoteApi: PlanWeaveRemoteApi = {
 }
 
 contextBridge.exposeInMainWorld("planweaveRemote", remoteApi);
+
+const gitIntegrationApi: PlanWeaveGitIntegrationApi = {
+  getGitStatus: async (projectId) => ipcRenderer.invoke(gitIntegrationInvokeChannels.getGitStatus, projectId),
+  getGitHubAuthStatus: async () => ipcRenderer.invoke(gitIntegrationInvokeChannels.getGitHubAuthStatus),
+  gitHubLogin: async (token) => ipcRenderer.invoke(gitIntegrationInvokeChannels.gitHubLogin, token),
+  gitHubLogout: async () => ipcRenderer.invoke(gitIntegrationInvokeChannels.gitHubLogout)
+};
+
+contextBridge.exposeInMainWorld("planweaveGitIntegration", gitIntegrationApi);
 
 if (process.env.PLANWEAVE_DESKTOP_SMOKE === "1") {
   contextBridge.exposeInMainWorld("planweaveSmoke", {

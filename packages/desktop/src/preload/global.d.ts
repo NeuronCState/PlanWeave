@@ -4,6 +4,7 @@ import type { PlanWeaveDesktopSettingsApi } from "../shared/desktopSettings";
 import type { PlanWeaveMcpTunnelApi } from "../shared/mcpTunnel";
 import type { PlanWeaveRemoteApi } from "../shared/remoteTypes";
 import type { PlanWeaveWindowApi } from "../shared/windowAppearance";
+import type { PlanWeaveGitIntegrationApi } from "../shared/gitIntegration";
 
 declare global {
   interface Window {
@@ -13,6 +14,7 @@ declare global {
     planweaveMcpTunnel?: PlanWeaveMcpTunnelApi;
     planweaveRemote?: PlanWeaveRemoteApi;
     planweaveWindow?: PlanWeaveWindowApi;
+    planweaveGitIntegration?: PlanWeaveGitIntegrationApi;
   }
 }
 

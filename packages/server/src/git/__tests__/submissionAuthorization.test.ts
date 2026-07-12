@@ -19,7 +19,8 @@ describe("merge queue submission authorization with production schema", () => {
       databasePath: join(dataDirectory, "server.sqlite"),
       host: "127.0.0.1",
       port: 0,
-      busyTimeoutMs: 5000
+      busyTimeoutMs: 5000,
+      joinToken: "team-secret"
     });
     try {
       server.database.prepare("INSERT INTO projects(id,name,created_at) VALUES (?,?,?)").run("project-auth", "Auth", new Date().toISOString());

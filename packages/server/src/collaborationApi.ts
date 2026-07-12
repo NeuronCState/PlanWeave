@@ -13,6 +13,7 @@ import { WorkError } from "./work/types.js";
 
 type Options = { database: SqliteDatabase; config: ServerConfig; readiness: () => unknown };
 type Json = Record<string, unknown>;
+const MEMBER_PRESENCE_WINDOW_MS = 60_000;
 
 export function createCollaborationHttpServer(options: Options): Server {
   const { database, config } = options;
@@ -48,8 +49,9 @@ export function createCollaborationHttpServer(options: Options): Server {
       return writeJson(response, 200, { items: rows.map((row) => ({ protocolVersion: 1, eventId: String(row.event_id), projectId: row.project_id, aggregateType: row.aggregate_type, aggregateId: row.aggregate_id, aggregateVersion: row.aggregate_version, type: row.type, occurredAt: row.occurred_at })), nextCursor: rows.length === limit ? String(rows.at(-1)?.event_id) : null });
     }
     if (request.method === "GET" && projectId && projectMatch?.[2] === "/members") {
-      const rows = database.prepare("SELECT m.user_id,u.display_name,m.role FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.project_id=? ORDER BY u.display_name").all(projectId);
-      return writeJson(response, 200, rows.map((row) => ({ userId: row.user_id, displayName: row.display_name, role: row.role, online: false })));
+      const presenceCutoff = new Date(Date.now() - MEMBER_PRESENCE_WINDOW_MS).toISOString();
+      const rows = database.prepare("SELECT m.user_id,u.display_name,m.role,EXISTS (SELECT 1 FROM devices d WHERE d.user_id=m.user_id AND d.status='active' AND d.last_seen_at IS NOT NULL AND d.last_seen_at>=?) AS online FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.project_id=? ORDER BY u.display_name").all(presenceCutoff, projectId);
+      return writeJson(response, 200, rows.map((row) => ({ userId: row.user_id, displayName: row.display_name, role: row.role, online: Boolean(row.online) })));
     }
     if (request.method === "GET" && projectId && projectMatch?.[2] === "/rooms") {
       const rows = database.prepare("SELECT id,name,archived_at FROM rooms WHERE project_id=? ORDER BY created_at").all(projectId);
@@ -72,7 +74,10 @@ export function createCollaborationHttpServer(options: Options): Server {
     }
     if (request.method === "GET" && projectId && projectMatch?.[2] === "/tasks") {
       const rows = database.prepare("SELECT * FROM work_tasks WHERE project_id=? ORDER BY created_at,task_id").all(projectId);
-      return writeJson(response, 200, rows.map(toTask));
+      return writeJson(response, 200, rows.map((row) => ({
+        ...toTask(row),
+        dependsOnTaskIds: database.prepare("SELECT depends_on_task_id FROM work_task_dependencies WHERE project_id=? AND task_id=? ORDER BY depends_on_task_id").all(projectId, row.id).map((dependency) => dependency.depends_on_task_id)
+      })));
     }
     if (request.method === "POST" && projectId && projectMatch?.[2] === "/tasks") {
       requireProjectRole(database, projectId, identity.user.id, "maintainer");
@@ -111,6 +116,7 @@ export function createCollaborationHttpServer(options: Options): Server {
     }
     const assignmentMatch = projectId && projectMatch?.[2]?.match(/^\/assignments\/([^/]+)\/(heartbeat|submit)$/);
     if (assignmentMatch && request.method === "POST") {
+      requireProjectRole(database, projectId, identity.user.id, "contributor");
       const body = await readBody(request);
       const assignmentId = decodeSegment(assignmentMatch[1]!);
       const common = { deviceId: identity.session.deviceId, idempotencyKey: idempotency(request, body), aggregateType: "assignment" as const, aggregateId: assignmentId, projectId, actorId: identity.user.id, expectedVersion: number(body.expectedVersion, 0) };
@@ -130,7 +136,7 @@ export function createCollaborationHttpServer(options: Options): Server {
 
   async function join(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const body = await readBody(request);
-    if (body.joinToken !== (config.joinToken ?? "planweave-local-team")) throw new DomainError("unauthenticated", "Invalid team join token");
+    if (body.joinToken !== config.joinToken) throw new DomainError("unauthenticated", "Invalid team join token");
     const projectId = string(body.projectId, "projectId");
     const userId = string(body.userId, "userId");
     const deviceId = string(body.deviceId, "deviceId");
@@ -155,7 +161,9 @@ export function createCollaborationHttpServer(options: Options): Server {
   function authenticate(request: IncomingMessage) {
     const header = request.headers.authorization;
     if (!header?.startsWith("Bearer ")) throw new DomainError("unauthenticated", "Bearer session is required");
-    return resolveActiveSession(database, header.slice(7));
+    const identity = resolveActiveSession(database, header.slice(7));
+    database.prepare("UPDATE devices SET last_seen_at=? WHERE id=?").run(new Date().toISOString(), identity.device.id);
+    return identity;
   }
 }
 

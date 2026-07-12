@@ -54,6 +54,7 @@ function unavailablePackageDirMessage(canvasId: string): string {
 
 export function App() {
   const [mode, setMode] = useState<"personal" | "team">("personal");
+  const [teamView, setTeamView] = useState("planning");
   const [teamConnectionRole, setTeamConnectionRole] = useState<"server" | "member" | null>(null);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
   const [error, setError] = useState<string | null>(null);
@@ -631,7 +632,9 @@ export function App() {
             notificationItems={notificationController.notificationItems}
             mode={mode}
             teamConnectionRole={teamConnectionRole}
+            teamView={teamView}
             onModeChange={setMode}
+            onTeamViewChange={setTeamView}
             onResizeStart={(event) => startSidebarResize(event, "left")}
             onTogglePinnedProject={handleTogglePinnedProject}
             pinnedProjectIds={pinnedProjectIds}
@@ -657,7 +660,7 @@ export function App() {
       <div className="glass-surface relative flex-1 min-w-0 overflow-hidden">
         <div className="app-drag-region absolute left-0 top-0 z-10 h-5 w-full" />
         <main className="relative flex h-full min-h-0 overflow-hidden">
-        {mode === "team" ? <TeamModeShell embedded onConnectionRoleChange={setTeamConnectionRole} onExit={() => setMode("personal")} /> : (
+        {mode === "team" ? <TeamModeShell embedded teamView={teamView} onConnectionRoleChange={setTeamConnectionRole} onExit={() => setMode("personal")} /> : (
           <>
             <div style={{ display: activeView === "settings" ? "contents" : "none" }}>
               <AppSettingsRoute {...settingsRouteProps} />

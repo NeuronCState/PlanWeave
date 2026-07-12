@@ -17,7 +17,7 @@ export function applyMigrations(database: SqliteDatabase): void {
   for (const migration of migrations) if (!applied.has(migration.version)) { database.exec("BEGIN IMMEDIATE"); try { database.exec(migration.sql); database.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)").run(migration.version, new Date().toISOString()); database.exec("COMMIT"); } catch (error) { database.exec("ROLLBACK"); throw error; } }
   const latest = Math.max(...migrations.map((migration) => migration.version));
   const found = Number(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()?.version ?? 0);
-  if (found !== latest) throw new Error(`Unsupported schema version ${found}; expected ${latest}.`);
+  if (found < latest) throw new Error(`Unsupported schema version ${found}; expected at least ${latest}.`);
 }
 
 export function centralSchemaVersion(database: SqliteDatabase): number {

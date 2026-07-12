@@ -36,7 +36,7 @@
 | **CLI 远程模式** | `planweave server start\|join\|list\|forget\|project`、`planweave remote task\|merge-queue` 等。 | `packages/cli/src/commands/remote*.ts` |
 | **桌面端 Team Mode** | 内嵌 Mode 切换（Personal / Team）。Host / Member 角色选择；本机 `localTeamHost` 一键启服务；连接 profile；规划室、提案、事件同步；角色徽章。 | `packages/desktop/src/renderer/team/`、`packages/desktop/src/main/localTeamHost.ts` |
 | **Codex 风格 UI 整改** | 紧凑常驻侧栏 + brand header；Personal/Team 模式切换 + 角色徽章；向上弹出 Settings 下拉（5 个分区）；可拖拽的浮动组件面板 + 悬停展开；`view-enter` 路由过渡；语义化色彩 token（亮 / 暗 / 跟随系统）。 | `packages/desktop/src/renderer/{sidebar,AppSidebars,AppSettingsRoute,views,index.css}` |
-| **i18n zh-CN** | 覆盖率达到 **98.8%**，附 Codex 风格动画。 | `packages/desktop/src/renderer/i18nZhCn.ts` |
+| **i18n zh-CN** | 覆盖率达到 **98.8%**，附动画。 | `packages/desktop/src/renderer/i18nZhCn.ts` |
 | **worktree 残留清理延后** | `.worktrees/` 下的 A1–A9 worktree 仍在（已合入 main）。 | follow-up |
 
 upstream 原始的 README 不再是本 fork 的真相来源。旧的 zh-CN 译文见 `readme/README.zh-CN.md`。
@@ -102,7 +102,7 @@ flowchart LR
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  侧栏（Codex 风格）                                              │
+│  侧栏                                              │
 │  ├─ PlanWeave brand 头 + 折叠 / 后退 / 前进                     │
 │  ├─ Mode: Personal / Team（带角色徽章）                         │
 │  ├─ Team 子导航（Team 模式时）：规划室 / 流程图 / 团队任务 /    │
@@ -129,115 +129,3 @@ flowchart LR
 - **LAN 多人协作** —— 一个项目对应一个 `packages/server` 实例。桌面 / CLI 通过 LAN 连接。SQLite WAL 提供权威存储；Git merge queue 串行化提交。
 
 ---
-
-## 2. 快速上手（本 fork）
-
-### 2.1 安装
-
-```bash
-pnpm install --frozen-lockfile
-pnpm -r build
-```
-
-构建顺序：`runtime → server / mcp → cli / desktop`。
-
-### 2.2 启动 server（主机端）
-
-```bash
-# 在仓库根
-pnpm --filter @planweave-ai/cli planweave server start \
-  --port 8788 --data-directory ./data
-```
-
-或者直接：
-
-```bash
-node packages/cli/dist/index.js server start --port 8788 --data-directory ./data
-```
-
-启动后会打印一个 join URL。默认 join token 是 `planweave-local-team`（可用 `--join-token` 或环境变量覆盖）。
-
-### 2.3 成员加入（CLI）
-
-```bash
-planweave server join --server-url http://192.168.1.10:8788 --token planweave-local-team
-planweave server list
-planweave server project --profile <profile-id> --project <project-id>
-```
-
-### 2.4 桌面端加入
-
-1. `pnpm --dir packages/desktop build && pnpm --dir packages/desktop start`
-2. 侧栏 → **Mode: Team**（或点 Team 条目上的角色徽章）。
-3. 选 **作为主机启动**（在本机起一个 team host）或 **作为成员加入**（粘贴 server URL + token）。
-4. Team 标签旁的徽章会切换为 `<ServerIcon />`（主机）或 `<UserRoundIcon />`（成员）并保持同步。
-
-### 2.5 跑一个 work package
-
-- 在 Team 模式下打开侧栏的 **团队任务** 子导航。
-- 认领一个 task —— server 会创建一条带可续约 lease 的 assignment。
-- 在本地 Git worktree 里写代码。准备好后 push 分支。
-- 提交 head commit；merge queue 会校验路径、祖先、身份，再跑检查脚本后合并。
-
-### 2.6 Personal / 本地模式（未变化）
-
-- 侧栏 → **Mode: Personal**（或点任何本地导航）。
-- 照常使用 `planweave status`、`planweave run --once`、桌面端流程图、 MCP tunnel 等 —— 与 upstream 一致。
-
----
-
-## 3. CLI 速查（本 fork 新增）
-
-| 命令 | 作用 |
-|---|---|
-| `planweave server start` | 用本地数据目录启动 LAN server |
-| `planweave server join` | 注册一个连接 profile + 凭证 |
-| `planweave server list` | 列出已知 profile |
-| `planweave server forget` | 删除 profile 并清除凭证 |
-| `planweave server project` | 在某 profile 上绑定当前项目 |
-| `planweave remote task` | 查看 / 认领 / 提交团队任务 |
-| `planweave remote merge-queue` | 查看 / 重试 queue 条目 |
-
-原有 upstream CLI 命令（`planweave init`、`run`、`status`、`mcp tunnel …`、`package-draft …`）照常使用。
-
----
-
-## 4. 验证
-
-- `pnpm lint` —— `check:versions` + `check:dom-boundaries` + `typecheck`
-- `pnpm test` —— 全 monorepo vitest
-- `pnpm --filter @planweave-ai/desktop typecheck` —— renderer + 主进程
-- `pnpm --filter @planweave-ai/server test` —— server 单元 + 集成（11 个文件，84+ 用例）
-
-A10 验收记录：`.octocode/rfc/lan-multi-user-collaboration/A10_ACCEPTANCE.md`。
-
----
-
-## 5. 设计文档（本 fork 配套）
-
-- `RFC.md` —— LAN 多人协作与服务器协调交付（讲"为什么"）
-- `IMPLEMENTATION.md` —— A0–A10 工作包图与归属边界
-- `CONTRACTS-v1.md` —— 冻结的错误信封 / cursor / 幂等 / 版本 / 事件信封
-- `A10_ACCEPTANCE.md` —— 集成、故障注入与安全验收
-- `TEAM_MODE_FRONTEND.md` —— Team Mode 产品 / 信息架构
-- `ADR-001-authoritative-sqlite.md` —— `node:sqlite` 选型
-- `ADR-002-http-websocket-transport.md` —— 独立协作监听器
-- `KPI.md` —— 守护指标与何时重新评估扩缩
-- `PREREQUISITES.md` / `RESOURCES.md`
-
-这些文档都放在 `.octocode/rfc/lan-multi-user-collaboration/`（本 fork `.gitignore` 排除了，工作包进行期间随代码一起维护）。
-
----
-
-## 6. 已知后续工作
-
-- A2 work schema 正在扩展，目标是持久化 `ownershipScopes`、受保护 scope、reviewer、acceptance check，让 merge queue 能从权威任务数据上强制 RFC 的路径边界策略（A10 阻塞项）。
-- `.worktrees/a2-a4-*, server-integration/` 是 A1–A9 并行工作的残留；以 main 为准后可直接 `git worktree remove`。
-- Coordinator Agent 的首个真实 provider 仍待取消 / 预算 / artifact 持久化工作完成；目前集成测试用的是手动 / fake provider。
-- A10 期间没有跑 Ghost Security 自动化扫描（用了针对性人工 / 静态评审兜底）；把协作 server 暴露到 loopback 之外前需要补上。
-
----
-
-## 许可
-
-MIT。详见 [LICENSE](LICENSE)。

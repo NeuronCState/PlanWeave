@@ -1,15 +1,9 @@
-<h1 align="center">PlanWeave</h1>
+<h1 align="center">PlanWeave — LAN Team Collaboration Fork</h1>
 
 <p align="center">
-  PlanWeave is a file-backed loop engineering system for long-running coding agents. It turns fuzzy plans into claimable tasks, routes them through implementation and review agents, records every run, and keeps the loop recoverable.
-</p>
-
-<p align="center">
-  <img src="readme/assets/planweave-readme-animation.svg" width="860" alt="PlanWeave brand motion." />
-</p>
-
-<p align="center">
-  <a href="readme/README.zh-CN.md">中文 README</a>
+  A server-coordinated, multi-user collaboration layer for PlanWeave, with a Codex-style desktop shell.
+  This fork adds authoritative state, identity, proposals, work leases, events, and a Git merge queue
+  to the upstream file-backed single-user loop.
 </p>
 
 <!-- planweave-badges:start -->
@@ -23,264 +17,227 @@
 </p>
 <!-- planweave-badges:end -->
 
+---
 
+## 0. What changed vs upstream
 
-## Why PlanWeave
+> Upstream baseline: `GaosCode/PlanWeave` @ `6a5dbb1 docs(readme): mention skills in quick start`.
+> This fork: 20 commits ahead, **+15,553 / −155 lines, 142 files**.
 
-Chat is a useful place to start a plan, but it is a fragile place to run a long engineering loop.
+| Area | Change | Reference |
+|---|---|---|
+| **New `packages/server`** | Axum + `node:sqlite` (WAL) authoritative coordinator. Eight internal modules: `identity` / `planning` / `proposals` / `work` / `events` / `agents` / `git` / `audit`. Dedicated HTTP `/api/collaboration` listener + WebSocket sync. | `packages/server/src/**` |
+| **Transactional work coordination** | Tasks, assignments, leases, heartbeat, submissions, reviews. Exactly-one-active-assignment invariant enforced by partial unique index. Lease reclaim. Idempotency key + `expectedVersion` optimistic concurrency. | `packages/server/src/work/` |
+| **Identity & sessions** | Users, devices, invitations, revocable sessions, project membership. Token-based join. | `packages/server/src/identity/` |
+| **Planning rooms & proposals** | Rooms, messages, attachment metadata, immutable proposal revisions, approval policy, votes, lifecycle transitions. | `packages/server/src/{planning,proposals,attachments}/` |
+| **Durable events + WebSocket** | Append-only `domain_events` with `EventEnvelopeV1` projection over `ws 8.x`. Reconnect-friendly resync cursor. | `packages/server/src/events/` |
+| **Git merge queue** | Bare integration repo + isolated worktrees. Ownership-scope path validation (rejects `events-rogue/**` style matches). Serialized merge with identity / ancestry / scope / check / Agent / human review gates. | `packages/server/src/git/` |
+| **Runtime parity** | `packages/runtime` gains a `FileRuntimeRepository` ↔ `SqliteRuntimeRepository` boundary so server mode is the source of truth while file-backed mode still works. | A5 commit |
+| **Coordinator Agent** | Artifact / checkpoint persistence, cancellation, retry. Pluggable provider interface; first real provider gated on persistence work. | `packages/server/src/agents/` |
+| **CLI remote mode** | `planweave server start|join|list|forget|project`, `planweave remote task|merge-queue` etc. | `packages/cli/src/commands/remote*.ts` |
+| **Desktop Team Mode** | Embedded mode switch (Personal / Team). Host / member role choice, local `localTeamHost` that boots a server, connection profiles, planning rooms, proposals, event sync, role indicator badges. | `packages/desktop/src/renderer/team/`, `packages/desktop/src/main/localTeamHost.ts` |
+| **Codex-style UI refinements** | Persistent compact sidebar with brand header; Personal/Team mode switch with role badge; upward Settings dropdown (5 sections); draggable floating component palette with hover-expand; `view-enter` route transitions; semantic color tokens for light/dark/system themes. | `packages/desktop/src/renderer/{sidebar,AppSidebars,AppSettingsRoute,views,index.css}` |
+| **i18n zh-CN** | Coverage brought to **98.8%** with Codex-style animations. | `packages/desktop/src/renderer/i18nZhCn.ts` |
+| **Worktree-residue cleanup deferred** | A1–A9 worktrees under `.worktrees/` are still present (already merged). | follow-up |
 
-PlanWeave turns a fuzzy goal or chat-authored plan into a task graph of nodes and block documents. Each block can be claimed by a focused agent, routed through implementation and review, and recorded as durable run artifacts. Agents get the current block plus relevant graph context, while the project keeps a recoverable history of what ran, what passed review, and what needs another loop.
+The original upstream README is no longer the source of truth for this fork. See `readme/README.zh-CN.md` for the older zh-CN reference text.
 
-That makes PlanWeave a better fit for complex engineering work: parallel implementation, staged checks, review feedback, follow-up fixes, continued execution, and progress tracking all stay inside the same local loop.
+---
 
-## Highlights
+## 1. Architecture
 
-- **Files are nodes, documents are blocks**: the graph is not a decoration on top of chat. It is the project model.
-- **Graph-friendly by default**: task flow, dependencies, review loops, and execution status are visible and editable.
-- **Zero-config start**: install the CLI and agent skills, then use a few commands and skill prompts to create, run, and inspect a plan in an existing project.
-- **Scoped graph context**: agents receive the current block plus relevant task graph context, and can inspect more when needed.
-- **Focused responsibilities**: each claim hands one focused block to one agent, keeping context clean and avoiding unrelated plans, stale discussion, and wasted tokens.
-- **Per-node and per-block agent routing**: use Codex for one block, Claude Code, OpenCode, or Pi for another, and local review scripts where deterministic checks are enough.
-- **MCP authoring for ChatGPT**: connect ChatGPT to PlanWeave through the local MCP server, a headless systemd tunnel, or the desktop secure tunnel, then ask it to create canvases, tasks, blocks, review pipelines, and dependencies.
-- **Full auto-run workflow**: PlanWeave can claim blocks, run agents, collect reports, handle review feedback, and continue the task flow.
-- **Review and feedback as first-class work**: review blocks can produce structured feedback that returns to implementation blocks.
-- **Desktop and CLI support**: use the visual Electron canvas or drive the same runtime from the terminal.
-- **Live observability**: block runs keep logs, reports, metadata, and tmux attach commands for monitoring.
-- **Statistics, search, and todo views**: inspect development efficiency and project state without leaving the workflow.
-- **Local-first and file-backed**: plans, prompts, run records, and artifacts remain inspectable in your workspace.
+```mermaid
+flowchart LR
+  subgraph Local["Member machine"]
+    D[Desktop App<br/>Electron + React]
+    C[CLI<br/>planweave]
+    R[Runtime<br/>file-backed]
+    G[Local Git worktree]
+  end
 
-For the default canvas, inspectable files live under `canvases/default/package`, `canvases/default/state.json`, and `canvases/default/results` inside the PlanWeave workspace. Use `planweave paths --json` for the exact local paths.
+  subgraph Server["LAN collaboration server (this fork)"]
+    H[Collaboration HTTP<br/>/api/collaboration]
+    W[WebSocket<br/>/ws/collaboration]
+    S[(SQLite WAL<br/>authoritative store)]
+    CO[Coordinator Agent]
+    MQ[Git merge queue<br/>+ bare repo]
+  end
 
-## Quick Start
+  D -->|HTTPS + WSS| H
+  C -->|HTTPS + WSS| H
+  H --> S
+  W --> S
+  CO --> S
+  MQ --> G
+  G -->|push commit| MQ
+  R -. projection .-> S
+```
 
-PlanWeave is currently CLI-first. The desktop app is available for testing, but it is experimental and unsigned.
+### Authority model
 
-Install the CLI with npm:
+- The **server is the only writer** of collaborative state. All state-changing use cases run inside explicit `BEGIN IMMEDIATE` transactions.
+- Every aggregate carries a monotonically increasing `version`. Stale commands fail with `version_conflict`.
+- Every client command carries an `idempotencyKey` (16–128 ASCII). Replays return the cached result.
+- Domain row write + idempotency row + `domain_events` append + `audit_log` append all share one transaction (see `packages/server/src/store.ts:executeIdempotent`).
+- Runtime domain logic never imports the server. The `packages/runtime` mutation boundary is split into a `FileRuntimeRepository` (default) and a `SqliteRuntimeRepository` (server mode). A1–A5 keep local mode green after every merge.
+
+### Server modules (`packages/server/src/`)
+
+| Module | Responsibility |
+|---|---|
+| `identity/` | users, devices, invitations, sessions, membership, authorization |
+| `planning/` | rooms, messages, attachment metadata, artifact citations |
+| `proposals/` | immutable revisions, approval policy, votes, lifecycle |
+| `work/` | tasks, assignments, leases, heartbeat, submission, review, reclaim |
+| `events/` | durable event sequence, WebSocket publisher, resync cursor, HTTP availability |
+| `agents/` | coordinator runs, inputs, outputs, budgets, cancellation, retry |
+| `git/` | bare repo, worktree lifecycle, ownership validation, merge queue, checks |
+| `audit/` | append-only action history |
+| `attachments/` | upload metadata, digest, size checks, BOLA protection |
+| `collaborationApi.ts` | HTTP routes for the eight modules |
+| `lifecycle.ts` | `startPlanweaveServer`, startup reconciliation, graceful shutdown |
+| `store.ts` | SQLite handle, migrations runner, `executeIdempotent` |
+| `config.ts` | env-driven config, port / data dir / join token / busy timeout |
+
+### Frontend (Desktop) layers
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Sidebar (Codex-style)                                          │
+│  ├─ PlanWeave brand header + collapse / back / forward          │
+│  ├─ Mode: Personal / Team  (with role badge)                   │
+│  ├─ Team subnav (when Team): planning / graph / tasks /         │
+│  │     proposals / members                                      │
+│  ├─ Local nav: New Task / Graph / Canvas Map / Todo / Search /  │
+│  │     Notifications                                            │
+│  └─ Bottom: Settings (upward dropdown) / Reset Layout          │
+├─────────────────────────────────────────────────────────────────┤
+│  Main display region                                            │
+│  ├─ Personal mode  → WorkspaceTabs (graph/canvas/todo/...)     │
+│  ├─ Settings view  → AppSettingsRoute (5 sections)             │
+│  └─ Team mode      → TeamModeShell (embedded, full-width)      │
+│                        ├─ Choose host / member role             │
+│                        ├─ Local team host boot                  │
+│                        └─ Active project shell                  │
+├─────────────────────────────────────────────────────────────────┤
+│  Floating component palette (draggable, hover-expand)           │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Topologies supported
+
+- **Single-user, file-backed** — original PlanWeave, still works. Runtime uses `FileRuntimeRepository`. No server required.
+- **LAN multi-user** — one `packages/server` instance per project. Desktop / CLI connect over LAN. SQLite WAL provides the authoritative store; Git merge queue serializes submissions.
+
+---
+
+## 2. Quick Start (this fork)
+
+### 2.1 Install
 
 ```bash
-npm install -g @planweave-ai/cli
+pnpm install --frozen-lockfile
+pnpm -r build
 ```
 
-Or install it with Homebrew:
+The build order is `runtime → server/mcp → cli/desktop`.
+
+### 2.2 Run the server (host machine)
 
 ```bash
-brew install GaosCode/tap/planweave
+# From the repo
+pnpm --filter @planweave-ai/cli planweave server start \
+  --port 8788 --data-directory ./data
 ```
 
-Then run:
+Or, directly:
 
 ```bash
-planweave --help
+node packages/cli/dist/index.js server start --port 8788 --data-directory ./data
 ```
 
-Install the agent skills as well:
+The server prints a join URL. Default join token is `planweave-local-team` (override with `--join-token` or the env var).
+
+### 2.3 Connect a member (CLI)
 
 ```bash
-npx skills@latest add GaosCode/PlanWeave
+planweave server join --server-url http://192.168.1.10:8788 --token planweave-local-team
+planweave server list
+planweave server project --profile <profile-id> --project <project-id>
 ```
 
-## MCP and ChatGPT Web Planning
+### 2.4 Connect from Desktop
 
-PlanWeave includes a local HTTP MCP server for using PlanWeave from MCP clients such as ChatGPT. The MCP tools are not just read-only status helpers: they can also author plans by initializing projects, creating canvases, adding tasks and blocks, wiring dependencies, editing prompts, configuring review pipelines, validating graph quality, and importing package drafts.
+1. `pnpm --dir packages/desktop build && pnpm --dir packages/desktop start`
+2. Sidebar → **Mode: Team** (or click the role badge in the existing Team entry).
+3. Pick **Start as server** (boot a local team host on this machine) or **Join as member** (paste a server URL + token).
+4. The role badge next to the Team label flips to `<ServerIcon />` or `<UserRoundIcon />` and stays synced.
 
-For ChatGPT in the browser, use the CLI MCP tunnel on a VPS or PlanWeave Desktop's MCP settings on a local machine. You can use ChatGPT Web as the planning partner: describe the project goal, ask it to write a package-shaped draft in a temporary draft root, dry-run validate and quality-check it, preview the import, then apply it transactionally.
+### 2.5 Run a work package
 
-Recommended headless setup for a VPS uses systemd. The MCP server stays on loopback, and the OpenAI `tunnel-client` keeps an outbound connection open; PlanWeave does not run its own daemon or pidfile manager.
+- Open the **Work** view in Team Mode (sidebar subnav).
+- Claim a task — server creates an assignment with a renewable lease.
+- Code in a local Git worktree. Push the branch when ready.
+- Submit the head commit; the merge queue validates scope, ancestry, identity, and runs checks before merging.
 
-```bash
-sudo mkdir -p /etc/planweave /srv/planweave
-sudo chmod 700 /etc/planweave
+### 2.6 Personal / Local mode (unchanged)
 
-planweave mcp tunnel download
-planweave mcp tunnel configure --tunnel-id tunnel_xxx
-planweave mcp tunnel print-systemd \
-  --planweave-home /srv/planweave \
-  --env-file /etc/planweave/mcp-tunnel.env
-```
+- Sidebar → **Mode: Personal** (or click anywhere in the local nav).
+- Use `planweave status`, `planweave run --once`, the desktop graph canvas, MCP tunnel, etc. — same as upstream.
 
-Put the Runtime API key in the systemd environment file, not in PlanWeave's JSON config:
+---
 
-```bash
-PLANWEAVE_HOME=/srv/planweave
-OPENAI_RUNTIME_API_KEY=...
-```
+## 3. CLI reference (this fork only)
 
-Keep that file readable only by the service owner:
+| Command | Purpose |
+|---|---|
+| `planweave server start` | Boot the LAN server with local data dir |
+| `planweave server join` | Register a connection profile + credentials |
+| `planweave server list` | List known profiles |
+| `planweave server forget` | Drop a profile + clear credentials |
+| `planweave server project` | Bind the active project on a profile |
+| `planweave remote task` | Inspect / claim / submit team tasks |
+| `planweave remote merge-queue` | Inspect / retry queue entries |
 
-```bash
-sudo chmod 600 /etc/planweave/mcp-tunnel.env
-```
+Existing upstream CLI commands (`planweave init`, `run`, `status`, `mcp tunnel …`, `package-draft …`) work unchanged.
 
-Install the printed service as `planweave-mcp-tunnel.service`, then run:
+---
 
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now planweave-mcp-tunnel
-journalctl -u planweave-mcp-tunnel -f
-```
+## 4. Verification
 
-For local desktop setup:
+- `pnpm lint` — `check:versions` + `check:dom-boundaries` + `typecheck`
+- `pnpm test` — full monorepo vitest
+- `pnpm --filter @planweave-ai/desktop typecheck` — renderer + main process
+- `pnpm --filter @planweave-ai/server test` — server unit + integration (11 files, 84+ tests)
 
-1. Open **Settings -> MCP Tunnel** in the desktop app.
-2. Download or select the OpenAI [`tunnel-client`](https://github.com/openai/tunnel-client).
-3. Enter your Tunnel ID and Runtime API key, then start the secure tunnel.
-4. Add PlanWeave in ChatGPT using the Tunnel connection mode.
+A10 acceptance record: `.octocode/rfc/lan-multi-user-collaboration/A10_ACCEPTANCE.md`.
 
-Once connected, ChatGPT can ask PlanWeave for authoring rules and schema, discover recommended tool groups with `list_tool_groups`, inspect bounded graph views with `get_graph_summary` / `get_graph_slice`, validate graph quality with `validate_graph_quality`, and read large content through path/ref tools instead of broad dumps. For large plans, the recommended MCP flow is `validate_package_draft`, `preview_package_import`, then `import_package_draft` with `apply: true`.
+---
 
-The default MCP discovery list hides legacy aliases and heavy/debug tools. Old MCP clients that still need aliases such as `get_project_graph`, `get_block_detail`, `refresh_prompts`, `export_plan_package`, or `import_plan_package` should start the server with `PLANWEAVE_MCP_TOOL_DISCOVERY=compat`. New clients should keep the default discovery mode and call bounded tools; heavy/debug paths such as `get_block_detail_full_debug`, `refresh_prompts_full_debug`, and `export_plan_package_full` are explicit opt-ins.
+## 5. Design documents (this fork)
 
-Source-level MCP server setup is documented in [Development](DEVELOPMENT.md).
+- `RFC.md` — LAN multi-user collaboration and server-coordinated delivery (the "why")
+- `IMPLEMENTATION.md` — A0–A10 work package graph and ownership boundaries
+- `CONTRACTS-v1.md` — frozen error envelope / cursor / idempotency / version / event envelope
+- `A10_ACCEPTANCE.md` — integration, fault-injection, and security acceptance
+- `TEAM_MODE_FRONTEND.md` — Team Mode product / information architecture
+- `ADR-001-authoritative-sqlite.md` — `node:sqlite` selection
+- `ADR-002-http-websocket-transport.md` — dedicated collaboration listener
+- `KPI.md` — guardrails and what to revisit before scale-out
+- `PREREQUISITES.md` / `RESOURCES.md`
 
-## Agent Execution
+These live in `.octocode/rfc/lan-multi-user-collaboration/` (gitignored on this fork, tracked alongside the codebase during the work package).
 
-PlanWeave supports executor profiles, so different blocks can run through different agents or local commands. Current executors include Codex, Claude Code, OpenCode, Pi, local review commands, and review-feedback loops.
+---
 
-Each block run writes durable output under the PlanWeave workspace, including prompt, stdout, stderr, report, metadata, and monitor commands when available.
+## 6. Known follow-ups (post-fork)
 
-## Agent Skills
+- The A2 work schema is being extended to persist `ownershipScopes`, protected scopes, reviewers, and acceptance checks, so the merge queue can enforce RFC's path-boundary policy from authoritative task data (A10 blocking gap).
+- `.worktrees/a2-a4-*, server-integration/` are leftovers from the A1–A9 parallel work; safe to `git worktree remove` once main is the agreed integration surface.
+- Coordinator Agent's first real provider is still gated on cancellation / budget / artifact-source persistence; manual / fake provider is what the integration tests use today.
+- Ghost Security automated scan was not run during A10 (targeted manual review used as fallback); revisit before exposing the collaboration server outside loopback.
 
-The repository includes focused agent skills under `skills/`:
-
-- `plan-maker`: design a PlanWeave package-shaped draft from a fuzzy goal or sparse codebase context, then materialize it through draft validation/import when requested.
-- `plan-importer`: create a PlanWeave package draft from strong source docs, then validate, preview, and import it through the draft import flow.
-- `plan-auditor`: review an already-authored PlanWeave plan for coverage, lifecycle gaps, contract drift, weak prompts, and unverifiable completion criteria.
-- `plan-coordinator`: keep a full PlanWeave execution loop moving as the main agent, dispatching implementation, review, and recovery work.
-- `plan-runner`: execute one implementation block and produce a completion report.
-- `plan-reviewer`: execute one review gate and produce a structured `passed` or `needs_changes` result.
-- `plan-recovery`: diagnose and recover stale current refs, state/results drift, blocked/diverged work, and submit retry confusion.
-
-Install them with the `skills` CLI:
-
-```bash
-npx skills@latest add GaosCode/PlanWeave
-```
-
-## Agent Workflow
-
-After installing the skills, use this flow in your target project:
-
-1. Ask your agent to create or import a plan.
-
-```text
-Use skill: plan-maker
-Create a PlanWeave plan for this project from the goal below...
-```
-
-If you already have PRDs, roadmaps, issues, or architecture notes, use `plan-importer` instead. `plan-maker` no longer hands a Markdown-only report to `plan-importer`; when materializing, it should write a package-shaped draft and run:
-
-```bash
-planweave package-draft validate --draft-root <draft> --json
-planweave package-draft quality --draft-root <draft> --json
-planweave package import --from <draft> --dry-run --json
-planweave package import --from <draft> --apply --json
-```
-
-2. Ask the coordinator to run the plan.
-
-```text
-Use skill: plan-coordinator
-Run the current PlanWeave package. Route implementation to plan-runner, review gates to plan-reviewer, and recovery work to plan-recovery.
-```
-
-3. Let the coordinator dispatch focused agents.
-
-The coordinator should assign one concrete block at a time. Implementation agents use `plan-runner`; review agents use `plan-reviewer`; abnormal state or submit retry problems use `plan-recovery`.
-
-4. Use the CLI for inspection when needed.
-
-```bash
-planweave status
-planweave current
-planweave explain <ref>
-planweave graph inspect --view summary --json
-planweave graph quality --json
-planweave doctor
-```
-
-For simple tasks, one agent can use `plan-runner` directly. For larger plans, use `plan-coordinator` as the main agent and route subagent work to `plan-runner`, `plan-reviewer`, or `plan-recovery`.
-
-## Auto Run
-
-PlanWeave includes an experimental one-command execution path:
-
-```bash
-planweave run --once
-planweave run --reset --force --reason "rerun acceptance" --step-limit 20
-planweave reset --force --reason "clear stale manual work"
-planweave run-sessions
-planweave run-session SESSION-0001
-planweave run-status
-```
-
-Auto Run can claim work, call an executor, collect run artifacts, continue review-feedback loops, and record each run/reset as a session. `planweave reset` clears runtime state only; it is separate from `planweave init --reset-package`, which rewrites package source files during initialization.
-
-For cron-style runs, keep execution bounded and inspect the session log afterward. This example can be used directly in crontab:
-
-```bash
-0 9 * * * cd /path/to/project && planweave run --reset --canvas default --force --reason "scheduled run" --step-limit 10 --json >> ~/.planweave-cron.log 2>&1
-```
-
-After a run, inspect the session log:
-
-```bash
-planweave run-sessions --json
-```
-
-Auto Run is still experimental: scheduling, executor integration, and recovery behavior may be unstable. Inspect `planweave run-status`, `planweave run-session <session-id>`, and generated run artifacts before relying on it for unattended work.
-
-## Manual CLI Workflow
-
-Most users should drive PlanWeave through skills. The manual CLI loop is useful for debugging, demos, or writing your own agent integration:
-
-```bash
-planweave init --json
-planweave validate --json
-planweave current
-planweave claim-next --dry-run
-planweave prompt T-001#B-001
-planweave submit-result --canvas default T-001#B-001 --report report.md
-```
-
-Review gates and feedback loops can be handled manually too:
-
-```bash
-planweave submit-review --canvas default T-001#R-001 --result review-result.json
-planweave submit-feedback --canvas default --report feedback-report.md
-```
-
-PlanWeave resolves the target project root from the shell's current directory. Package managers may set `INIT_CWD`, which PlanWeave uses before `cwd`. When running from another directory, pass the global option before the subcommand:
-
-```bash
-planweave --project-root /path/to/project status --json
-planweave --project-root /path/to/project claim-next --canvas desktop
-```
-
-When scheduling is unclear, prefer `planweave explain <ref>`, `planweave why-not <ref>`, and `planweave doctor` before editing package or state files.
-
-## Experimental Desktop App
-
-The desktop app is an experimental build. It is useful for trying the visual task canvas, configuring MCP tunnel access for ChatGPT, and reviewing generated plans before execution, but the CLI remains the recommended interface for serious work.
-
-<p align="center">
-  <img src="readme/assets/planweave-desktop-canvas.png" width="860" alt="PlanWeave desktop canvas showing an agent task graph with implementation and review blocks." />
-</p>
-
-Install a packaged build from GitHub Releases. Current desktop installers are unsigned. macOS may show an unidentified developer warning, and Windows may show an unknown publisher or SmartScreen warning. For early testing on macOS, open the app with **Right Click -> Open** and confirm the prompt.
-
-For repository layout, source setup, tests, and packaging commands, see [Development](DEVELOPMENT.md).
-
-## Future Direction
-
-PlanWeave is still early, and several directions can make plan-based agent work smoother:
-
-- **Better Auto Run UX and reliability**: make automatic execution easier to understand, monitor, pause, resume, recover, and trust, while improving scheduling correctness, failure recovery, and long-running stability.
-- **Collaborative planning board**: let multiple people edit the same task board, refine plan structure together, and turn shared planning decisions into executable blocks.
-- **Cross-host coordination**: PlanWeave already supports routing different blocks to different local agents or executor profiles. A future coordinator could let remote Agent Hosts register capabilities, claim plan blocks through leases, report heartbeats, and submit artifacts safely, making it possible to run specialized frontend, review, runtime, docs, or other agents on different machines.
-
-## Development
-
-Contributor setup, repository layout, test commands, and local packaging notes live in [DEVELOPMENT.md](DEVELOPMENT.md).
+---
 
 ## License
 

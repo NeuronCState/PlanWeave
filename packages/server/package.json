@@ -12,11 +12,7 @@
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-<<<<<<< HEAD
     "test": "cd ../.. && vitest run packages/server/src"
-=======
-    "test": "cd ../.. && vitest run packages/server/src"
->>>>>>> feature/a3-identity-planning
   },
   "dependencies": { "ws": "^8.21.0" },
   "devDependencies": { "@types/ws": "^8.5.14" }

@@ -28,6 +28,9 @@ type WorkTaskRow = {
   title: string;
   parallel: number;
   locks_json: string;
+  ownership_scopes_json: string;
+  acceptance_checks_json: string;
+  reviewers_json: string;
   version: number;
   status: string;
   created_at: string;
@@ -62,11 +65,19 @@ type WorkSubmissionRow = {
   updated_at: string;
 };
 
-function decodePolicy(row: Pick<WorkTaskRow, "parallel" | "locks_json">): WorkTaskPolicy {
+function stringArray(value: string): string[] {
+  const decoded = JSON.parse(value) as unknown;
+  return Array.isArray(decoded) ? decoded.filter((item): item is string => typeof item === "string") : [];
+}
+
+function decodePolicy(row: Pick<WorkTaskRow, "parallel" | "locks_json" | "ownership_scopes_json" | "acceptance_checks_json" | "reviewers_json">): WorkTaskPolicy {
   const locks = JSON.parse(row.locks_json) as unknown;
   return {
     parallel: row.parallel === 1,
-    locks: Array.isArray(locks) ? locks.filter((value): value is string => typeof value === "string") : []
+    locks: Array.isArray(locks) ? locks.filter((value): value is string => typeof value === "string") : [],
+    ownershipScopes: stringArray(row.ownership_scopes_json),
+    acceptanceChecks: stringArray(row.acceptance_checks_json),
+    reviewers: stringArray(row.reviewers_json)
   };
 }
 
@@ -143,8 +154,8 @@ export function createWorkRepository(options: CreateWorkRepositoryOptions): Work
     const now = input.now;
     const version = 1;
     unit.database
-      .prepare("INSERT INTO work_tasks(id,project_id,task_id,title,parallel,locks_json,version,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
-      .run(`task_${input.taskId}`, input.projectId, input.taskId, input.title, input.policy.parallel ? 1 : 0, JSON.stringify(input.policy.locks), version, "ready", now, now);
+      .prepare("INSERT INTO work_tasks(id,project_id,task_id,title,parallel,locks_json,ownership_scopes_json,acceptance_checks_json,reviewers_json,version,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(`task_${input.taskId}`, input.projectId, input.taskId, input.title, input.policy.parallel ? 1 : 0, JSON.stringify(input.policy.locks), JSON.stringify(input.policy.ownershipScopes ?? []), JSON.stringify(input.policy.acceptanceChecks ?? []), JSON.stringify(input.policy.reviewers ?? []), version, "ready", now, now);
     for (const dependency of input.dependencyIds) {
       unit.database.prepare("INSERT INTO work_task_dependencies(project_id,task_id,depends_on_task_id) VALUES (?,?,?)").run(input.projectId, `task_${input.taskId}`, dependency);
     }

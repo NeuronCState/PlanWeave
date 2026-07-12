@@ -149,4 +149,42 @@ describe("attachments module", () => {
     expect(captured?.code).toBe("request_too_large");
     expect(captured?.details).toMatchObject({ declaredSize, maxSizeBytes: DEFAULT_ATTACHMENT_POLICY.maxSizeBytes });
   });
+
+  it("prevents another contributor from overwriting or completing the uploader's staged bytes", async () => {
+    await seedProject(harness.database, "project-bola", "BOLA");
+    await seedMembership(harness.database, "project-bola", "user-alice", "contributor");
+    await seedMembership(harness.database, "project-bola", "user-bob", "contributor");
+    const alice = makeSession(harness.database, "user-alice", "device-alice", "session-alice");
+    const bob = makeSession(harness.database, "user-bob", "device-bob", "session-bob");
+    const bytes = Buffer.from("alice private staged upload", "utf8");
+    const start = startAttachment(service, alice, {
+      deviceId: "device-alice",
+      route: "/api/v1/attachments/start",
+      key: "att-bola-start",
+      requestFingerprint: "f-bola",
+      projectId: "project-bola",
+      declaredSize: bytes.length,
+      declaredDigest: digestFor(bytes),
+      originalName: "alice.txt",
+      mediaType: "text/plain"
+    });
+
+    expect(() => writeStagedBytes(service, bob, start.value.attachment.id, Buffer.from("bob overwrite"))).toThrowError(DomainError);
+    expect(() => completeAttachment(service, bob, {
+      deviceId: "device-bob",
+      route: "/api/v1/attachments/complete",
+      key: "att-bola-complete",
+      requestFingerprint: "f-bola-bob",
+      id: start.value.attachment.id
+    })).toThrowError(DomainError);
+
+    writeStagedBytes(service, alice, start.value.attachment.id, bytes);
+    expect(completeAttachment(service, alice, {
+      deviceId: "device-alice",
+      route: "/api/v1/attachments/complete",
+      key: "att-bola-owner-c",
+      requestFingerprint: "f-bola-alice",
+      id: start.value.attachment.id
+    }).value.attachment.status).toBe("ready");
+  });
 });

@@ -10,11 +10,13 @@ import { randomUUID } from "node:crypto";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = resolve(import.meta.dirname, "../../../..");
+const tsxExecutable = resolve(repoRoot, "node_modules/.bin/tsx");
+const cliEntry = resolve(repoRoot, "packages/cli/src/index.ts");
 
 const TEST_SERVER_PORT = 19876;
 
 async function runCli(args: string[], env: NodeJS.ProcessEnv = {}): Promise<{ stdout: string; stderr: string }> {
-  return execFileAsync("pnpm", ["--silent", "--filter", "@planweave-ai/cli", "planweave", ...args], {
+  return execFileAsync(tsxExecutable, [cliEntry, ...args], {
     cwd: repoRoot,
     env: { ...process.env, ...env }
   });
@@ -69,6 +71,13 @@ function makeServerHandler(): Server {
         });
         req.on("error", reject);
       });
+    }
+
+    // Real team join handshake
+    if (req.method === "POST" && path === "/api/v1/join") {
+      readBody().then((body) => json(201, { session: { id: `session_${randomUUID()}`, issuedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() }, projectId: body.projectId, role: "contributor" }))
+        .catch(() => json(422, { error: { code: "validation_failed", message: "Invalid body", requestId: "", retryable: false } }));
+      return;
     }
 
     // Device revoke

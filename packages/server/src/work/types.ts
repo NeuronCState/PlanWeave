@@ -49,6 +49,12 @@ export type WorkTaskPolicy = {
   parallel: boolean;
   /** Logical locks this task takes; reject parallel claims that overlap. */
   locks: string[];
+  /** Repository-relative globs/paths this task is allowed to modify. */
+  ownershipScopes?: string[];
+  /** Commands that must pass before this task may be merged. */
+  acceptanceChecks?: string[];
+  /** User ids explicitly assigned to review this task. */
+  reviewers?: string[];
 };
 
 /**

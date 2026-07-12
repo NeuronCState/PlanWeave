@@ -36,14 +36,26 @@ export async function createRemoteProfile(input: {
   serverUrl: string
   deviceId: string
   apiKey: string
+  projectId?: string
+  userId?: string
 }): Promise<RemoteProfile> {
   const id = randomUUID().split("-").join("").slice(0, 16)
+  const serverUrl = normalizeUrl(input.serverUrl)
+  let sessionToken = input.apiKey.trim()
+  if (input.projectId && input.userId) {
+    const response = await fetch(`${serverUrl}/api/v1/join`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ projectId: input.projectId, userId: input.userId, displayName: input.userId, deviceId: input.deviceId, joinToken: input.apiKey }) })
+    const body = await response.json().catch(() => null) as { session?: { id: string }; error?: { message?: string } } | null
+    if (!response.ok || !body?.session) throw new Error(body?.error?.message ?? `Team join failed with HTTP ${response.status}`)
+    sessionToken = body.session.id
+  }
   const profile: RemoteProfile = {
     id,
     name: input.name.trim(),
-    serverUrl: normalizeUrl(input.serverUrl),
+    serverUrl,
     deviceId: input.deviceId.trim(),
-    apiKey: input.apiKey.trim(),
+    apiKey: sessionToken,
+    projectId: input.projectId?.trim(),
+    userId: input.userId?.trim(),
     createdAt: new Date().toISOString()
   }
   await writeJsonAtomically(profilePath(id), profile)

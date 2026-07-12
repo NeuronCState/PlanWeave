@@ -1,6 +1,6 @@
 import type { SqliteDatabase } from "../sqlite.js";
 import { executeIdempotent, type IdempotentResult, type UnitOfWork } from "../store.js";
-import { notFound, requestTooLarge, validationFailed, stateConflict, DomainError } from "../identity/errors.js";
+import { notFound, requestTooLarge, validationFailed, stateConflict, forbidden, DomainError } from "../identity/errors.js";
 import { requireProjectRole } from "../identity/authorization.js";
 import type { Session } from "../identity/types.js";
 import type { Attachment, AttachmentPolicy } from "./types.js";
@@ -61,7 +61,7 @@ export function writeStagedBytes(service: AttachmentService, session: Session, a
   const row = service.database.prepare("SELECT id, project_id, uploader_user_id, declared_size, declared_digest, actual_size, actual_digest, status, original_name, media_type, staged_path, created_at, promoted_at FROM attachments WHERE id=?").get(attachmentId);
   if (!row) throw notFound("Attachment", attachmentId);
   const attachment = rowToAttachment(row);
-  requireProjectRole(service.database, attachment.projectId, session.userId, "contributor");
+  assertAttachmentMutationAllowed(service.database, attachment, session);
   if (attachment.status !== "staged") throw stateConflict("Attachment is not in staged status", { attachmentId, status: attachment.status });
   if (bytes.length > service.policy.maxSizeBytes) throw requestTooLarge(`bytes exceed policy limit ${service.policy.maxSizeBytes}`, { size: bytes.length, maxSizeBytes: service.policy.maxSizeBytes });
   service.blobStore.writeStaged(attachment.stagedPath, bytes);
@@ -92,7 +92,7 @@ function completeInTransaction(unit: UnitOfWork, session: Session, service: Atta
   const row = unit.database.prepare("SELECT id, project_id, uploader_user_id, declared_size, declared_digest, actual_size, actual_digest, status, original_name, media_type, staged_path, created_at, promoted_at, supersedes_attachment_id FROM attachments WHERE id=?").get(id);
   if (!row) throw notFound("Attachment", id);
   const attachment = rowToAttachment(row);
-  requireProjectRole(unit.database, attachment.projectId, session.userId, "contributor");
+  assertAttachmentMutationAllowed(unit.database, attachment, session);
   if (attachment.status === "ready") {
     return { attachment, deduplicated: false };
   }
@@ -166,6 +166,16 @@ function isHexDigest(value: unknown): value is string {
   if (typeof value !== "string") return false;
   if (value.length !== 64) return false;
   return /^[0-9a-f]+$/.test(value);
+}
+
+function assertAttachmentMutationAllowed(database: SqliteDatabase, attachment: Attachment, session: Session): void {
+  const role = requireProjectRole(database, attachment.projectId, session.userId, "contributor");
+  if (attachment.uploaderUserId !== session.userId && role !== "maintainer" && role !== "owner") {
+    throw forbidden("Only the uploader or a project maintainer may modify a staged attachment", {
+      attachmentId: attachment.id,
+      uploaderUserId: attachment.uploaderUserId
+    });
+  }
 }
 
 function newId(prefix: string): string {

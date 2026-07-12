@@ -104,7 +104,13 @@ CREATE TABLE work_reviews (
 CREATE INDEX idx_work_reviews_submission ON work_reviews(submission_id);
 `;
 
-export const workMigrations = [{ version: 1, sql: workMigration1 }] as const;
+const workMigration2 = `
+ALTER TABLE work_tasks ADD COLUMN ownership_scopes_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE work_tasks ADD COLUMN acceptance_checks_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE work_tasks ADD COLUMN reviewers_json TEXT NOT NULL DEFAULT '[]';
+`;
+
+export const workMigrations = [{ version: 1, sql: workMigration1 }, { version: 2, sql: workMigration2 }] as const;
 
 /**
  * Apply the work migrations. Uses the private `work_schema_migrations`

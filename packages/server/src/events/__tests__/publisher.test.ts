@@ -289,6 +289,19 @@ describe("A4 durable events and WebSocket sync", () => {
       expect(typeof body.error.requestId).toBe("string");
     });
 
+    it("rejects malformed percent-encoded project ids without crashing the HTTP server", async () => {
+      const { database } = await createTestDb();
+      const api = createEventHttpApi({ database, authenticator: async () => ({ ok: false, reason: "unauthenticated" }) });
+      servers.push({ close: () => api.close() });
+      await api.start();
+      const address = api.address()!;
+      const response = await fetch(`http://${address.host}:${address.port}/api/v1/projects/%E0%A4%A/events`);
+      expect(response.status).toBe(422);
+      await expect(response.json()).resolves.toMatchObject({ error: { code: "validation_failed" } });
+      const health = await fetch(`http://${address.host}:${address.port}/healthz`);
+      expect(health.status).toBe(200);
+    });
+
     it("returns 410 event_cursor_expired when afterEventId is older than retention", async () => {
       const { database } = await createTestDb();
       const oldId = insertEvent(database, { projectId: "project-a", type: "old", aggregateId: "project-a", aggregateVersion: 2 });

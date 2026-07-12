@@ -106,7 +106,7 @@ const remoteApi: PlanWeaveRemoteApi = {
   listRemoteProfiles: async () => ipcRenderer.invoke(remoteCollaborationInvokeChannels.listRemoteProfiles),
   connectProfile: async (profileId, projectId) => ipcRenderer.invoke(remoteCollaborationInvokeChannels.connectProfile, profileId, projectId),
   disconnectProfile: async (profileId) => ipcRenderer.invoke(remoteCollaborationInvokeChannels.disconnectProfile, profileId),
-  getRemoteConnectionStatus: async () => ipcRenderer.invoke(remoteCollaborationInvokeChannels.getRemoteConnectionStatus),
+  getRemoteConnectionStatus: async (profileId) => ipcRenderer.invoke(remoteCollaborationInvokeChannels.getRemoteConnectionStatus, profileId),
   getRemoteProjectSnapshot: async (profileId, projectId) => ipcRenderer.invoke(remoteCollaborationInvokeChannels.getRemoteProjectSnapshot, profileId, projectId),
   getRemotePlanningRooms: async (profileId, projectId) => ipcRenderer.invoke(remoteCollaborationInvokeChannels.getRemotePlanningRooms, profileId, projectId),
   getRemoteMessages: async (profileId, projectId, roomId) => ipcRenderer.invoke(remoteCollaborationInvokeChannels.getRemoteMessages, profileId, projectId, roomId),
@@ -114,6 +114,8 @@ const remoteApi: PlanWeaveRemoteApi = {
   getRemoteProposals: async (profileId, projectId) => ipcRenderer.invoke(remoteCollaborationInvokeChannels.getRemoteProposals, profileId, projectId),
   approveRemoteProposal: async (profileId, projectId, proposalId, decision, reason) => ipcRenderer.invoke(remoteCollaborationInvokeChannels.approveRemoteProposal, profileId, projectId, proposalId, decision, reason),
   getRemoteMembers: async (profileId, projectId) => ipcRenderer.invoke(remoteCollaborationInvokeChannels.getRemoteMembers, profileId, projectId),
+  getRemoteTasks: async (profileId, projectId) => ipcRenderer.invoke(remoteCollaborationInvokeChannels.getRemoteTasks, profileId, projectId),
+  claimRemoteTask: async (profileId, projectId, taskId, branchName, baseCommit) => ipcRenderer.invoke(remoteCollaborationInvokeChannels.claimRemoteTask, profileId, projectId, taskId, branchName, baseCommit),
   getRemoteMergeStatus: async (profileId, projectId) => ipcRenderer.invoke(remoteCollaborationInvokeChannels.getRemoteMergeStatus, profileId, projectId),
   onRemoteEvent: (callback) => {
     const listener = (_event: IpcRendererEvent, payload: Parameters<typeof callback>[0]) => callback(payload)

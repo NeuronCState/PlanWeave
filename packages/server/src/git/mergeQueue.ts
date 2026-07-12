@@ -1,8 +1,8 @@
 import { executeIdempotent, type IdempotentCommand, type UnitOfWork } from "../store.js"
 import { createMergeQueueRepository } from "./repository.js"
 import { createWorktreeManager } from "./worktreeManager.js"
-import { runRepositoryChecks, retainCheckLogs } from "./checks.js"
-import { validateCommitAncestry } from "./validation.js"
+import { runRepositoryChecks, runTargetedChecks, retainCheckLogs } from "./checks.js"
+import { validateCommitAncestry, validatePathWithinScope } from "./validation.js"
 import { MergeQueueError, type CheckResult, type EnqueueCommand, type MergeQueueConfig, type MergeQueueEntry, type MergeQueueRepository, type MergeQueueServices, type MergeResult } from "./types.js"
 import type { SqliteDatabase } from "../sqlite.js"
 
@@ -49,6 +49,7 @@ export function createMergeQueueServices(options: CreateMergeQueueServicesOption
       key: command.idempotencyKey,
       requestFingerprint: fingerprint,
       execute: (unit) => {
+        validateEnqueueAuthority(unit.database, command)
         const existing = repository.loadEntryBySubmission(unit, command.projectId, command.submissionId)
         if (existing) return existing
         const entryId = `mqe_${cryptoRandomId()}`
@@ -85,6 +86,40 @@ export function createMergeQueueServices(options: CreateMergeQueueServicesOption
     return { replayed: result.replayed, value: result.value, eventIds: [] }
   }
 
+  function validateEnqueueAuthority(database: SqliteDatabase, command: EnqueueCommand): void {
+    const membership = database
+      .prepare("SELECT role FROM memberships WHERE project_id=? AND user_id=?")
+      .get(command.projectId, command.actorId)
+    if (!membership) {
+      throw new MergeQueueError("validation_failed", "User must be a project member to enqueue a submission.", {})
+    }
+
+    const workSchemaExists = database
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='work_submissions'")
+      .get()
+    if (!workSchemaExists) return
+
+    const submission = database
+      .prepare("SELECT project_id, assignment_id, head_commit, base_commit FROM work_submissions WHERE id=?")
+      .get(command.submissionId)
+    if (!submission || submission.project_id !== command.projectId) {
+      throw new MergeQueueError("validation_failed", "Submission does not belong to the target project.", {})
+    }
+    if (submission.head_commit !== command.headCommit || submission.base_commit !== command.baseCommit) {
+      throw new MergeQueueError("validation_failed", "Submission commits do not match the immutable work submission.", {
+        headCommit: command.headCommit,
+        baseCommit: command.baseCommit
+      })
+    }
+    const assignment = database
+      .prepare("SELECT assignee_user_id FROM work_assignments WHERE id=? AND project_id=?")
+      .get(submission.assignment_id, command.projectId)
+    const role = String(membership.role)
+    if (!assignment || (assignment.assignee_user_id !== command.actorId && role !== "maintainer" && role !== "owner")) {
+      throw new MergeQueueError("validation_failed", "Only the assignee or a project maintainer may enqueue this submission.", {})
+    }
+  }
+
   const processEntry = async (entryId: string): Promise<MergeResult> => {
     let entry: MergeQueueEntry | null = null
     let worktreePath: string | null = null
@@ -105,6 +140,8 @@ export function createMergeQueueServices(options: CreateMergeQueueServicesOption
       // Validate ancestry
       await validateCommitAncestry(entry, validationCtx)
 
+      const taskPolicy = await validateTaskOwnership(entry)
+
       // Create worktree
       worktreePath = await worktreeManager.createWorktree(entry, config)
       entry = await transitionEntry(entry.id, "checking", worktreePath, null, null)
@@ -115,6 +152,12 @@ export function createMergeQueueServices(options: CreateMergeQueueServicesOption
       // Run repository checks
       const checkResults: CheckResult[] = []
       try {
+        if (taskPolicy) {
+          const targeted = await runTargetedChecks(worktreePath, taskPolicy.acceptanceChecks, { worktreeManager })
+          checkResults.push(...targeted)
+          const failed = targeted.find((result) => !result.passed)
+          if (failed) throw new MergeQueueError("check_failed", `Task acceptance check '${failed.name}' failed with exit code ${failed.exitCode}.`, { checkName: failed.name, exitCode: failed.exitCode })
+        }
         const repoChecks = await runRepositoryChecks(worktreePath, { worktreeManager })
         checkResults.push(...repoChecks)
       } catch (error) {
@@ -171,6 +214,18 @@ export function createMergeQueueServices(options: CreateMergeQueueServicesOption
       if (worktreePath) await cleanupWorktree(worktreePath)
       return { entryId, status: "failed", error: errorMsg }
     }
+  }
+
+  async function validateTaskOwnership(entry: MergeQueueEntry): Promise<{ acceptanceChecks: string[] } | null> {
+    const table = database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='work_submissions'").get()
+    if (!table) return null
+    const row = database.prepare("SELECT t.ownership_scopes_json,t.acceptance_checks_json FROM work_submissions s JOIN work_assignments a ON a.id=s.assignment_id JOIN work_tasks t ON t.id=a.task_id WHERE s.id=? AND s.project_id=?").get(entry.submissionId, entry.projectId)
+    if (!row) throw new MergeQueueError("validation_failed", "Submission has no authoritative task ownership policy.", {})
+    const scopes = parsePolicyList(row.ownership_scopes_json)
+    if (scopes.length === 0) throw new MergeQueueError("path_violation", "Task has no ownership scope and cannot be merged.", {})
+    const changedFiles = await worktreeManager.changedFilesInRange(config.bareRepoPath, entry.baseCommit, entry.headCommit)
+    validatePathWithinScope(changedFiles, scopes)
+    return { acceptanceChecks: parsePolicyList(row.acceptance_checks_json) }
   }
 
   const processQueue = async (projectId: string): Promise<MergeResult[]> => {
@@ -274,4 +329,11 @@ export function createMergeQueueServices(options: CreateMergeQueueServicesOption
     reconcileOnStartup,
     garbageCollect
   }
+}
+
+function parsePolicyList(value: unknown): string[] {
+  try {
+    const parsed = JSON.parse(String(value)) as unknown
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string" && item.length > 0) : []
+  } catch { return [] }
 }

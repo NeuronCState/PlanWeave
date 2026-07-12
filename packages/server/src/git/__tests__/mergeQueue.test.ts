@@ -60,6 +60,7 @@ async function createTestHarness(mockOverrides: Partial<WorktreeManager> = {}): 
 
   const seedProject = (projectId: string) => {
     database.prepare("INSERT INTO projects(id,name,created_at) VALUES (?,?,?)").run(projectId, `Project ${projectId}`, new Date().toISOString())
+    database.prepare("INSERT INTO memberships(project_id,user_id,role,created_at) VALUES (?,?,?,?)").run(projectId, "user-1", "contributor", new Date().toISOString())
   }
 
   const seedConfig = (projectId: string) => {
@@ -147,6 +148,21 @@ describe("A9 merge queue", () => {
         actorId: "user-1"
       })
     ).toThrow(MergeQueueError)
+  })
+
+  it("rejects enqueue by a non-member", () => {
+    expect(() =>
+      harness.services.enqueueSubmission({
+        deviceId: "dev-outsider",
+        idempotencyKey: "outsider-key-aaaaaaaa",
+        projectId: "project-a",
+        submissionId: "sub-outsider",
+        headCommit: "head-outsider",
+        baseCommit: "base-outsider",
+        targetBranch: "main",
+        actorId: "user-outsider"
+      })
+    ).toThrowError(/project member/)
   })
 
   it("processes a single entry through the full happy path", async () => {

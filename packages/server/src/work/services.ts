@@ -615,6 +615,9 @@ type WorkTaskRowShape = {
   title: string;
   parallel: number;
   locks_json: string;
+  ownership_scopes_json: string;
+  acceptance_checks_json: string;
+  reviewers_json: string;
   version: number;
   status: string;
   created_at: string;
@@ -631,13 +634,21 @@ function mapTaskRow(row: Record<string, unknown>): WorkTask {
     title: r.title,
     policy: {
       parallel: r.parallel === 1,
-      locks: Array.isArray(locks) ? locks.filter((v): v is string => typeof v === "string") : []
+      locks: Array.isArray(locks) ? locks.filter((v): v is string => typeof v === "string") : [],
+      ownershipScopes: parseStringArray(r.ownership_scopes_json),
+      acceptanceChecks: parseStringArray(r.acceptance_checks_json),
+      reviewers: parseStringArray(r.reviewers_json)
     },
     version: Number(r.version),
     status: r.status as WorkTask["status"],
     createdAt: r.created_at,
     updatedAt: r.updated_at
   };
+}
+
+function parseStringArray(value: string): string[] {
+  const parsed = JSON.parse(value) as unknown;
+  return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
 }
 
 // Re-export for tests / external callers

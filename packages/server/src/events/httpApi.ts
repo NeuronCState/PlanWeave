@@ -158,13 +158,15 @@ export function createEventHttpApi(options: EventHttpApiOptions): EventHttpApi {
     }
     const eventsMatch = path.match(EVENTS_RE);
     if (eventsMatch) {
-      const projectId = decodeURIComponent(eventsMatch[1]!);
+      const projectId = safeDecodeProjectId(eventsMatch[1]!, response, requestId(request.headers));
+      if (projectId === null) return;
       await handleEvents(request, response, projectId);
       return;
     }
     const snapshotMatch = path.match(SNAPSHOT_RE);
     if (snapshotMatch) {
-      const projectId = decodeURIComponent(snapshotMatch[1]!);
+      const projectId = safeDecodeProjectId(snapshotMatch[1]!, response, requestId(request.headers));
+      if (projectId === null) return;
       await handleSnapshot(request, response, projectId);
       return;
     }
@@ -175,6 +177,20 @@ export function createEventHttpApi(options: EventHttpApiOptions): EventHttpApi {
     }
     writeApiError(response, "not_found", "Not found", requestId(request.headers));
   });
+
+  function safeDecodeProjectId(value: string, response: ServerResponse, rid: string): string | null {
+    try {
+      const decoded = decodeURIComponent(value);
+      if (!decoded || decoded.includes("/") || decoded.includes("\\") || decoded.length > 256) {
+        writeApiError(response, "validation_failed", "projectId is invalid", rid);
+        return null;
+      }
+      return decoded;
+    } catch {
+      writeApiError(response, "validation_failed", "projectId is not valid percent-encoded text", rid);
+      return null;
+    }
+  }
 
   return {
     server,

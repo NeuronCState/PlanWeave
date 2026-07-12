@@ -1,5 +1,6 @@
 import type { Command } from "commander";
-import { execFile } from "node:child_process";
+import { resolve } from "node:path";
+import { startPlanweaveServer } from "@planweave-ai/server";
 import {
   listProfiles,
   getProfile,
@@ -9,28 +10,23 @@ import {
   clearCredentials,
   generateDeviceId
 } from "../remoteProfile.js";
+import type { RemoteProfile } from "../remoteProfile.js";
 
 /**
  * Start a local PlanWeave server for development/testing.
  */
-async function startServer(): Promise<void> {
-  // Use the same pnpm exec approach the rest of the CLI uses
-  try {
-    const child = execFile("pnpm", ["--silent", "--filter", "@planweave-ai/mcp", "mcp"], {
-      env: { ...process.env }
-    });
-    child.stdout?.pipe(process.stdout);
-    child.stderr?.pipe(process.stderr);
-    await new Promise<void>((resolve, reject) => {
-      child.on("close", (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(`Server process exited with code ${code}`));
-      });
-      child.on("error", reject);
-    });
-  } catch (error) {
-    throw new Error(`Failed to start PlanWeave server: ${error instanceof Error ? error.message : String(error)}`);
-  }
+async function startServer(port: number, dataDirectory: string, joinToken: string): Promise<void> {
+  const server = await startPlanweaveServer({ dataDirectory, databasePath: resolve(dataDirectory, "planweave-server.sqlite"), host: "0.0.0.0", port, busyTimeoutMs: 5000, joinToken });
+  const http = server.createHttpServer();
+  await new Promise<void>((resolveListen, reject) => {
+    http.once("error", reject);
+    http.listen(port, "0.0.0.0", resolveListen);
+  });
+  console.log(`PlanWeave collaboration server listening on http://0.0.0.0:${port}`);
+  const shutdown = () => { http.close(() => { server.close(); process.exit(0); }); };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+  await new Promise<void>(() => {});
 }
 
 export function registerRemoteServerCommand(program: Command): void {
@@ -43,8 +39,11 @@ export function registerRemoteServerCommand(program: Command): void {
     .description("Start a local PlanWeave server")
     .option("--port <port>", "port to listen on", "8788")
     .option("--data-dir <path>", "data directory for the server")
-    .action(async (options: { port: string; dataDir?: string }) => {
-      await startServer();
+    .option("--join-token <token>", "shared LAN invitation token", "planweave-local-team")
+    .action(async (options: { port: string; dataDir?: string; joinToken: string }) => {
+      const port = Number(options.port);
+      if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("--port must be an integer between 1 and 65535");
+      await startServer(port, resolve(options.dataDir ?? ".planweave-server"), options.joinToken);
     });
 
   serverCmd
@@ -54,8 +53,9 @@ export function registerRemoteServerCommand(program: Command): void {
     .requiredOption("--name <name>", "profile name for this server connection")
     .requiredOption("--project <id>", "project ID to work on")
     .requiredOption("--user <id>", "user ID to authenticate as")
+    .option("--token <token>", "team join token", "planweave-local-team")
     .option("--json", "print machine-readable output")
-    .action(async (options: { url: string; name: string; project: string; user: string; json?: boolean }) => {
+    .action(async (options: { url: string; name: string; project: string; user: string; token: string; json?: boolean }) => {
       const existing = await getProfile(options.name);
       if (existing) {
         if (options.json) {
@@ -68,7 +68,7 @@ export function registerRemoteServerCommand(program: Command): void {
 
       const deviceId = generateDeviceId();
       const now = new Date().toISOString();
-      const profile = {
+      const profile: RemoteProfile = {
         name: options.name,
         serverUrl: options.url.replace(/\/+$/, ""),
         projectId: options.project,
@@ -84,12 +84,18 @@ export function registerRemoteServerCommand(program: Command): void {
       };
 
       await saveProfile(profile);
-
-      // Also save initial credentials (the real session is obtained on first connect)
-      await saveCredentials(options.name, {
-        sessionToken: "",
-        deviceSecret: ""
-      });
+      try {
+        const response = await fetch(`${profile.serverUrl}/api/v1/join`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ projectId: options.project, userId: options.user, displayName: options.user, deviceId, joinToken: options.token }) });
+        const body = await response.json() as { session?: { id: string; expiresAt: string }; error?: { message: string } };
+        if (!response.ok || !body.session) throw new Error(body.error?.message ?? `HTTP ${response.status}`);
+        profile.sessionId = body.session.id;
+        profile.sessionExpiresAt = body.session.expiresAt;
+        await saveProfile(profile);
+        await saveCredentials(options.name, { sessionToken: body.session.id, deviceSecret: "" });
+      } catch (error) {
+        await deleteProfile(options.name);
+        throw new Error(`Failed to join team server: ${error instanceof Error ? error.message : String(error)}`);
+      }
 
       if (options.json) {
         console.log(JSON.stringify({ kind: "joined", profile }, null, 2));

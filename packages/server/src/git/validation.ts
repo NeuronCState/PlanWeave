@@ -1,5 +1,6 @@
 import { MergeQueueError, type MergeQueueEntry, type MergeQueueConfig } from "./types.js"
 import type { WorktreeManager } from "./worktreeManager.js"
+import { posix } from "node:path"
 
 export type ValidationContext = {
   worktreeManager: WorktreeManager
@@ -86,12 +87,14 @@ export function validatePathWithinScope(
 ): void {
   if (allowedPaths.length === 0) return
   for (const file of changedFiles) {
-    const allowed = allowedPaths.some((p) => {
-      if (p.endsWith("/**") || p.endsWith("/*")) {
-        const prefix = p.replace(/\/(\*\*|\*)$/, "/")
-        return file.startsWith(prefix)
+    const normalizedFile = normalizeRepositoryPath(file, "changed file")
+    const allowed = allowedPaths.some((rawScope) => {
+      const wildcard = rawScope.endsWith("/**") || rawScope.endsWith("/*")
+      const scope = normalizeRepositoryPath(wildcard ? rawScope.replace(/\/(\*\*|\*)$/, "") : rawScope, "allowed scope")
+      if (wildcard) {
+        return normalizedFile === scope || normalizedFile.startsWith(`${scope}/`)
       }
-      return file.startsWith(p) || file === p
+      return normalizedFile === scope
     })
     if (!allowed) {
       throw new MergeQueueError("path_violation", `File '${file}' is outside the allowed scope.`, {
@@ -100,4 +103,15 @@ export function validatePathWithinScope(
       })
     }
   }
+}
+
+function normalizeRepositoryPath(value: string, label: string): string {
+  if (!value || value.includes("\\") || value.startsWith("/") || /^[A-Za-z]:/.test(value) || value.split("/").includes("..")) {
+    throw new MergeQueueError("path_violation", `Invalid ${label} '${value}'.`, {})
+  }
+  const normalized = posix.normalize(value)
+  if (normalized === "." || normalized === ".." || normalized.startsWith("../") || normalized.includes("/../")) {
+    throw new MergeQueueError("path_violation", `Invalid ${label} '${value}'.`, {})
+  }
+  return normalized.replace(/^\.\//, "")
 }

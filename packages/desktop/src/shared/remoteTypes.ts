@@ -7,6 +7,8 @@ export type RemoteProfile = {
   serverUrl: string
   deviceId: string
   apiKey: string
+  projectId?: string
+  userId?: string
   createdAt: string
 }
 
@@ -54,6 +56,15 @@ export type RemoteApproval = {
   decision: "approve" | "reject"
   reason: string | null
   createdAt: string
+}
+
+export type RemoteTask = {
+  id: string
+  taskId: string
+  title: string
+  status: string
+  version: number
+  policy: { parallel: boolean; locks: string[]; ownershipScopes: string[]; acceptanceChecks: string[]; reviewers: string[] }
 }
 
 export type RemoteMergeStatus = {
@@ -113,6 +124,8 @@ export const remoteCollaborationInvokeChannels = {
   getRemoteProposals: "planweave-remote:getRemoteProposals",
   approveRemoteProposal: "planweave-remote:approveRemoteProposal",
   getRemoteMembers: "planweave-remote:getRemoteMembers",
+  getRemoteTasks: "planweave-remote:getRemoteTasks",
+  claimRemoteTask: "planweave-remote:claimRemoteTask",
   getRemoteMergeStatus: "planweave-remote:getRemoteMergeStatus"
 } as const
 
@@ -120,14 +133,14 @@ export const remoteEventChannel = "planweave-remote:remoteEvent"
 export const remoteConnectChannel = "planweave-remote:remoteConnect"
 
 export type PlanWeaveRemoteApi = {
-  createRemoteProfile: (input: { name: string; serverUrl: string; deviceId: string; apiKey: string }) => Promise<RemoteProfile>
+  createRemoteProfile: (input: { name: string; serverUrl: string; deviceId: string; apiKey: string; projectId?: string; userId?: string }) => Promise<RemoteProfile>
   updateRemoteProfile: (id: string, input: { name?: string; serverUrl?: string; deviceId?: string; apiKey?: string }) => Promise<RemoteProfile>
   deleteRemoteProfile: (id: string) => Promise<void>
   getRemoteProfile: (id: string) => Promise<RemoteProfile | null>
   listRemoteProfiles: () => Promise<RemoteProfile[]>
   connectProfile: (profileId: string, projectId: string) => Promise<void>
   disconnectProfile: (profileId: string) => Promise<void>
-  getRemoteConnectionStatus: () => Promise<RemoteConnectionStatus>
+  getRemoteConnectionStatus: (profileId: string) => Promise<RemoteConnectionStatus>
   getRemoteProjectSnapshot: (profileId: string, projectId: string) => Promise<RemoteProjectSnapshot>
   getRemotePlanningRooms: (profileId: string, projectId: string) => Promise<Array<{ id: string; name: string; archivedAt: string | null }>>
   getRemoteMessages: (profileId: string, projectId: string, roomId: string) => Promise<RemoteMessage[]>
@@ -135,6 +148,8 @@ export type PlanWeaveRemoteApi = {
   getRemoteProposals: (profileId: string, projectId: string) => Promise<RemoteProposal[]>
   approveRemoteProposal: (profileId: string, projectId: string, proposalId: string, decision: "approve" | "reject", reason?: string) => Promise<RemoteApproval>
   getRemoteMembers: (profileId: string, projectId: string) => Promise<RemoteMember[]>
+  getRemoteTasks: (profileId: string, projectId: string) => Promise<RemoteTask[]>
+  claimRemoteTask: (profileId: string, projectId: string, taskId: string, branchName: string, baseCommit: string) => Promise<unknown>
   getRemoteMergeStatus: (profileId: string, projectId: string) => Promise<RemoteMergeStatus>
   onRemoteEvent: (callback: (payload: RemoteEventPayload) => void) => () => void
   onRemoteConnect: (callback: (payload: RemoteConnectEventPayload) => void) => () => void

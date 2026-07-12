@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -31,7 +31,7 @@ describe("authoritative server store", () => {
       expect(readiness.status).toBe("ready");
       expect(readiness.schemaVersion).toBeGreaterThan(0);
       expect(readiness.subsystems.central).toBeGreaterThan(0);
-      expect(readiness.subsystems.work).toBe(1);
+      expect(readiness.subsystems.work).toBe(2);
       expect(readiness.subsystems.identity).toBe(1);
       expect(readiness.subsystems.planning).toBe(1);
       expect(readiness.subsystems.proposals).toBe(1);
@@ -39,6 +39,36 @@ describe("authoritative server store", () => {
       expect(readiness.subsystems.events).toBe(1);
       expect(reconciled).toBe(true);
       await expect(server.createBackup("before-upgrade.sqlite")).resolves.toContain("before-upgrade.sqlite");
+      const backup = await server.createBackup("restore-fixture.sqlite");
+      expect((await stat(backup)).size).toBeGreaterThan(0);
+      expect((await readFile(backup)).subarray(0, 16).toString("utf8")).toBe("SQLite format 3\u0000");
     } finally { server.close(); }
+  });
+
+  it("rolls back domain rows, events, audit, and idempotency receipt when a command fails", async () => {
+    const dataDirectory = await mkdtemp(join(tmpdir(), "planweave-server-rollback-"));
+    directories.push(dataDirectory);
+    const server = await startPlanweaveServer({ dataDirectory, databasePath: join(dataDirectory, "server.sqlite"), host: "127.0.0.1", port: 0, busyTimeoutMs: 5000 });
+    try {
+      expect(() => executeIdempotent(server.database, {
+        deviceId: "device-fault",
+        route: "/api/v1/projects",
+        projectId: "project-fault",
+        key: "idempotency-fault-0001",
+        requestFingerprint: "request-fault",
+        execute: (unit) => {
+          unit.database.prepare("INSERT INTO projects(id,name,created_at) VALUES (?,?,?)").run("project-fault", "Fault", new Date().toISOString());
+          unit.appendEvent({ projectId: "project-fault", aggregateType: "project", aggregateId: "project-fault", aggregateVersion: 1, type: "project.created" });
+          unit.audit({ projectId: "project-fault", actorId: "user-fault", action: "project.create", aggregateType: "project", aggregateId: "project-fault", details: {} });
+          throw new Error("injected failure after writes");
+        }
+      })).toThrowError("injected failure after writes");
+      expect(server.database.prepare("SELECT id FROM projects WHERE id=?").get("project-fault")).toBeUndefined();
+      expect(server.database.prepare("SELECT event_id FROM domain_events WHERE project_id=?").get("project-fault")).toBeUndefined();
+      expect(server.database.prepare("SELECT id FROM audit_log WHERE project_id=?").get("project-fault")).toBeUndefined();
+      expect(server.database.prepare("SELECT key FROM idempotency_keys WHERE key=?").get("idempotency-fault-0001")).toBeUndefined();
+    } finally {
+      server.close();
+    }
   });
 });

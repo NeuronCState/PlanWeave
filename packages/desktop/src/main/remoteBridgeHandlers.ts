@@ -18,6 +18,8 @@ import {
   getRemoteProposals,
   approveRemoteProposal,
   getRemoteMembers,
+  getRemoteTasks,
+  claimRemoteTask,
   getRemoteMergeStatus
 } from "./remoteClient.js"
 import {
@@ -158,5 +160,17 @@ export function registerRemoteBridgeHandlers(): void {
       throw new Error(`Remote profile '${profileId}' not found`)
     }
     return getRemoteMergeStatus(profile, projectId)
+  })
+
+  ipcMain.handle(channels.getRemoteTasks, async (_event, profileId: string, projectId: string) => {
+    const profile = await getRemoteProfile(profileId)
+    if (!profile) throw new Error(`Remote profile '${profileId}' not found`)
+    return getRemoteTasks(profile, projectId)
+  })
+
+  ipcMain.handle(channels.claimRemoteTask, async (_event, profileId: string, projectId: string, taskId: string, branchName: string, baseCommit: string) => {
+    const profile = await getRemoteProfile(profileId)
+    if (!profile) throw new Error(`Remote profile '${profileId}' not found`)
+    return claimRemoteTask(profile, projectId, taskId, branchName, baseCommit)
   })
 }

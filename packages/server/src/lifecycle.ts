@@ -1,5 +1,5 @@
 import { mkdir } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
+import type { Server } from "node:http";
 import { join } from "node:path";
 import { applyAgentsMigrations, agentsSchemaVersion } from "./agents/migrations.js";
 import { applyAttachmentsMigrations } from "./attachments/migrations.js";
@@ -12,6 +12,7 @@ import { applyPlanningMigrations } from "./planning/migrations.js";
 import { applyProposalsMigrations } from "./proposals/migrations.js";
 import { openServerDatabase, type SqliteDatabase } from "./sqlite.js";
 import { applyWorkMigrations, workSchemaVersion } from "./work/migrations.js";
+import { createCollaborationHttpServer } from "./collaborationApi.js";
 
 export type StartupReconciliationHook = (database: SqliteDatabase) => void | Promise<void>;
 export type SubsystemVersions = {
@@ -91,26 +92,7 @@ export async function startPlanweaveServer(config: ServerConfig, reconciliationH
       database.exec(`VACUUM INTO '${target.replaceAll("'", "''")}'`);
       return target;
     },
-    createHttpServer: () =>
-      createServer((request, response) => {
-        const path = new URL(request.url ?? "/", `http://${request.headers.host ?? config.host}`).pathname;
-        if (path === "/healthz" || path === "/readyz") {
-          response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-          response.end(
-            JSON.stringify({
-              ...computeReadiness(),
-              requestId: request.headers["x-request-id"] ?? null
-            })
-          );
-          return;
-        }
-        response.writeHead(404, { "content-type": "application/json; charset=utf-8" });
-        response.end(
-          JSON.stringify({
-            error: { code: "not_found", message: "Not found", requestId: request.headers["x-request-id"] ?? null, retryable: false }
-          })
-        );
-      }),
+    createHttpServer: () => createCollaborationHttpServer({ database, config, readiness: computeReadiness }),
     close: () => database.close()
   };
 }

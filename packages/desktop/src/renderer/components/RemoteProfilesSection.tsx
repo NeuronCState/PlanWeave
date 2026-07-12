@@ -12,6 +12,8 @@ export function RemoteProfilesSection({ profiles, onProfilesChange }: RemoteProf
   const [serverUrl, setServerUrl] = useState("")
   const [deviceId, setDeviceId] = useState("")
   const [apiKey, setApiKey] = useState("")
+  const [projectId, setProjectId] = useState("")
+  const [userId, setUserId] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -26,7 +28,7 @@ export function RemoteProfilesSection({ profiles, onProfilesChange }: RemoteProf
         const updated = await remoteBridge.updateRemoteProfile(editingId, { name, serverUrl, deviceId, apiKey })
         onProfilesChange(profiles.map((p) => (p.id === editingId ? updated : p)))
       } else {
-        const created = await remoteBridge.createRemoteProfile({ name, serverUrl, deviceId, apiKey })
+        const created = await remoteBridge.createRemoteProfile({ name, serverUrl, deviceId, apiKey, projectId, userId })
         onProfilesChange([...profiles, created])
       }
       resetForm()
@@ -52,6 +54,8 @@ export function RemoteProfilesSection({ profiles, onProfilesChange }: RemoteProf
     setServerUrl(profile.serverUrl)
     setDeviceId(profile.deviceId)
     setApiKey(profile.apiKey)
+    setProjectId(profile.projectId ?? "")
+    setUserId(profile.userId ?? "")
   }
 
   function resetForm() {
@@ -60,6 +64,8 @@ export function RemoteProfilesSection({ profiles, onProfilesChange }: RemoteProf
     setServerUrl("")
     setDeviceId("")
     setApiKey("")
+    setProjectId("")
+    setUserId("")
   }
 
   return (
@@ -69,6 +75,20 @@ export function RemoteProfilesSection({ profiles, onProfilesChange }: RemoteProf
       {error && <div className="text-xs text-destructive rounded-md bg-destructive/10 px-2 py-1">{error}</div>}
 
       <div className="flex flex-col gap-2">
+        <input
+          type="text"
+          className="rounded-md border border-input bg-transparent px-2 py-1 text-sm text-foreground placeholder:text-muted-foreground"
+          placeholder="Project ID"
+          value={projectId}
+          onChange={(e) => setProjectId(e.target.value)}
+        />
+        <input
+          type="text"
+          className="rounded-md border border-input bg-transparent px-2 py-1 text-sm text-foreground placeholder:text-muted-foreground"
+          placeholder="Your user name"
+          value={userId}
+          onChange={(e) => setUserId(e.target.value)}
+        />
         <input
           type="text"
           className="rounded-md border border-input bg-transparent px-2 py-1 text-sm text-foreground placeholder:text-muted-foreground"
@@ -93,7 +113,7 @@ export function RemoteProfilesSection({ profiles, onProfilesChange }: RemoteProf
         <input
           type="password"
           className="rounded-md border border-input bg-transparent px-2 py-1 text-sm text-foreground placeholder:text-muted-foreground"
-          placeholder="API Key"
+          placeholder="Team join token"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
         />
@@ -104,7 +124,7 @@ export function RemoteProfilesSection({ profiles, onProfilesChange }: RemoteProf
           type="button"
           className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
           onClick={() => { void handleSave() }}
-          disabled={!name || !serverUrl || !apiKey}
+          disabled={!name || !serverUrl || !deviceId || !apiKey || !projectId || !userId}
         >
           {editingId ? "Update" : "Add Profile"}
         </button>

@@ -9,7 +9,8 @@ import type {
   RemoteMember,
   RemoteMergeStatus,
   RemoteEventPayload,
-  RemoteConnectionStatus
+  RemoteConnectionStatus,
+  RemoteTask
 } from "../shared/remoteTypes.js"
 
 const DEFAULT_TIMEOUT_MS = 15_000
@@ -23,6 +24,7 @@ type RemoteClientState = {
   lastEventId: string | null
   eventCallbacks: Set<EventCallback>
   reconnectTimer: ReturnType<typeof setTimeout> | null
+  pollTimer: ReturnType<typeof setInterval> | null
   closing: boolean
 }
 
@@ -62,21 +64,19 @@ export async function connectRemote(
     lastEventId: null,
     eventCallbacks: new Set([onEvent]),
     reconnectTimer: null,
+    pollTimer: null,
     closing: false
   }
   connections.set(key, state)
 
-  await establishConnection(state)
+  const snapshot = await httpGet<RemoteProjectSnapshot>(profile, `/api/v1/projects/${encodeURIComponent(projectId)}/snapshot`)
+  state.lastEventId = snapshot.lastEventId
+  startEventPolling(state)
+  void establishConnection(state).catch(() => undefined)
 }
 
 async function establishConnection(state: RemoteClientState): Promise<void> {
   const { profile, projectId } = state
-
-  const snapshot = await httpGet<RemoteProjectSnapshot>(
-    profile,
-    `/api/v1/projects/${encodeURIComponent(projectId)}/snapshot`
-  )
-  state.lastEventId = snapshot.lastEventId
 
   const wsUrl = profile.serverUrl.replace(/^http/, "ws")
   const url = new URL(wsUrl)
@@ -157,6 +157,20 @@ async function establishConnection(state: RemoteClientState): Promise<void> {
   })
 }
 
+function startEventPolling(state: RemoteClientState): void {
+  if (state.pollTimer) return
+  state.pollTimer = setInterval(() => {
+    if (state.closing) return
+    void httpGet<{ items: Array<{ eventId: string; projectId: string; type: string; aggregateType: string; aggregateId: string; aggregateVersion: number; occurredAt: string }> }>(state.profile, `/api/v1/projects/${encodeURIComponent(state.projectId)}/events?afterEventId=${encodeURIComponent(state.lastEventId ?? "0")}&limit=100`).then((page) => {
+      for (const event of page.items) {
+        state.lastEventId = event.eventId
+        const payload: RemoteEventPayload = { profileId: state.profile.id, projectId: event.projectId, eventType: event.type, aggregateType: event.aggregateType, aggregateId: event.aggregateId, aggregateVersion: event.aggregateVersion, occurredAt: event.occurredAt }
+        for (const callback of state.eventCallbacks) callback(payload)
+      }
+    }).catch(() => undefined)
+  }, 2_000)
+}
+
 function scheduleReconnect(state: RemoteClientState): void {
   if (state.closing) return
   state.reconnectTimer = setTimeout(() => {
@@ -176,6 +190,10 @@ export async function disconnectRemote(profileId: string): Promise<void> {
   if (state.reconnectTimer) {
     clearTimeout(state.reconnectTimer)
     state.reconnectTimer = null
+  }
+  if (state.pollTimer) {
+    clearInterval(state.pollTimer)
+    state.pollTimer = null
   }
   if (state.ws) {
     state.ws.close()
@@ -302,6 +320,14 @@ export async function approveRemoteProposal(
 
 export async function getRemoteMembers(profile: RemoteProfile, projectId: string): Promise<RemoteMember[]> {
   return httpGet(profile, `/api/v1/projects/${encodeURIComponent(projectId)}/members`)
+}
+
+export async function getRemoteTasks(profile: RemoteProfile, projectId: string): Promise<RemoteTask[]> {
+  return httpGet(profile, `/api/v1/projects/${encodeURIComponent(projectId)}/tasks`)
+}
+
+export async function claimRemoteTask(profile: RemoteProfile, projectId: string, taskId: string, branchName: string, baseCommit: string): Promise<unknown> {
+  return httpPost(profile, `/api/v1/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/claim`, { branchName, baseCommit, leaseDurationSeconds: 3600 })
 }
 
 export async function getRemoteMergeStatus(profile: RemoteProfile, projectId: string): Promise<RemoteMergeStatus> {

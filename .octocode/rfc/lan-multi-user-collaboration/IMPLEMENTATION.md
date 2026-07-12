@@ -6,10 +6,10 @@
 
 | Open question | Resolution | Evidence | Confidence |
 |---|---|---|---|
-| Human schema/security owner | Deferred to project owner; no public server API or schema PR may merge without a named approver | Process gate from `RFC.md` §Unresolved Questions | n/a |
-| First topology | Default implementation: one server hosts multiple projects; each project binds to zero or one Git repository. This preserves current multi-project discovery while keeping merge ownership singular. Owner may narrow it without changing storage ports. | MCP gateway already resolves multiple project IDs in `packages/mcp/src/toolRuntime.ts:71-89`; local runtime has project listing | likely |
-| SQLite driver/migrations | Deferred to Work Package A0 compatibility spike. Selection is not allowed to affect runtime public APIs. | Repository uses Node >=22.5 and ESM (`package.json:6-7`); native packaging constraints require an empirical build check | n/a |
-| HTTP/WebSocket implementation | Deferred to Work Package A0. Keep collaboration routing in `packages/server`; mount or delegate MCP explicitly rather than growing `packages/mcp/src/server.ts` into the application server. | Current MCP server is narrow Node HTTP routing at `packages/mcp/src/server.ts:108-153` | confirmed boundary; package choice deferred |
+| Human schema/security owner | Project owner (user) is the named schema/security approver. | User designation on 2026-07-12; approval required for public server API or schema migrations. | accepted |
+| First topology | One server hosts multiple projects; each project binds to zero or one Git repository. | Preserves current multi-project discovery while keeping merge ownership singular; owner may narrow it without changing storage ports. | accepted |
+| SQLite driver/migrations | `node:sqlite` (`DatabaseSync`) plus server-owned numbered SQL migrations. | A0 spike and rollback: `ADR-001-authoritative-sqlite.md`. Selection does not affect runtime public APIs. | accepted |
+| HTTP/WebSocket implementation | Dedicated `node:http` collaboration listener plus `ws` 8.x; existing MCP listener retains `/mcp`. | A0 spike and rollback: `ADR-002-http-websocket-transport.md`; public wire contracts: `CONTRACTS-v1.md`. | accepted |
 | Coordinator Agent provider | Start with an internal provider interface and a manual/fake provider used by integration tests. Enable the first real provider only after cancellation, budget, and artifact-source persistence exist. | Existing runtime already isolates executors through integration interfaces under `packages/runtime/src/autoRun/` | likely |
 | PostgreSQL trigger | Deferred until observed need: revisit if sustained write lock wait or deployment topology prevents meeting KPI guardrails for two review windows | First release intentionally targets a single LAN server | n/a |
 
@@ -47,17 +47,22 @@ Parallelizable after A1: A2, A3, and A4. After their prerequisites: A6, A7, A8, 
 
 **Owner:** Architecture Agent. **Allowed paths:** `.octocode/rfc/lan-multi-user-collaboration/`, temporary spike files under `packages/server`; no production API.
 
-- [ ] Record named schema/security approver and topology decision.
-- [ ] Compare SQLite candidates on Node ESM, transactions, migrations, test isolation, macOS/Linux/Windows install, and desktop packaging impact.
-- [ ] Compare a dedicated collaboration HTTP/WebSocket stack with extending the narrow Node HTTP server; preserve `/mcp` compatibility.
-- [ ] Write an ADR for each selection and delete non-selected spike code.
-- [ ] Define error envelope, cursor, idempotency, optimistic version, and event envelope contracts before endpoint work.
+- [x] Record named schema/security approver: project owner (user).
+- [x] Record topology decision: one server hosts multiple projects; each binds zero or one Git repository.
+- [x] Compare SQLite candidates on Node ESM, transactions, migrations, test isolation, macOS/Linux/Windows install, and desktop packaging impact (`ADR-001-authoritative-sqlite.md`).
+- [x] Compare a dedicated collaboration HTTP/WebSocket stack with extending the narrow Node HTTP server; preserve `/mcp` compatibility (`ADR-002-http-websocket-transport.md`).
+- [x] Write ADRs with rollback and retain no non-selected spike code.
+- [x] Freeze error envelope, cursor, idempotency, optimistic version, and event envelope contracts (`CONTRACTS-v1.md`).
 
-**Acceptance:** selected dependencies install with frozen lockfile; server package typechecks/builds on supported CI targets; ADRs include rollback.
+**Acceptance:** ADR rollback is complete. `node:sqlite` selection has no package dependency. A1 must add selected pure-JS `ws` to its new server package and prove `pnpm install --frozen-lockfile`, server typecheck/build, and macOS/Linux/Windows CI before this acceptance gate is fully closed; A0 is prohibited from creating that production package.
+
+**A0 verification record (2026-07-12):** Node `v24.14.0` completed an in-memory SQLite `BEGIN IMMEDIATE`/`COMMIT` smoke test; a temporary ESM `ws` `8.21.0` package completed a loopback Node HTTP upgrade/message handshake; the existing workspace passed `pnpm install --frozen-lockfile` and `git diff --check`. The temporary package was outside the repository and removed from the implementation surface.
 
 ### A1 — Server skeleton and authoritative store
 
 **Owner:** Storage/Server Agent. **Allowed paths:** `packages/server/**`, workspace package metadata. **Depends on:** A0.
+
+**A1 status (2026-07-12):** implemented server package foundation with `node:sqlite`, numbered schema migration v1, WAL/foreign-key/busy-timeout setup, explicit write transactions, health/readiness listener, idempotency/event/audit atomic unit of work, and safe SQLite backup foundation. The public collaboration endpoints and WebSocket synchronization remain A2–A4 work.
 
 - [ ] Add `@planweave-ai/server` with config, lifecycle, health/readiness, structured logging, graceful shutdown, and data directory resolution.
 - [ ] Add migration runner and schema for projects, memberships, idempotency, domain events, and audit log.
@@ -245,4 +250,3 @@ Parallelizable after A1: A2, A3, and A4. After their prerequisites: A6, A7, A8, 
 - `packages/runtime/src/taskManager/selectors.ts:161-189` — existing concurrency policy to preserve.
 - `packages/mcp/src/config.ts:99-108` — existing non-loopback authentication guard.
 - `packages/desktop/src/main/runtimeStateWatch.ts:182-203` — local invalidation pattern that remote events replace only in remote mode.
-

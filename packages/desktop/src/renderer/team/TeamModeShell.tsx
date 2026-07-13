@@ -13,6 +13,7 @@ import {
   RefreshCwIcon,
   ServerIcon,
   ShieldCheckIcon,
+  Trash2Icon,
   UserCheckIcon,
   UserRoundIcon,
   UsersRoundIcon,
@@ -194,7 +195,7 @@ function TeamWorkspace({ view, snapshot, tasks, messages, rooms, currentRoom, dr
   return <div className="mx-auto flex h-full max-w-5xl flex-col gap-6"><header className="flex flex-wrap items-start justify-between gap-4"><div><div className="text-xs uppercase tracking-widest text-violet-600 dark:text-violet-300">Team workspace · Connected</div><h1 className="mt-1 text-3xl font-semibold">{snapshot.project.name}</h1><p className="mt-2 text-sm text-muted-foreground">{snapshot.members.length} 位成员 · {tasks.length} 个任务 · {snapshot.proposals.length} 个提案</p></div><div className="flex items-center gap-2"><MergeStatusDisplay mergeStatus={snapshot.mergeStatus} /><Button size="icon-sm" variant="outline" aria-label="刷新团队数据" onClick={onRefresh}><RefreshCwIcon className="size-4" /></Button></div></header>{inviteUrl ? <div className="rounded-lg border border-state-success/30 bg-state-success-surface px-4 py-3 text-sm"><span className="font-medium">{lanInvite ? "可信局域网邀请地址" : "本机服务地址"}</span><code className="ml-2 break-all text-xs">{inviteUrl}</code>{lanInvite ? <p className="mt-2 text-xs text-text-muted">此连接使用明文 HTTP，请勿在公共或不可信网络中分享令牌。</p> : null}</div> : null}{page}</div>;
 }
 
-export function TeamModeShell({ embedded = false, teamView = "planning", onConnectionRoleChange, onExit }: { embedded?: boolean; teamView?: string; onConnectionRoleChange?: (role: "server" | "member") => void; onExit: () => void }) {
+export function TeamModeShell({ embedded = false, teamView = "planning", onConnectionRoleChange, onExit }: { embedded?: boolean; teamView?: string; onConnectionRoleChange?: (role: "server" | "member" | null) => void; onExit: () => void }) {
   const [profiles, setProfiles] = useState<RemoteProfile[]>([]);
   const [active, setActive] = useState<RemoteProfile | null>(null);
   const [snapshot, setSnapshot] = useState<RemoteProjectSnapshot | null>(null);
@@ -223,6 +224,7 @@ export function TeamModeShell({ embedded = false, teamView = "planning", onConne
   const [targetBranch, setTargetBranch] = useState("main");
   const [attachmentPath, setAttachmentPath] = useState("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [deletingProfileId, setDeletingProfileId] = useState<string | null>(null);
 
   useEffect(() => { void remoteBridge?.listRemoteProfiles().then(setProfiles); }, []);
 
@@ -294,6 +296,36 @@ export function TeamModeShell({ embedded = false, teamView = "planning", onConne
     finally { setConnectingRole(null); }
   }
 
+  async function deleteProfile(profile: RemoteProfile) {
+    if (!remoteBridge || !window.confirm(`确定删除团队连接“${profile.name}”吗？`)) return;
+    setDeletingProfileId(profile.id);
+    setError(null);
+    try {
+      if (active?.id === profile.id) {
+        await remoteBridge.disconnectProfile(profile.id);
+        setActive(null);
+        setSnapshot(null);
+        setMessages([]);
+        setTasks([]);
+        setRooms([]);
+        setSelectedRoomId(null);
+        setCoordination(null);
+        setAssignments([]);
+        setValidations({});
+        setMergeQueue(null);
+        setInviteUrl(null);
+        setRoleChoice("choose");
+        onConnectionRoleChange?.(null);
+      }
+      await remoteBridge.deleteRemoteProfile(profile.id);
+      setProfiles((current) => current.filter((item) => item.id !== profile.id));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setDeletingProfileId(null);
+    }
+  }
+
   async function claim(task: RemoteTask) {
     if (!remoteBridge || !active?.projectId) return;
     setError(null);
@@ -349,10 +381,10 @@ export function TeamModeShell({ embedded = false, teamView = "planning", onConne
   const currentRoom = rooms.find((room) => room.id === selectedRoomId) ?? rooms[0];
 
   return <TeamWorkspaceContext.Provider value={{ coordination, assignments, validations, mergeQueue, repositoryPath, attachmentPath, currentUserId: active?.userId, busyAction, onRepositoryPathChange: setRepositoryPath, onAttachmentPathChange: setAttachmentPath, onUploadAttachment: uploadAttachment, onPrefer: prefer, onValidate: validateAssignment, onSubmit: submitValidated, onBaselineDecision: baselineDecision, onFreezeBaseline: freezeBaseline, onGenerateBaseline: generateBaseline, onGenerateTasks: generateTasks, onReviewMerge: reviewMerge }}><div className={`flex min-h-0 min-w-0 flex-1 bg-app-canvas text-text ${embedded ? "h-full" : "h-screen"}`}>
-    {!embedded ? <aside className="w-64 border-r border-border/80 bg-app-panel p-4"><div className="mb-6 flex items-center justify-between"><strong>Team Mode</strong><Button size="sm" variant="ghost" onClick={onExit}>Local</Button></div><Button className="mb-3 w-full" onClick={() => setRoleChoice("choose")}>New team connection</Button><div className="space-y-2">{profiles.map((profile) => <Button className="w-full justify-start" key={profile.id} variant={active?.id === profile.id ? "secondary" : "ghost"} onClick={() => void open(profile)}>{profile.name}</Button>)}</div></aside> : null}
+    {!embedded ? <aside className="w-64 border-r border-border/80 bg-app-panel p-4"><div className="mb-6 flex items-center justify-between"><strong>Team Mode</strong><Button size="sm" variant="ghost" onClick={onExit}>Local</Button></div><div className="space-y-2">{profiles.map((profile) => <div className="flex items-center gap-1" key={profile.id}><Button className="min-w-0 flex-1 justify-start" variant={active?.id === profile.id ? "secondary" : "ghost"} onClick={() => void open(profile)}><span className="truncate">{profile.name}</span></Button><Button size="icon-sm" variant="ghost" aria-label={`删除团队连接 ${profile.name}`} title="删除连接" disabled={deletingProfileId === profile.id} onClick={() => void deleteProfile(profile)}><Trash2Icon className="size-3.5" /></Button></div>)}</div></aside> : null}
     <main className="min-w-0 flex-1 overflow-auto p-8">
       {embedded ? <header className="view-enter mb-8 border-b border-border/80 pb-4"><div className="text-xs font-medium uppercase tracking-[0.12em] text-violet-600 dark:text-violet-300">团队模式</div><h1 className="mt-1 text-xl font-semibold">团队配置</h1></header> : null}
-      {embedded && profiles.length > 0 ? <div className="mb-6 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => setRoleChoice("choose")}>新建团队连接</Button>{profiles.map((profile) => <Button size="sm" key={profile.id} variant={active?.id === profile.id ? "secondary" : "ghost"} onClick={() => void open(profile)}>{profile.name}</Button>)}</div> : null}
+      {embedded && profiles.length > 0 ? <div className="mb-6 flex flex-wrap gap-2">{profiles.map((profile) => <div className="flex items-center gap-1" key={profile.id}><Button size="sm" variant={active?.id === profile.id ? "secondary" : "ghost"} onClick={() => void open(profile)}>{profile.name}</Button><Button size="icon-sm" variant="ghost" aria-label={`删除团队连接 ${profile.name}`} title="删除连接" disabled={deletingProfileId === profile.id} onClick={() => void deleteProfile(profile)}><Trash2Icon className="size-3.5" /></Button></div>)}</div> : null}
       {error ? <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
       {!snapshot && roleChoice !== "choose" ? <div className="mx-auto mb-4 grid w-full max-w-3xl gap-3 rounded-xl border border-border/80 bg-surface-raised p-4 sm:grid-cols-2"><label className="grid gap-1 text-sm"><span>本地 Git 仓库路径</span><input className="h-10 rounded-lg border border-input bg-transparent px-3" value={repositoryPath} onChange={(event) => setRepositoryPath(event.target.value)} placeholder="每台电脑各自的仓库绝对路径" /></label>{roleChoice === "host" ? <label className="grid gap-1 text-sm"><span>Host 目标分支</span><input className="h-10 rounded-lg border border-input bg-transparent px-3" value={targetBranch} onChange={(event) => setTargetBranch(event.target.value)} placeholder="main" /></label> : <div className="self-end pb-2 text-xs text-text-muted">此路径只留在本机，用于领取、验收和生成提交包。</div>}</div> : null}
       {!snapshot ? <div className="view-enter mx-auto mt-16 w-full max-w-3xl">{roleChoice === "choose" && view !== "planning" ? <DisconnectedTeamPage view={view} onStartConnection={() => setRoleChoice("host")} /> : roleChoice === "choose" ? <div className="animate-in fade-in slide-in-from-bottom-3"><div className="max-w-2xl"><div className="text-xs font-medium uppercase tracking-[0.14em] text-violet-600 dark:text-violet-300">连接团队工作区</div><h1 className="mt-2 text-3xl font-semibold tracking-tight text-text-strong">选择这台设备的团队角色</h1><p className="mt-3 text-sm leading-6 text-text-muted">主机负责创建共享服务；成员连接到已有服务共同协作。两种方式都可以随时返回重新选择。</p></div><div className="mt-8 grid gap-4 sm:grid-cols-2"><RoleChoiceCard role="host" onSelect={setRoleChoice} /><RoleChoiceCard role="member" onSelect={setRoleChoice} /></div><div className="mt-5 flex items-center gap-2 text-xs text-text-muted"><ShieldCheckIcon className="size-4 text-state-success" />连接信息仅用于当前团队服务的身份验证。</div></div> : <div className="rounded-2xl border border-border/80 bg-surface-raised p-6 shadow-sm sm:p-8"><button className="text-sm text-text-muted hover:text-text-strong" type="button" onClick={() => setRoleChoice("choose")}>← 返回角色选择</button><div className="mt-6 flex items-start gap-4"><div className={`flex size-12 shrink-0 items-center justify-center rounded-xl ${roleChoice === "host" ? "bg-violet-500/12 text-violet-600" : "bg-sky-500/12 text-sky-600"}`}>{roleChoice === "host" ? <ServerIcon className="size-6" /> : <UserRoundIcon className="size-6" />}</div><div><div className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted">{roleChoice === "host" ? "创建共享空间" : "加入已有空间"}</div><h1 className="mt-1 text-2xl font-semibold text-text-strong">{roleChoice === "host" ? "作为主机启动" : "作为成员加入"}</h1></div></div><div className="mt-6 rounded-xl border border-border/70 bg-surface-muted/60 p-4 text-sm leading-6 text-text-muted">{roleChoice === "host" ? <><p>主机服务会在这台设备上启动，默认仅当前设备可访问。</p><div className="mt-3 grid gap-2 sm:grid-cols-3"><span>1. 填写项目资料</span><span>2. 选择网络范围</span><span>3. 启动本地服务</span></div></> : <><p>请先向团队主机获取服务地址和加入令牌，再填写下方信息完成连接。</p><div className="mt-3 flex items-center gap-2"><Link2Icon className="size-4 text-sky-500" />连接成功后即可查看任务、成员和讨论。</div></>}</div><div className="mt-6 grid gap-4 sm:grid-cols-2"><label className="grid gap-1.5 text-sm font-medium text-text"><span>项目 ID</span><input className="h-10 rounded-lg border border-input bg-transparent px-3 font-normal" value={projectId} onChange={(event) => setProjectId(event.target.value)} placeholder="例如 team-project" /></label><label className="grid gap-1.5 text-sm font-medium text-text"><span>项目名称</span><input className="h-10 rounded-lg border border-input bg-transparent px-3 font-normal" value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="例如 产品协作空间" /></label><label className="grid gap-1.5 text-sm font-medium text-text"><span>你的名称</span><input className="h-10 rounded-lg border border-input bg-transparent px-3 font-normal" value={userId} onChange={(event) => setUserId(event.target.value)} placeholder="团队中显示的名称" /></label><label className="grid gap-1.5 text-sm font-medium text-text"><span>设备 ID</span><input className="h-10 rounded-lg border border-input bg-transparent px-3 font-normal" value={deviceId} onChange={(event) => setDeviceId(event.target.value)} placeholder="当前设备标识" /></label>{roleChoice === "member" ? <label className="grid gap-1.5 text-sm font-medium text-text sm:col-span-2"><span>主机服务地址</span><input className="h-10 rounded-lg border border-input bg-transparent px-3 font-normal" value={serverUrl} onChange={(event) => setServerUrl(event.target.value)} placeholder="例如 http://192.168.1.10:8788" /></label> : null}<label className="grid gap-1.5 text-sm font-medium text-text sm:col-span-2"><span>团队加入令牌</span><input className="h-10 rounded-lg border border-input bg-transparent px-3 font-normal" type="text" value={joinToken} onChange={(event) => setJoinToken(event.target.value)} placeholder="由主机生成并分享给成员" /></label>{roleChoice === "host" ? <label className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/8 p-3 text-sm text-text sm:col-span-2"><input className="mt-1" type="checkbox" checked={allowInsecureLan} onChange={(event) => setAllowInsecureLan(event.target.checked)} /><span><span className="font-medium">允许可信局域网设备连接</span><span className="mt-1 block text-xs leading-5 text-text-muted">将监听所有网络接口。当前连接使用明文 HTTP，仅可在你信任的私有网络中启用。</span></span></label> : null}</div><div className="mt-6 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-text-muted">{roleChoice === "host" ? (allowInsecureLan ? "启动后会生成可分享给可信局域网成员的地址。" : "启动后只允许当前设备连接。") : "服务地址和令牌只会用于连接此团队。"}</p><Button disabled={connectingRole !== null || !projectId || !userId || !deviceId || (roleChoice === "host" && joinToken.trim().length < 24) || (roleChoice === "member" && !serverUrl)} onClick={() => void (roleChoice === "host" ? hostTeam() : joinTeam())}>{connectingRole === roleChoice ? <LoaderCircleIcon className="size-4 animate-spin" /> : null}{connectingRole === roleChoice ? (roleChoice === "host" ? "正在启动…" : "正在连接…") : roleChoice === "host" ? "启动团队服务" : "加入团队"}</Button></div>{inviteUrl ? <div className="mt-5 rounded-xl border border-state-success/30 bg-state-success-surface p-4 text-sm"><div className="font-medium">团队服务已启动</div><div className="mt-1 text-text-muted">{allowInsecureLan ? "可信局域网邀请地址：" : "本机服务地址："}</div><code className="mt-2 block break-all text-xs">{inviteUrl}</code>{allowInsecureLan ? <p className="mt-2 text-xs text-text-muted">请同时安全传递加入令牌，并避开公共 Wi-Fi。</p> : null}</div> : null}</div>}</div> : <TeamWorkspace view={view} snapshot={snapshot} tasks={tasks} messages={messages} rooms={rooms} currentRoom={currentRoom} draft={draft} inviteUrl={inviteUrl} approvingProposalId={approvingProposalId} onDraftChange={setDraft} onSend={() => void send()} onSelectRoom={(roomId) => void selectRoom(roomId)} onClaim={(task) => void claim(task)} onDecideProposal={(proposalId, decision) => void decideProposal(proposalId, decision)} onRefresh={() => active && void open(active)} />}

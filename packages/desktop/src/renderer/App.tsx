@@ -599,7 +599,7 @@ export function App() {
   return (
     <>
     <div className="relative flex h-screen min-h-0 overflow-hidden text-foreground">
-      <div className="flex" style={{
+      <div className="app-left-sidebar-shell flex" style={{
         overflow: "hidden",
         width: leftSidebarCollapsed ? 0 : leftSidebarWidth,
         transition: isResizingLeft ? "none" : "width var(--motion-duration-panel) var(--motion-ease-emphasized)",
@@ -658,7 +658,7 @@ export function App() {
         t={t}
         width={leftSidebarWidth}
       />
-      <div className="glass-surface relative flex-1 min-w-0 overflow-hidden">
+      <div className="app-main-shell glass-surface relative flex-1 min-w-0 overflow-visible">
         <div className="app-drag-region absolute left-0 top-0 z-10 h-5 w-full" />
         <main className="relative flex h-full min-h-0 overflow-hidden" data-testid="app-main-view" data-active-view={activeView} data-mode={mode}>
         {activeView === "settings" ? <AppSettingsRoute {...settingsRouteProps} /> : mode === "team" ? <TeamModeShell embedded teamView={teamView} onConnectionRoleChange={setTeamConnectionRole} onExit={() => setMode("personal")} /> : <WorkspaceTabs

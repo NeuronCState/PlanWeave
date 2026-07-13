@@ -273,9 +273,36 @@ html[data-window-material="true"] .glass-surface {
   background-color: var(--app-sidebar-project);
 }
 
+.app-left-sidebar-shell {
+  position: relative;
+  z-index: 10;
+}
+
+.app-main-shell {
+  position: relative;
+  z-index: 20;
+  box-shadow: -12px 0 24px -20px oklch(0 0 0 / 42%);
+}
+
+.app-main-shell::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 22px;
+  pointer-events: none;
+  content: "";
+  background: linear-gradient(to bottom, transparent, oklch(1 0 0 / 12%));
+}
+
 html[data-window-material="true"] .project-sidebar {
   background-color: var(--app-sidebar-project-material);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border-right-color: oklch(1 0 0 / 9%);
+}
+
+html[data-window-material="true"] .app-main-shell {
+  box-shadow: -14px 0 28px -22px oklch(0 0 0 / 58%);
 }
 
 html[data-window-material="true"] .project-sidebar[data-resizing="true"] {

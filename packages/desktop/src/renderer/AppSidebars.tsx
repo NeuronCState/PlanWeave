@@ -205,7 +205,7 @@ export function CollapsedSidebarControls({
   const isMac = typeof navigator !== "undefined" && /mac|darwin/i.test(navigator.platform);
   return (
     <div
-      className="app-drag-region absolute left-0 top-0 z-20 flex h-11 items-center gap-3 px-3 text-text"
+      className="app-drag-region absolute left-0 top-0 z-40 flex h-11 items-center gap-3 px-3 text-text"
       style={{
         width: leftSidebarCollapsed ? undefined : width,
         justifyContent: leftSidebarCollapsed ? "flex-start" : "flex-end",

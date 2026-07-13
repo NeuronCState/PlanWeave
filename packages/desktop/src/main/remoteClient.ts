@@ -12,13 +12,14 @@ import type {
   RemoteConnectionStatus,
   RemoteTask
 } from "../shared/remoteTypes.js"
+import type { RemoteProfileWithCredentials } from "./remoteProfiles.js"
 
 const DEFAULT_TIMEOUT_MS = 15_000
 
 type EventCallback = (payload: RemoteEventPayload) => void
 
 type RemoteClientState = {
-  profile: RemoteProfile
+  profile: RemoteProfileWithCredentials
   projectId: string
   ws: WsWebSocket | null
   lastEventId: string | null
@@ -43,7 +44,7 @@ export function getRemoteConnectionStatus(profileId: string): RemoteConnectionSt
 }
 
 export async function connectRemote(
-  profile: RemoteProfile,
+  profile: RemoteProfileWithCredentials,
   projectId: string,
   onEvent: EventCallback
 ): Promise<void> {
@@ -72,7 +73,7 @@ export async function connectRemote(
   const snapshot = await httpGet<RemoteProjectSnapshot>(profile, `/api/v1/projects/${encodeURIComponent(projectId)}/snapshot`)
   state.lastEventId = snapshot.lastEventId
   startEventPolling(state)
-  void establishConnection(state).catch(() => undefined)
+  void establishConnection(state).catch(() => scheduleReconnect(state))
 }
 
 async function establishConnection(state: RemoteClientState): Promise<void> {
@@ -81,10 +82,13 @@ async function establishConnection(state: RemoteClientState): Promise<void> {
   const wsUrl = profile.serverUrl.replace(/^http/, "ws")
   const url = new URL(wsUrl)
   url.pathname = "/events"
+  url.searchParams.set("projectId", projectId)
+  url.searchParams.set("afterEventId", state.lastEventId ?? "0")
 
   const headers: Record<string, string> = {
     "Authorization": `Bearer ${profile.apiKey}`,
-    "X-Device-Id": profile.deviceId
+    "X-Device-Id": profile.deviceId,
+    "X-PlanWeave-Project-Id": projectId
   }
 
   let ws: WsWebSocket
@@ -119,10 +123,11 @@ async function establishConnection(state: RemoteClientState): Promise<void> {
         const message = JSON.parse(raw) as { kind: string; event?: { eventId: string; projectId: string; type: string; aggregateType: string; aggregateId: string; aggregateVersion: number; occurredAt: string } }
         if (message.kind === "event" && message.event) {
           const event = message.event
-          state.lastEventId = event.eventId
+          if (!advanceEventCursor(state, event.eventId)) return
           const payload: RemoteEventPayload = {
             profileId: state.profile.id,
             projectId: event.projectId,
+            eventId: event.eventId,
             eventType: event.type,
             aggregateType: event.aggregateType,
             aggregateId: event.aggregateId,
@@ -143,6 +148,7 @@ async function establishConnection(state: RemoteClientState): Promise<void> {
     })
 
     ws.on("close", (_code: number, _reason: Buffer) => {
+      if (state.ws !== ws) return
       state.ws = null
       if (state.closing) {
         connections.delete(connectionKey(state.profile.id))
@@ -163,16 +169,18 @@ function startEventPolling(state: RemoteClientState): void {
     if (state.closing) return
     void httpGet<{ items: Array<{ eventId: string; projectId: string; type: string; aggregateType: string; aggregateId: string; aggregateVersion: number; occurredAt: string }> }>(state.profile, `/api/v1/projects/${encodeURIComponent(state.projectId)}/events?afterEventId=${encodeURIComponent(state.lastEventId ?? "0")}&limit=100`).then((page) => {
       for (const event of page.items) {
-        state.lastEventId = event.eventId
-        const payload: RemoteEventPayload = { profileId: state.profile.id, projectId: event.projectId, eventType: event.type, aggregateType: event.aggregateType, aggregateId: event.aggregateId, aggregateVersion: event.aggregateVersion, occurredAt: event.occurredAt }
-        for (const callback of state.eventCallbacks) callback(payload)
+        if (!advanceEventCursor(state, event.eventId)) continue
+        const payload: RemoteEventPayload = { profileId: state.profile.id, projectId: event.projectId, eventId: event.eventId, eventType: event.type, aggregateType: event.aggregateType, aggregateId: event.aggregateId, aggregateVersion: event.aggregateVersion, occurredAt: event.occurredAt }
+        for (const callback of state.eventCallbacks) {
+          try { callback(payload) } catch { /* best-effort */ }
+        }
       }
     }).catch(() => undefined)
   }, 2_000)
 }
 
 function scheduleReconnect(state: RemoteClientState): void {
-  if (state.closing) return
+  if (state.closing || state.reconnectTimer || state.ws) return
   state.reconnectTimer = setTimeout(() => {
     state.reconnectTimer = null
     if (state.closing) return
@@ -180,6 +188,13 @@ function scheduleReconnect(state: RemoteClientState): void {
       scheduleReconnect(state)
     })
   }, 5_000)
+}
+
+function advanceEventCursor(state: RemoteClientState, eventId: string): boolean {
+  if (!/^\d+$/.test(eventId)) return false
+  if (state.lastEventId !== null && BigInt(eventId) <= BigInt(state.lastEventId)) return false
+  state.lastEventId = eventId
+  return true
 }
 
 export async function disconnectRemote(profileId: string): Promise<void> {
@@ -206,7 +221,7 @@ export function isRemoteConnected(profileId: string): boolean {
   return getRemoteConnectionStatus(profileId) === "connected"
 }
 
-async function httpGet<T>(profile: RemoteProfile, path: string): Promise<T> {
+async function httpGet<T>(profile: RemoteProfileWithCredentials, path: string): Promise<T> {
   const url = `${profile.serverUrl}${path}`
   const response = await fetch(url, {
     method: "GET",
@@ -226,7 +241,7 @@ async function httpGet<T>(profile: RemoteProfile, path: string): Promise<T> {
   return (await response.json()) as T
 }
 
-async function httpPost<T>(profile: RemoteProfile, path: string, body: unknown): Promise<T> {
+async function httpPost<T>(profile: RemoteProfileWithCredentials, path: string, body: unknown): Promise<T> {
   const url = `${profile.serverUrl}${path}`
   const response = await fetch(url, {
     method: "POST",
@@ -248,7 +263,7 @@ async function httpPost<T>(profile: RemoteProfile, path: string, body: unknown):
   return (await response.json()) as T
 }
 
-export async function getRemoteProjectSnapshot(profile: RemoteProfile, projectId: string): Promise<RemoteProjectSnapshot> {
+export async function getRemoteProjectSnapshot(profile: RemoteProfileWithCredentials, projectId: string): Promise<RemoteProjectSnapshot> {
   const serverSnapshot = await httpGet<{ project: RemoteProjectSnapshot["project"]; lastEventId: string }>(profile, `/api/v1/projects/${encodeURIComponent(projectId)}/snapshot`)
   const project = serverSnapshot.project
   const lastEventId = serverSnapshot.lastEventId
@@ -292,24 +307,24 @@ export async function getRemoteProjectSnapshot(profile: RemoteProfile, projectId
   }
 }
 
-export async function getRemotePlanningRooms(profile: RemoteProfile, projectId: string): Promise<Array<{ id: string; name: string; archivedAt: string | null }>> {
+export async function getRemotePlanningRooms(profile: RemoteProfileWithCredentials, projectId: string): Promise<Array<{ id: string; name: string; archivedAt: string | null }>> {
   return httpGet(profile, `/api/v1/projects/${encodeURIComponent(projectId)}/rooms`)
 }
 
-export async function getRemoteMessages(profile: RemoteProfile, projectId: string, roomId: string): Promise<RemoteMessage[]> {
+export async function getRemoteMessages(profile: RemoteProfileWithCredentials, projectId: string, roomId: string): Promise<RemoteMessage[]> {
   return httpGet(profile, `/api/v1/projects/${encodeURIComponent(projectId)}/rooms/${encodeURIComponent(roomId)}/messages`)
 }
 
-export async function sendRemoteMessage(profile: RemoteProfile, projectId: string, roomId: string, body: string): Promise<RemoteMessage> {
+export async function sendRemoteMessage(profile: RemoteProfileWithCredentials, projectId: string, roomId: string, body: string): Promise<RemoteMessage> {
   return httpPost(profile, `/api/v1/projects/${encodeURIComponent(projectId)}/rooms/${encodeURIComponent(roomId)}/messages`, { body })
 }
 
-export async function getRemoteProposals(profile: RemoteProfile, projectId: string): Promise<RemoteProposal[]> {
+export async function getRemoteProposals(profile: RemoteProfileWithCredentials, projectId: string): Promise<RemoteProposal[]> {
   return httpGet(profile, `/api/v1/projects/${encodeURIComponent(projectId)}/proposals`)
 }
 
 export async function approveRemoteProposal(
-  profile: RemoteProfile,
+  profile: RemoteProfileWithCredentials,
   projectId: string,
   proposalId: string,
   decision: "approve" | "reject",
@@ -318,19 +333,19 @@ export async function approveRemoteProposal(
   return httpPost(profile, `/api/v1/projects/${encodeURIComponent(projectId)}/proposals/${encodeURIComponent(proposalId)}/approve`, { decision, reason })
 }
 
-export async function getRemoteMembers(profile: RemoteProfile, projectId: string): Promise<RemoteMember[]> {
+export async function getRemoteMembers(profile: RemoteProfileWithCredentials, projectId: string): Promise<RemoteMember[]> {
   return httpGet(profile, `/api/v1/projects/${encodeURIComponent(projectId)}/members`)
 }
 
-export async function getRemoteTasks(profile: RemoteProfile, projectId: string): Promise<RemoteTask[]> {
+export async function getRemoteTasks(profile: RemoteProfileWithCredentials, projectId: string): Promise<RemoteTask[]> {
   return httpGet(profile, `/api/v1/projects/${encodeURIComponent(projectId)}/tasks`)
 }
 
-export async function claimRemoteTask(profile: RemoteProfile, projectId: string, taskId: string, branchName: string, baseCommit: string): Promise<unknown> {
+export async function claimRemoteTask(profile: RemoteProfileWithCredentials, projectId: string, taskId: string, branchName: string, baseCommit: string): Promise<unknown> {
   return httpPost(profile, `/api/v1/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/claim`, { branchName, baseCommit, leaseDurationSeconds: 3600 })
 }
 
-export async function getRemoteMergeStatus(profile: RemoteProfile, projectId: string): Promise<RemoteMergeStatus> {
+export async function getRemoteMergeStatus(profile: RemoteProfileWithCredentials, projectId: string): Promise<RemoteMergeStatus> {
   const state = connections.get(connectionKey(profile.id))
   return {
     aheadCount: 0,

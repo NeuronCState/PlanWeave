@@ -4,19 +4,28 @@ import { randomUUID } from "node:crypto"
 import { desktopHomePaths } from "./planweaveHomePaths.js"
 import type { RemoteProfile } from "../shared/remoteTypes.js"
 
+const PROFILE_ID_RE = /^[0-9a-f]{16}$/
+export type RemoteProfileWithCredentials = RemoteProfile & { apiKey: string }
+
 function profileDir(): string {
   return join(desktopHomePaths().planweaveHome, "desktop", "remote-profiles")
 }
 
 function profilePath(profileId: string): string {
+  if (!PROFILE_ID_RE.test(profileId)) throw new Error("Invalid remote profile id")
   return join(profileDir(), `${profileId}.json`)
 }
 
 async function writeJsonAtomically(path: string, value: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true })
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 })
   const tempPath = `${path}.${process.pid}.${Date.now()}.tmp`
-  await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8")
+  await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 })
   await rename(tempPath, path)
+}
+
+function publicProfile(profile: RemoteProfileWithCredentials): RemoteProfile {
+  const { apiKey: _apiKey, ...metadata } = profile
+  return metadata
 }
 
 function isMissingPathError(caught: unknown): boolean {
@@ -44,11 +53,14 @@ export async function createRemoteProfile(input: {
   let sessionToken = input.apiKey.trim()
   if (input.projectId && input.userId) {
     const response = await fetch(`${serverUrl}/api/v1/join`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ projectId: input.projectId, userId: input.userId, displayName: input.userId, deviceId: input.deviceId, joinToken: input.apiKey }) })
-    const body = await response.json().catch(() => null) as { session?: { id: string }; error?: { message?: string } } | null
+    const body = await response.json().catch(() => null) as { session?: { id: string }; userId?: string; deviceId?: string; error?: { message?: string } } | null
     if (!response.ok || !body?.session) throw new Error(body?.error?.message ?? `Team join failed with HTTP ${response.status}`)
     sessionToken = body.session.id
+    if (!body.userId || !body.deviceId) throw new Error("Team join response omitted server-issued identity")
+    input.userId = body.userId
+    input.deviceId = body.deviceId
   }
-  const profile: RemoteProfile = {
+  const profile: RemoteProfileWithCredentials = {
     id,
     name: input.name.trim(),
     serverUrl,
@@ -59,7 +71,7 @@ export async function createRemoteProfile(input: {
     createdAt: new Date().toISOString()
   }
   await writeJsonAtomically(profilePath(id), profile)
-  return profile
+  return publicProfile(profile)
 }
 
 export async function updateRemoteProfile(
@@ -71,11 +83,11 @@ export async function updateRemoteProfile(
     apiKey?: string
   }
 ): Promise<RemoteProfile> {
-  const current = await getRemoteProfile(id)
+  const current = await getRemoteProfileWithCredentials(id)
   if (!current) {
     throw new Error(`Remote profile '${id}' not found`)
   }
-  const updated: RemoteProfile = {
+  const updated: RemoteProfileWithCredentials = {
     ...current,
     name: input.name !== undefined ? input.name.trim() || current.name : current.name,
     serverUrl: input.serverUrl !== undefined ? normalizeUrl(input.serverUrl) : current.serverUrl,
@@ -83,7 +95,7 @@ export async function updateRemoteProfile(
     apiKey: input.apiKey !== undefined ? input.apiKey.trim() || current.apiKey : current.apiKey
   }
   await writeJsonAtomically(profilePath(id), updated)
-  return updated
+  return publicProfile(updated)
 }
 
 export async function deleteRemoteProfile(id: string): Promise<void> {
@@ -97,9 +109,14 @@ export async function deleteRemoteProfile(id: string): Promise<void> {
 }
 
 export async function getRemoteProfile(id: string): Promise<RemoteProfile | null> {
+  const profile = await getRemoteProfileWithCredentials(id)
+  return profile ? publicProfile(profile) : null
+}
+
+export async function getRemoteProfileWithCredentials(id: string): Promise<RemoteProfileWithCredentials | null> {
   try {
     const raw = await readFile(profilePath(id), "utf8")
-    return JSON.parse(raw) as RemoteProfile
+    return JSON.parse(raw) as RemoteProfileWithCredentials
   } catch (caught) {
     if (isMissingPathError(caught)) {
       return null
@@ -116,7 +133,7 @@ export async function listRemoteProfiles(): Promise<RemoteProfile[]> {
       jsonFiles.map(async (file) => {
         try {
           const raw = await readFile(join(profileDir(), file), "utf8")
-          return JSON.parse(raw) as RemoteProfile
+          return publicProfile(JSON.parse(raw) as RemoteProfileWithCredentials)
         } catch {
           return null
         }

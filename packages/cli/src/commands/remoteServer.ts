@@ -15,14 +15,16 @@ import type { RemoteProfile } from "../remoteProfile.js";
 /**
  * Start a local PlanWeave server for development/testing.
  */
-async function startServer(port: number, dataDirectory: string, joinToken: string): Promise<void> {
-  const server = await startPlanweaveServer({ dataDirectory, databasePath: resolve(dataDirectory, "planweave-server.sqlite"), host: "0.0.0.0", port, busyTimeoutMs: 5000, joinToken });
+async function startServer(port: number, dataDirectory: string, joinToken: string, allowInsecureLan: boolean): Promise<void> {
+  const host = allowInsecureLan ? "0.0.0.0" : "127.0.0.1";
+  const server = await startPlanweaveServer({ dataDirectory, databasePath: resolve(dataDirectory, "planweave-server.sqlite"), host, port, busyTimeoutMs: 5000, joinToken });
   const http = server.createHttpServer();
   await new Promise<void>((resolveListen, reject) => {
     http.once("error", reject);
-    http.listen(port, "0.0.0.0", resolveListen);
+    http.listen(port, host, resolveListen);
   });
-  console.log(`PlanWeave collaboration server listening on http://0.0.0.0:${port}`);
+  console.log(`PlanWeave collaboration server listening on http://${host}:${port}`);
+  if (allowInsecureLan) console.warn("Warning: LAN mode uses plaintext HTTP. Use it only on a trusted network.");
   const shutdown = () => { http.close(() => { server.close(); process.exit(0); }); };
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
@@ -39,11 +41,13 @@ export function registerRemoteServerCommand(program: Command): void {
     .description("Start a local PlanWeave server")
     .option("--port <port>", "port to listen on", "8788")
     .option("--data-dir <path>", "data directory for the server")
-    .option("--join-token <token>", "shared LAN invitation token", "planweave-local-team")
-    .action(async (options: { port: string; dataDir?: string; joinToken: string }) => {
+    .option("--allow-insecure-lan", "listen on all interfaces using plaintext HTTP")
+    .requiredOption("--join-token <token>", "high-entropy team invitation token")
+    .action(async (options: { port: string; dataDir?: string; joinToken: string; allowInsecureLan?: boolean }) => {
       const port = Number(options.port);
       if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("--port must be an integer between 1 and 65535");
-      await startServer(port, resolve(options.dataDir ?? ".planweave-server"), options.joinToken);
+      if (options.joinToken.trim().length < 24) throw new Error("--join-token must contain at least 24 characters");
+      await startServer(port, resolve(options.dataDir ?? ".planweave-server"), options.joinToken, options.allowInsecureLan === true);
     });
 
   serverCmd
@@ -53,7 +57,7 @@ export function registerRemoteServerCommand(program: Command): void {
     .requiredOption("--name <name>", "profile name for this server connection")
     .requiredOption("--project <id>", "project ID to work on")
     .requiredOption("--user <id>", "user ID to authenticate as")
-    .option("--token <token>", "team join token", "planweave-local-team")
+    .requiredOption("--token <token>", "team join token")
     .option("--json", "print machine-readable output")
     .action(async (options: { url: string; name: string; project: string; user: string; token: string; json?: boolean }) => {
       const existing = await getProfile(options.name);
@@ -85,9 +89,11 @@ export function registerRemoteServerCommand(program: Command): void {
 
       await saveProfile(profile);
       try {
-        const response = await fetch(`${profile.serverUrl}/api/v1/join`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ projectId: options.project, userId: options.user, displayName: options.user, deviceId, joinToken: options.token }) });
-        const body = await response.json() as { session?: { id: string; expiresAt: string }; error?: { message: string } };
-        if (!response.ok || !body.session) throw new Error(body.error?.message ?? `HTTP ${response.status}`);
+        const response = await fetch(`${profile.serverUrl}/api/v1/join`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ projectId: options.project, displayName: options.user, deviceName: deviceId, joinToken: options.token }) });
+        const body = await response.json() as { session?: { id: string; expiresAt: string }; userId?: string; deviceId?: string; error?: { message: string } };
+        if (!response.ok || !body.session || !body.userId || !body.deviceId) throw new Error(body.error?.message ?? `HTTP ${response.status}`);
+        profile.userId = body.userId;
+        profile.deviceId = body.deviceId;
         profile.sessionId = body.session.id;
         profile.sessionExpiresAt = body.session.expiresAt;
         await saveProfile(profile);
@@ -100,8 +106,8 @@ export function registerRemoteServerCommand(program: Command): void {
       if (options.json) {
         console.log(JSON.stringify({ kind: "joined", profile }, null, 2));
       } else {
-        console.log(`Joined server ${options.url} as user ${options.user} on project ${options.project}.`);
-        console.log(`Profile '${options.name}' created. Device ID: ${deviceId}`);
+        console.log(`Joined server ${options.url} as ${options.user} on project ${options.project}.`);
+        console.log(`Profile '${options.name}' created. User ID: ${profile.userId}; Device ID: ${profile.deviceId}`);
       }
     });
 

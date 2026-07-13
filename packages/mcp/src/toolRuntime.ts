@@ -347,9 +347,9 @@ export const runtimeGateway: RuntimeGateway = {
     return getPR(owner, repo, prNumber);
   },
 
-  async githubMergePR(projectId, prNumber) {
+  async githubMergePR(projectId, prNumber, method) {
     const { owner, repo } = await resolveGitHubRepo(projectId);
-    return mergePR(owner, repo, prNumber);
+    return mergePR(owner, repo, prNumber, { method });
   }
 };
 

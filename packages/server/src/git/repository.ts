@@ -1,6 +1,6 @@
 import type { SqliteDatabase } from "../sqlite.js"
 import type { UnitOfWork } from "../store.js"
-import type { MergeQueueConfig, MergeQueueEntry, MergeQueueRepository, MergeQueueStatus } from "./types.js"
+import { MergeQueueError, type MergeQueueConfig, type MergeQueueEntry, type MergeQueueRepository, type MergeQueueStatus } from "./types.js"
 
 type MergeQueueEntryRow = {
   id: string
@@ -78,7 +78,7 @@ export function createMergeQueueRepository(options: CreateMergeQueueRepositoryOp
     return created
   }
 
-  const updateEntry: MergeQueueRepository["updateEntry"] = (unit, current, patch, now) => {
+  const updateEntry: MergeQueueRepository["updateEntry"] = (unit, current, patch, now, expectedStatus) => {
     const next: MergeQueueEntry = {
       ...current,
       ...(patch.status !== undefined ? { status: patch.status } : {}),
@@ -88,9 +88,18 @@ export function createMergeQueueRepository(options: CreateMergeQueueRepositoryOp
       ...(patch.errorDetails !== undefined ? { errorDetails: patch.errorDetails } : {}),
       updatedAt: now
     }
-    unit.database
-      .prepare("UPDATE merge_queue_entries SET status=?, worktree_path=?, check_logs=?, review_verdict=?, error_details=?, updated_at=? WHERE id=?")
-      .run(next.status, next.worktreePath, next.checkLogs, next.reviewVerdict, next.errorDetails, next.updatedAt, current.id)
+    const result = expectedStatus === undefined
+      ? unit.database
+          .prepare("UPDATE merge_queue_entries SET status=?, worktree_path=?, check_logs=?, review_verdict=?, error_details=?, updated_at=? WHERE id=?")
+          .run(next.status, next.worktreePath, next.checkLogs, next.reviewVerdict, next.errorDetails, next.updatedAt, current.id)
+      : unit.database
+          .prepare("UPDATE merge_queue_entries SET status=?, worktree_path=?, check_logs=?, review_verdict=?, error_details=?, updated_at=? WHERE id=? AND status=?")
+          .run(next.status, next.worktreePath, next.checkLogs, next.reviewVerdict, next.errorDetails, next.updatedAt, current.id, expectedStatus)
+    if (result.changes !== 1) {
+      throw new MergeQueueError("state_conflict", `Merge queue entry '${current.id}' changed concurrently.`, {
+        entryId: current.id
+      })
+    }
     return next
   }
 
@@ -99,7 +108,7 @@ export function createMergeQueueRepository(options: CreateMergeQueueRepositoryOp
   }
 
   const listInterruptedEntries = (unit: UnitOfWork): MergeQueueEntry[] => {
-    return (unit.database.prepare("SELECT * FROM merge_queue_entries WHERE status IN ('checking','reviewing','merging')").all() as MergeQueueEntryRow[]).map(mapEntry)
+    return (unit.database.prepare("SELECT * FROM merge_queue_entries WHERE status IN ('checking','merging')").all() as MergeQueueEntryRow[]).map(mapEntry)
   }
 
   const loadConfig = (projectId: string): MergeQueueConfig | null => {

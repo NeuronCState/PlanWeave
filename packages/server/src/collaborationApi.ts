@@ -5,24 +5,73 @@ import type { SqliteDatabase } from "./sqlite.js";
 import { DomainError } from "./identity/errors.js";
 import { resolveActiveSession } from "./identity/sessions.js";
 import { requireProjectRole } from "./identity/authorization.js";
+import { lookupProjectRole } from "./identity/authorization.js";
 import { appendMessage, listMessages } from "./planning/messages.js";
 import { createProposalService, getProposal, recordApproval } from "./proposals/proposals.js";
 import { createWorkRepository } from "./work/repository.js";
 import { createWorkServices } from "./work/services.js";
 import { WorkError } from "./work/types.js";
+import { serverTaskId } from "./work/taskIds.js";
+import { createEventPublisher, createEventWebSocketServer, type Authenticator } from "./events/index.js";
 
 type Options = { database: SqliteDatabase; config: ServerConfig; readiness: () => unknown };
 type Json = Record<string, unknown>;
 const MEMBER_PRESENCE_WINDOW_MS = 60_000;
+const LEASE_RECLAIM_INTERVAL_MS = 5_000;
 
 export function createCollaborationHttpServer(options: Options): Server {
   const { database, config } = options;
   const work = createWorkServices({ repository: createWorkRepository({ database }) });
   const proposals = createProposalService({ database });
 
-  return createServer((request, response) => {
+  const server = createServer((request, response) => {
     void route(request, response).catch((error) => writeError(response, request, error));
   });
+  const eventAuthenticator: Authenticator = async (input) => {
+    try {
+      const authorization = input.headers?.authorization;
+      const rawAuthorization = Array.isArray(authorization) ? authorization[0] : authorization;
+      if (!rawAuthorization?.startsWith("Bearer ")) return { ok: false, reason: "unauthenticated" };
+      const identity = resolveActiveSession(database, rawAuthorization.slice(7));
+      if (input.userId && input.userId !== identity.user.id) return { ok: false, reason: "unauthenticated" };
+      if (input.sessionId && input.sessionId !== identity.session.id) return { ok: false, reason: "unauthenticated" };
+      const projectHeader = input.headers?.["x-planweave-project-id"];
+      const headerProjectId = Array.isArray(projectHeader) ? projectHeader[0] : projectHeader;
+      const urlProjectId = input.url ? new URL(input.url, "http://localhost").searchParams.get("projectId") : null;
+      const projectId = input.projectId ?? headerProjectId ?? urlProjectId;
+      if (!projectId) return { ok: false, reason: "forbidden" };
+      const role = lookupProjectRole(database, projectId, identity.user.id);
+      if (!role) return { ok: false, reason: "forbidden" };
+      return { ok: true, identity: { userId: identity.user.id, sessionId: identity.session.id, projectId, role } };
+    } catch {
+      return { ok: false, reason: "unauthenticated" };
+    }
+  };
+  const eventPublisher = createEventPublisher({
+    database,
+    authenticator: eventAuthenticator,
+    sessionRevocation: async (input) => {
+      const result = await eventAuthenticator({ userId: input.userId, sessionId: input.sessionId, projectId: input.projectId, headers: { authorization: `Bearer ${input.sessionId}` } });
+      return result.ok ? { ok: true, role: result.identity.role } : result;
+    }
+  });
+  const eventWebSocketServer = createEventWebSocketServer({ httpServer: server, publisher: eventPublisher, authenticator: eventAuthenticator });
+  let leaseReclaimTimer: ReturnType<typeof setInterval> | null = null;
+  server.once("listening", () => {
+    eventPublisher.start();
+    try { work.reclaimExpiredLeases(); } catch { /* retry on the next lifecycle tick */ }
+    leaseReclaimTimer = setInterval(() => {
+      try { work.reclaimExpiredLeases(); } catch { /* keep the server alive and retry */ }
+    }, LEASE_RECLAIM_INTERVAL_MS);
+    leaseReclaimTimer.unref();
+  });
+  server.once("close", () => {
+    eventPublisher.stop();
+    void eventWebSocketServer.close();
+    if (leaseReclaimTimer) clearInterval(leaseReclaimTimer);
+    leaseReclaimTimer = null;
+  });
+  return server;
 
   async function route(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? config.host}`);
@@ -89,22 +138,27 @@ export function createCollaborationHttpServer(options: Options): Server {
       const locks = strings(body.locks, "locks");
       const dependencyIds = strings(body.dependencyIds, "dependencyIds");
       const now = new Date().toISOString();
-      const serverTaskId = `task_${taskId}`;
+      const taskRowId = serverTaskId(projectId, taskId);
       database.exec("BEGIN IMMEDIATE");
       try {
         database.prepare("INSERT INTO work_tasks(id,project_id,task_id,title,parallel,locks_json,ownership_scopes_json,acceptance_checks_json,reviewers_json,version,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
-          .run(serverTaskId, projectId, taskId, string(body.title, "title"), body.parallel === true ? 1 : 0, JSON.stringify(locks), JSON.stringify(scopes), JSON.stringify(checks), JSON.stringify(reviewers), 1, "ready", now, now);
-        for (const dependencyId of dependencyIds) database.prepare("INSERT INTO work_task_dependencies(project_id,task_id,depends_on_task_id) VALUES (?,?,?)").run(projectId, serverTaskId, dependencyId);
+          .run(taskRowId, projectId, taskId, string(body.title, "title"), body.parallel === true ? 1 : 0, JSON.stringify(locks), JSON.stringify(scopes), JSON.stringify(checks), JSON.stringify(reviewers), 1, "ready", now, now);
+        for (const dependencyId of dependencyIds) {
+          const dependency = database.prepare("SELECT id FROM work_tasks WHERE project_id=? AND (id=? OR task_id=?)").get(projectId, dependencyId, dependencyId);
+          if (!dependency) throw new DomainError("validation_failed", `Dependency '${dependencyId}' does not exist in this project`);
+          database.prepare("INSERT INTO work_task_dependencies(project_id,task_id,depends_on_task_id) VALUES (?,?,?)").run(projectId, taskRowId, String(dependency.id));
+        }
         database.exec("COMMIT");
       } catch (error) { database.exec("ROLLBACK"); throw error; }
-      return writeJson(response, 201, toTask(database.prepare("SELECT * FROM work_tasks WHERE id=?").get(serverTaskId)!));
+      return writeJson(response, 201, toTask(database.prepare("SELECT * FROM work_tasks WHERE id=?").get(taskRowId)!));
     }
     const approveMatch = projectId && projectMatch?.[2]?.match(/^\/proposals\/([^/]+)\/approve$/);
     if (approveMatch && request.method === "POST") {
       const body = await readBody(request);
+      if (body.decision !== "approve" && body.decision !== "reject") throw new DomainError("validation_failed", "decision must be 'approve' or 'reject'");
       const proposal = getProposal(database, decodeSegment(approveMatch[1]!));
       if (!proposal.currentRevisionId) throw new DomainError("state_conflict", "Proposal has no current revision");
-      const result = recordApproval(proposals, identity.session, { deviceId: identity.session.deviceId, route: path, key: idempotency(request, body), requestFingerprint: JSON.stringify(body), proposalId: proposal.id, revisionId: proposal.currentRevisionId, decision: body.decision === "reject" ? "reject" : "approve", reason: typeof body.reason === "string" ? body.reason : undefined });
+      const result = recordApproval(proposals, identity.session, { deviceId: identity.session.deviceId, route: path, key: idempotency(request, body), requestFingerprint: JSON.stringify(body), proposalId: proposal.id, revisionId: proposal.currentRevisionId, decision: body.decision, reason: typeof body.reason === "string" ? body.reason : undefined });
       return writeJson(response, 201, result.value.approval);
     }
     const claimMatch = projectId && projectMatch?.[2]?.match(/^\/tasks\/([^/]+)\/claim$/);
@@ -138,14 +192,16 @@ export function createCollaborationHttpServer(options: Options): Server {
     const body = await readBody(request);
     if (body.joinToken !== config.joinToken) throw new DomainError("unauthenticated", "Invalid team join token");
     const projectId = string(body.projectId, "projectId");
-    const userId = string(body.userId, "userId");
-    const deviceId = string(body.deviceId, "deviceId");
+    const displayName = string(body.displayName ?? body.userId, "displayName");
+    const deviceName = string(body.deviceName ?? body.deviceId, "deviceName");
+    const userId = `user_${randomUUID()}`;
+    const deviceId = `device_${randomUUID()}`;
     const now = new Date().toISOString();
     database.exec("BEGIN IMMEDIATE");
     try {
       if (!database.prepare("SELECT id FROM projects WHERE id=?").get(projectId)) database.prepare("INSERT INTO projects(id,name,created_at) VALUES (?,?,?)").run(projectId, typeof body.projectName === "string" ? body.projectName : projectId, now);
-      if (!database.prepare("SELECT id FROM users WHERE id=?").get(userId)) database.prepare("INSERT INTO users(id,display_name,email,created_at) VALUES (?,?,?,?)").run(userId, typeof body.displayName === "string" ? body.displayName : userId, null, now);
-      if (!database.prepare("SELECT id FROM devices WHERE id=?").get(deviceId)) database.prepare("INSERT INTO devices(id,user_id,device_name,public_key_fingerprint,last_seen_at,status,created_at) VALUES (?,?,?,?,?,?,?)").run(deviceId, userId, deviceId, null, now, "active", now);
+      database.prepare("INSERT INTO users(id,display_name,email,created_at) VALUES (?,?,?,?)").run(userId, displayName, null, now);
+      database.prepare("INSERT INTO devices(id,user_id,device_name,public_key_fingerprint,last_seen_at,status,created_at) VALUES (?,?,?,?,?,?,?)").run(deviceId, userId, deviceName, null, now, "active", now);
       const memberCount = Number(database.prepare("SELECT COUNT(*) AS n FROM memberships WHERE project_id=?").get(projectId)?.n ?? 0);
       if (!database.prepare("SELECT role FROM memberships WHERE project_id=? AND user_id=?").get(projectId, userId)) database.prepare("INSERT INTO memberships(project_id,user_id,role,created_at) VALUES (?,?,?,?)").run(projectId, userId, memberCount === 0 ? "owner" : "contributor", now);
       const roomId = `room_${projectId}`;
@@ -154,7 +210,7 @@ export function createCollaborationHttpServer(options: Options): Server {
       const expiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
       database.prepare("INSERT INTO sessions(id,user_id,device_id,issued_at,expires_at,revoked_at) VALUES (?,?,?,?,?,?)").run(sessionId, userId, deviceId, now, expiresAt, null);
       database.exec("COMMIT");
-      return writeJson(response, 201, { session: { id: sessionId, issuedAt: now, expiresAt }, projectId, role: memberCount === 0 ? "owner" : "contributor" });
+      return writeJson(response, 201, { session: { id: sessionId, issuedAt: now, expiresAt }, projectId, userId, deviceId, role: memberCount === 0 ? "owner" : "contributor" });
     } catch (error) { database.exec("ROLLBACK"); throw error; }
   }
 
@@ -184,5 +240,6 @@ function writeError(response: ServerResponse, request: IncomingMessage, error: u
   const requestId = typeof request.headers["x-request-id"] === "string" ? request.headers["x-request-id"] : randomUUID();
   const code = error instanceof DomainError || error instanceof WorkError ? error.code : "internal_error";
   const status: Record<string, number> = { unauthenticated: 401, forbidden: 403, not_found: 404, state_conflict: 409, version_conflict: 409, request_too_large: 413, validation_failed: 422 };
-  writeJson(response, status[code] ?? 500, { error: { code, message: error instanceof Error ? error.message : "Internal server error", requestId, retryable: false, details: error instanceof DomainError || error instanceof WorkError ? error.details : undefined } });
+  const expected = error instanceof DomainError || error instanceof WorkError;
+  writeJson(response, status[code] ?? 500, { error: { code, message: expected ? error.message : "Internal server error", requestId, retryable: false, details: expected ? error.details : undefined } });
 }

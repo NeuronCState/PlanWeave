@@ -25,7 +25,7 @@ describe("merge queue submission authorization with production schema", () => {
     try {
       server.database.prepare("INSERT INTO projects(id,name,created_at) VALUES (?,?,?)").run("project-auth", "Auth", new Date().toISOString());
       server.database.prepare("INSERT INTO memberships(project_id,user_id,role,created_at) VALUES (?,?,?,?)").run("project-auth", "user-member", "contributor", new Date().toISOString());
-      const services = createMergeQueueServices({ database: server.database, config: { dataDirectory, requireApproval: false } });
+      const services = createMergeQueueServices({ database: server.database, config: { dataDirectory, requireApproval: false, checkExecutionMode: "host" } });
 
       expect(() => services.enqueueSubmission({
         deviceId: "device-member",

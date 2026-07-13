@@ -66,15 +66,16 @@ const githubPRSchema = z.object({
 });
 
 export const githubToolOutputSchemas = {
-  git_status: gitStatusSchema,
-  git_diff: gitDiffResultSchema,
-  git_log: z.object({ commits: z.array(gitCommitSchema) }),
-  git_commit: gitCommitResultSchema,
-  github_create_pr: githubPRSchema,
-  github_list_prs: z.object({ prs: z.array(githubPRSchema) }),
-  github_get_pr: githubPRSchema,
-  github_merge_pr: z.object({
-    merged: z.boolean(),
-    message: z.string(),
-  }),
+  git_status: { status: gitStatusSchema },
+  git_diff: { diff: gitDiffResultSchema },
+  git_log: { commits: z.array(gitCommitSchema) },
+  git_commit: { commit: gitCommitResultSchema },
+  github_create_pr: { pr: githubPRSchema },
+  github_list_prs: { prs: z.array(githubPRSchema) },
+  github_get_pr: { pr: githubPRSchema },
+  github_merge_pr: { merge: z.object({
+      merged: z.boolean(),
+      message: z.string(),
+    })
+  },
 } satisfies PlanweavePartialToolOutputSchemaRegistry;

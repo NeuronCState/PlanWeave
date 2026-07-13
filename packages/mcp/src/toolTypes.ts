@@ -450,5 +450,5 @@ export type RuntimeGateway = {
   githubCreatePR(projectId: string, title: string, head: string, base: string, body?: string): Promise<GitHubPR>;
   githubListPRs(projectId: string, state?: string): Promise<GitHubPR[]>;
   githubGetPR(projectId: string, prNumber: number): Promise<GitHubPRDetail>;
-  githubMergePR(projectId: string, prNumber: number): Promise<{ merged: boolean; message: string }>;
+  githubMergePR(projectId: string, prNumber: number, method?: "merge" | "squash" | "rebase"): Promise<{ merged: boolean; message: string }>;
 };

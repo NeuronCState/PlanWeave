@@ -6,7 +6,7 @@ import {
   type RemoteEventPayload,
   type RemoteConnectEventPayload
 } from "../shared/remoteTypes.js"
-import { getRemoteProfile } from "./remoteProfiles.js"
+import { getRemoteProfileWithCredentials } from "./remoteProfiles.js"
 import {
   connectRemote,
   disconnectRemote,
@@ -71,7 +71,7 @@ export function registerRemoteBridgeHandlers(): void {
   })
 
   ipcMain.handle(channels.connectProfile, async (_event, profileId: string, projectId: string) => {
-    const profile = await getRemoteProfile(profileId)
+    const profile = await getRemoteProfileWithCredentials(profileId)
     if (!profile) {
       throw new Error(`Remote profile '${profileId}' not found`)
     }
@@ -101,7 +101,7 @@ export function registerRemoteBridgeHandlers(): void {
   })
 
   ipcMain.handle(channels.getRemoteProjectSnapshot, async (_event, profileId: string, projectId: string) => {
-    const profile = await getRemoteProfile(profileId)
+    const profile = await getRemoteProfileWithCredentials(profileId)
     if (!profile) {
       throw new Error(`Remote profile '${profileId}' not found`)
     }
@@ -109,7 +109,7 @@ export function registerRemoteBridgeHandlers(): void {
   })
 
   ipcMain.handle(channels.getRemotePlanningRooms, async (_event, profileId: string, projectId: string) => {
-    const profile = await getRemoteProfile(profileId)
+    const profile = await getRemoteProfileWithCredentials(profileId)
     if (!profile) {
       throw new Error(`Remote profile '${profileId}' not found`)
     }
@@ -117,7 +117,7 @@ export function registerRemoteBridgeHandlers(): void {
   })
 
   ipcMain.handle(channels.getRemoteMessages, async (_event, profileId: string, projectId: string, roomId: string) => {
-    const profile = await getRemoteProfile(profileId)
+    const profile = await getRemoteProfileWithCredentials(profileId)
     if (!profile) {
       throw new Error(`Remote profile '${profileId}' not found`)
     }
@@ -125,7 +125,7 @@ export function registerRemoteBridgeHandlers(): void {
   })
 
   ipcMain.handle(channels.sendRemoteMessage, async (_event, profileId: string, projectId: string, roomId: string, body: string) => {
-    const profile = await getRemoteProfile(profileId)
+    const profile = await getRemoteProfileWithCredentials(profileId)
     if (!profile) {
       throw new Error(`Remote profile '${profileId}' not found`)
     }
@@ -133,7 +133,7 @@ export function registerRemoteBridgeHandlers(): void {
   })
 
   ipcMain.handle(channels.getRemoteProposals, async (_event, profileId: string, projectId: string) => {
-    const profile = await getRemoteProfile(profileId)
+    const profile = await getRemoteProfileWithCredentials(profileId)
     if (!profile) {
       throw new Error(`Remote profile '${profileId}' not found`)
     }
@@ -141,7 +141,7 @@ export function registerRemoteBridgeHandlers(): void {
   })
 
   ipcMain.handle(channels.approveRemoteProposal, async (_event, profileId: string, projectId: string, proposalId: string, decision: string, reason?: string) => {
-    const profile = await getRemoteProfile(profileId)
+    const profile = await getRemoteProfileWithCredentials(profileId)
     if (!profile) {
       throw new Error(`Remote profile '${profileId}' not found`)
     }
@@ -152,7 +152,7 @@ export function registerRemoteBridgeHandlers(): void {
   })
 
   ipcMain.handle(channels.getRemoteMembers, async (_event, profileId: string, projectId: string) => {
-    const profile = await getRemoteProfile(profileId)
+    const profile = await getRemoteProfileWithCredentials(profileId)
     if (!profile) {
       throw new Error(`Remote profile '${profileId}' not found`)
     }
@@ -160,7 +160,7 @@ export function registerRemoteBridgeHandlers(): void {
   })
 
   ipcMain.handle(channels.getRemoteMergeStatus, async (_event, profileId: string, projectId: string) => {
-    const profile = await getRemoteProfile(profileId)
+    const profile = await getRemoteProfileWithCredentials(profileId)
     if (!profile) {
       throw new Error(`Remote profile '${profileId}' not found`)
     }
@@ -168,13 +168,13 @@ export function registerRemoteBridgeHandlers(): void {
   })
 
   ipcMain.handle(channels.getRemoteTasks, async (_event, profileId: string, projectId: string) => {
-    const profile = await getRemoteProfile(profileId)
+    const profile = await getRemoteProfileWithCredentials(profileId)
     if (!profile) throw new Error(`Remote profile '${profileId}' not found`)
     return getRemoteTasks(profile, projectId)
   })
 
   ipcMain.handle(channels.claimRemoteTask, async (_event, profileId: string, projectId: string, taskId: string, branchName: string, baseCommit: string) => {
-    const profile = await getRemoteProfile(profileId)
+    const profile = await getRemoteProfileWithCredentials(profileId)
     if (!profile) throw new Error(`Remote profile '${profileId}' not found`)
     return claimRemoteTask(profile, projectId, taskId, branchName, baseCommit)
   })

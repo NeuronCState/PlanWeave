@@ -53,6 +53,7 @@ async function createTestHarness(mockOverrides: Partial<WorktreeManager> = {}): 
     config: {
       dataDirectory,
       requireApproval: false,
+      checkExecutionMode: "host",
       maxConcurrent: 2
     },
     worktreeManager: mockWm
@@ -229,7 +230,7 @@ describe("A9 merge queue", () => {
       // We need to create new services with the conflict mock
       const svc = createMergeQueueServices({
         database: conflictHarness.database,
-        config: { dataDirectory: conflictHarness.dataDirectory, requireApproval: false },
+        config: { dataDirectory: conflictHarness.dataDirectory, requireApproval: false, checkExecutionMode: "host" },
         worktreeManager: conflictWm
       })
 
@@ -272,7 +273,7 @@ describe("A9 merge queue", () => {
 
       const svc = createMergeQueueServices({
         database: staleHarness.database,
-        config: { dataDirectory: staleHarness.dataDirectory, requireApproval: false },
+        config: { dataDirectory: staleHarness.dataDirectory, requireApproval: false, checkExecutionMode: "host" },
         worktreeManager: staleWm
       })
 
@@ -307,7 +308,7 @@ describe("A9 merge queue", () => {
 
       const svc = createMergeQueueServices({
         database: ancestryHarness.database,
-        config: { dataDirectory: ancestryHarness.dataDirectory, requireApproval: false },
+        config: { dataDirectory: ancestryHarness.dataDirectory, requireApproval: false, checkExecutionMode: "host" },
         worktreeManager: ancestryWm
       })
 
@@ -347,7 +348,7 @@ describe("A9 merge queue", () => {
 
       const svc = createMergeQueueServices({
         database: checkHarness.database,
-        config: { dataDirectory: checkHarness.dataDirectory, requireApproval: false },
+        config: { dataDirectory: checkHarness.dataDirectory, requireApproval: false, checkExecutionMode: "host" },
         worktreeManager: checkFailWm
       })
 
@@ -372,6 +373,28 @@ describe("A9 merge queue", () => {
     } finally {
       await cleanupHarness(checkHarness)
     }
+  })
+
+  it("does not execute contributor-controlled checks on the host by default", async () => {
+    let commandCalls = 0
+    const services = createMergeQueueServices({
+      database: harness.database,
+      config: { dataDirectory: harness.dataDirectory, requireApproval: false },
+      worktreeManager: createMockWorktreeManager({
+        runCommand: async () => {
+          commandCalls += 1
+          return { stdout: "", stderr: "", exitCode: 0 }
+        }
+      })
+    })
+    const enqueued = services.enqueueSubmission({
+      deviceId: "dev-1", idempotencyKey: "disabled-checks-key-aaaa", projectId: "project-a",
+      submissionId: "sub-disabled-checks", headCommit: "head", baseCommit: "base", targetBranch: "main", actorId: "user-1"
+    })
+    const result = await services.processEntry(enqueued.value.id)
+    expect(result.status).toBe("failed")
+    expect(result.error).toContain("host command execution is disabled")
+    expect(commandCalls).toBe(0)
   })
 
   it("processes queue with multiple entries", async () => {
@@ -402,6 +425,89 @@ describe("A9 merge queue", () => {
     expect(results.every((r) => r.status === "merged")).toBe(true)
   })
 
+  it("claims a pending entry atomically when processors race", async () => {
+    let mergeCalls = 0
+    const racingServices = createMergeQueueServices({
+      database: harness.database,
+      config: { dataDirectory: harness.dataDirectory, requireApproval: false, checkExecutionMode: "host" },
+      worktreeManager: createMockWorktreeManager({
+        mergeEntry: async () => {
+          mergeCalls += 1
+          return { mergeCommit: "one-merge", conflict: false, conflictFiles: [] }
+        }
+      })
+    })
+    const enqueued = racingServices.enqueueSubmission({
+      deviceId: "dev-1",
+      idempotencyKey: "race-claim-key-aaaaaaaa",
+      projectId: "project-a",
+      submissionId: "sub-race",
+      headCommit: "head-race",
+      baseCommit: "base-race",
+      targetBranch: "main",
+      actorId: "user-1"
+    })
+
+    const results = await Promise.all([
+      racingServices.processEntry(enqueued.value.id),
+      racingServices.processEntry(enqueued.value.id)
+    ])
+
+    expect(mergeCalls).toBe(1)
+    expect(results.some((result) => result.status === "merged")).toBe(true)
+  })
+
+  it("requires an authorized review and resumes approved entries", async () => {
+    const reviewServices = createMergeQueueServices({
+      database: harness.database,
+      config: { dataDirectory: harness.dataDirectory, requireApproval: true, checkExecutionMode: "host" },
+      worktreeManager: harness.mockWm
+    })
+    const enqueued = reviewServices.enqueueSubmission({
+      deviceId: "dev-1",
+      idempotencyKey: "review-flow-key-aaaaaaaa",
+      projectId: "project-a",
+      submissionId: "sub-review",
+      headCommit: "head-review",
+      baseCommit: "base-review",
+      targetBranch: "main",
+      actorId: "user-1"
+    })
+    expect((await reviewServices.processEntry(enqueued.value.id)).status).toBe("reviewing")
+
+    await expect(reviewServices.reviewEntry({
+      deviceId: "dev-1",
+      idempotencyKey: "review-denied-key-aaaa",
+      entryId: enqueued.value.id,
+      actorId: "user-1",
+      verdict: "approve"
+    })).rejects.toThrow(/owner or maintainer/)
+
+    harness.database.prepare("UPDATE memberships SET role='maintainer' WHERE project_id=? AND user_id=?").run("project-a", "user-1")
+    const result = await reviewServices.reviewEntry({
+      deviceId: "dev-1",
+      idempotencyKey: "review-approved-key-aa",
+      entryId: enqueued.value.id,
+      actorId: "user-1",
+      verdict: "approve"
+    })
+    expect(result.status).toBe("merged")
+    const row = harness.database.prepare("SELECT status,review_verdict FROM merge_queue_entries WHERE id=?").get(enqueued.value.id)
+    expect(row).toMatchObject({ status: "merged", review_verdict: "approved" })
+  })
+
+  it("keeps reviewing entries stable across startup reconciliation", async () => {
+    const now = new Date().toISOString()
+    harness.database.prepare(
+      "INSERT INTO merge_queue_entries(id,project_id,submission_id,head_commit,base_commit,target_branch,status,worktree_path,check_logs,review_verdict,error_details,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    ).run("mqe_reviewing", "project-a", "sub-reviewing", "head", "base", "main", "reviewing", "/tmp/reviewing-worktree", null, null, null, now, now)
+
+    const result = await harness.services.reconcileOnStartup()
+    const row = harness.database.prepare("SELECT status,worktree_path FROM merge_queue_entries WHERE id=?").get("mqe_reviewing")
+    expect(result.reconciledEntries).not.toContain("mqe_reviewing")
+    expect(row).toMatchObject({ status: "reviewing", worktree_path: "/tmp/reviewing-worktree" })
+  })
+
   it("does not lose contributor commits when an entry fails", async () => {
     const failWm = createMockWorktreeManager({
       verifyAncestry: async () => ({ valid: false, reason: "Bad ancestry." })
@@ -414,7 +520,7 @@ describe("A9 merge queue", () => {
 
       const svc = createMergeQueueServices({
         database: failHarness.database,
-        config: { dataDirectory: failHarness.dataDirectory, requireApproval: false },
+        config: { dataDirectory: failHarness.dataDirectory, requireApproval: false, checkExecutionMode: "host" },
         worktreeManager: failWm
       })
 

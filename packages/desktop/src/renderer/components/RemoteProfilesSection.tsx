@@ -25,7 +25,7 @@ export function RemoteProfilesSection({ profiles, onProfilesChange }: RemoteProf
     setError(null)
     try {
       if (editingId) {
-        const updated = await remoteBridge.updateRemoteProfile(editingId, { name, serverUrl, deviceId, apiKey })
+        const updated = await remoteBridge.updateRemoteProfile(editingId, { name, serverUrl, deviceId, ...(apiKey ? { apiKey } : {}) })
         onProfilesChange(profiles.map((p) => (p.id === editingId ? updated : p)))
       } else {
         const created = await remoteBridge.createRemoteProfile({ name, serverUrl, deviceId, apiKey, projectId, userId })
@@ -53,7 +53,7 @@ export function RemoteProfilesSection({ profiles, onProfilesChange }: RemoteProf
     setName(profile.name)
     setServerUrl(profile.serverUrl)
     setDeviceId(profile.deviceId)
-    setApiKey(profile.apiKey)
+    setApiKey("")
     setProjectId(profile.projectId ?? "")
     setUserId(profile.userId ?? "")
   }
@@ -106,7 +106,7 @@ export function RemoteProfilesSection({ profiles, onProfilesChange }: RemoteProf
         <input
           type="text"
           className="rounded-md border border-input bg-transparent px-2 py-1 text-sm text-foreground placeholder:text-muted-foreground"
-          placeholder="Device ID"
+          placeholder="Device name"
           value={deviceId}
           onChange={(e) => setDeviceId(e.target.value)}
         />
@@ -124,7 +124,7 @@ export function RemoteProfilesSection({ profiles, onProfilesChange }: RemoteProf
           type="button"
           className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
           onClick={() => { void handleSave() }}
-          disabled={!name || !serverUrl || !deviceId || !apiKey || !projectId || !userId}
+          disabled={!name || !serverUrl || !deviceId || (!editingId && (!apiKey || !projectId || !userId))}
         >
           {editingId ? "Update" : "Add Profile"}
         </button>

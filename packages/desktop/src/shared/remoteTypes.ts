@@ -6,7 +6,6 @@ export type RemoteProfile = {
   name: string
   serverUrl: string
   deviceId: string
-  apiKey: string
   projectId?: string
   userId?: string
   createdAt: string
@@ -19,6 +18,7 @@ export type LocalTeamHost = {
   localUrl: string
   inviteUrl: string
   port: number
+  networkScope: "local" | "lan"
 }
 
 export type RemoteProjectInfo = {
@@ -109,6 +109,7 @@ export type RemoteDisconnectPayload = {
 export type RemoteEventPayload = {
   profileId: string
   projectId: string
+  eventId: string
   eventType: string
   aggregateType: string
   aggregateId: string
@@ -143,7 +144,7 @@ export const remoteConnectChannel = "planweave-remote:remoteConnect"
 
 export type PlanWeaveRemoteApi = {
   createRemoteProfile: (input: { name: string; serverUrl: string; deviceId: string; apiKey: string; projectId?: string; userId?: string }) => Promise<RemoteProfile>
-  startLocalTeamHost: (input: { projectId: string; projectName: string; userId: string; deviceId: string; joinToken: string; port?: number }) => Promise<LocalTeamHost>
+  startLocalTeamHost: (input: { projectId: string; projectName: string; userId: string; deviceId: string; joinToken: string; port?: number; allowInsecureLan?: boolean }) => Promise<LocalTeamHost>
   updateRemoteProfile: (id: string, input: { name?: string; serverUrl?: string; deviceId?: string; apiKey?: string }) => Promise<RemoteProfile>
   deleteRemoteProfile: (id: string) => Promise<void>
   getRemoteProfile: (id: string) => Promise<RemoteProfile | null>

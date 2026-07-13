@@ -63,6 +63,9 @@ describe("planweave CLI command registration", () => {
     expect(server?.commands.map((command) => command.name())).toEqual(
       expect.arrayContaining(["start", "join", "project", "list", "forget"])
     );
+    expect(subcommandOptionLongs("server", "start")).toEqual(
+      expect.arrayContaining(["--port", "--data-dir", "--allow-insecure-lan", "--join-token"])
+    );
     expect(subcommandOptionLongs("server", "join")).toEqual(
       expect.arrayContaining(["--url", "--name", "--project", "--user", "--json"])
     );

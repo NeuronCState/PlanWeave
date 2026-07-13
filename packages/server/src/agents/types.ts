@@ -52,6 +52,9 @@ export type AgentCheckpoint = {
    * checkpoint. Future invocations resume from this cursor.
    */
   consumedCursor: string | null
+  /** Independent stream cursors prevent one entity kind replaying the other. */
+  messageCursor: string | null
+  attachmentCursor: string | null
   /** Serialised structured-artifact set at this checkpoint. */
   artifactsJson: string
   createdAt: string
@@ -168,10 +171,12 @@ export type AgentErrorCode =
   | "validation_failed"
   | "version_conflict"
   | "state_conflict"
+  | "forbidden"
   | "idempotency_key_reused"
   | "not_found"
   | "citation_invalid"
   | "provider_failure"
+  | "run_timeout"
   | "run_cancelled"
 
 export type AgentErrorDetails = {
@@ -215,7 +220,8 @@ export type AgentRepository = {
     id: string
     runId: string
     sequence: number
-    consumedCursor: string | null
+    messageCursor: string | null
+    attachmentCursor: string | null
     artifactsJson: string
     now: string
   }): AgentCheckpoint

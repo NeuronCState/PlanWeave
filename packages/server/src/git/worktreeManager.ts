@@ -157,33 +157,54 @@ export function createWorktreeManager(): WorktreeManager {
 
   const mergeEntry = async (worktreePath: string, headBranch: string, targetBranch: string): Promise<{ mergeCommit: string; conflict: boolean; conflictFiles: string[] }> => {
     if (!SAFE_BRANCH_RE.test(targetBranch)) throw new MergeQueueError("validation_failed", `Invalid branch name: '${targetBranch}'.`, { targetBranch });
+    let targetHead: string
     try {
-      await gitWorktree(worktreePath, ["checkout", "--", targetBranch])
-    } catch {
-      await gitWorktree(worktreePath, ["checkout", "-b", targetBranch, `origin/${targetBranch}`]).catch(() => {
-        throw new MergeQueueError("worktree_error", `Failed to checkout target branch '${targetBranch}'.`, {
-          worktreePath,
-          targetBranch
-        })
+      targetHead = (await gitWorktree(worktreePath, ["rev-parse", `refs/heads/${targetBranch}`])).stdout.trim()
+      await gitWorktree(worktreePath, ["checkout", "--detach", targetHead])
+    } catch (error) {
+      throw new MergeQueueError("worktree_error", `Failed to checkout target branch '${targetBranch}'.`, {
+        worktreePath,
+        targetBranch,
+        stderr: error instanceof Error ? error.message : String(error)
       })
     }
+
     try {
-      const { stdout, stderr } = await gitWorktree(worktreePath, ["merge", "--no-ff", "--no-commit", headBranch])
-      const { stdout: revOut } = await gitWorktree(worktreePath, ["rev-parse", "HEAD"])
-      await gitWorktree(worktreePath, ["commit", "--no-edit"]).catch(() => {})
+      await gitWorktree(worktreePath, ["merge-base", "--is-ancestor", headBranch, targetHead])
+      return { mergeCommit: targetHead, conflict: false, conflictFiles: [] }
+    } catch { /* not already merged */ }
+
+    try {
+      await gitWorktree(worktreePath, ["merge", "--no-ff", "--no-commit", headBranch])
+      await gitWorktree(worktreePath, [
+        "-c", "user.name=PlanWeave Merge Queue",
+        "-c", "user.email=merge-queue@planweave.local",
+        "commit", "--no-edit"
+      ])
       const finalRev = (await gitWorktree(worktreePath, ["rev-parse", "HEAD"])).stdout.trim()
-      return { mergeCommit: finalRev, conflict: false, conflictFiles: [] }
-    } catch {
       try {
-        const { stdout: statusOut } = await gitWorktree(worktreePath, ["diff", "--name-only", "--diff-filter=U"])
-        const conflictFiles = statusOut.trim().split("\n").filter(Boolean)
-        await gitWorktree(worktreePath, ["merge", "--abort"]).catch(() => {})
-        return { mergeCommit: "", conflict: true, conflictFiles }
-      } catch {
-        await gitWorktree(worktreePath, ["merge", "--abort"]).catch(() => {})
-        await gitWorktree(worktreePath, ["checkout", "--", "."]).catch(() => {})
-        return { mergeCommit: "", conflict: true, conflictFiles: [] }
+        await gitWorktree(worktreePath, ["update-ref", `refs/heads/${targetBranch}`, finalRev, targetHead])
+      } catch (error) {
+        throw new MergeQueueError("stale_target", `Target branch '${targetBranch}' moved while the merge was being committed.`, {
+          worktreePath,
+          targetBranch,
+          stderr: error instanceof Error ? error.message : String(error)
+        })
       }
+      return { mergeCommit: finalRev, conflict: false, conflictFiles: [] }
+    } catch (error) {
+      const { stdout: statusOut } = await gitWorktree(worktreePath, ["diff", "--name-only", "--diff-filter=U"]).catch(() => ({ stdout: "", stderr: "" }))
+      const conflictFiles = statusOut.trim().split("\n").filter(Boolean)
+      await gitWorktree(worktreePath, ["merge", "--abort"]).catch(() => {})
+      if (conflictFiles.length > 0) {
+        return { mergeCommit: "", conflict: true, conflictFiles }
+      }
+      if (error instanceof MergeQueueError) throw error
+      throw new MergeQueueError("worktree_error", "Git failed to create or publish the merge commit.", {
+        worktreePath,
+        targetBranch,
+        stderr: error instanceof Error ? error.message : String(error)
+      })
     }
   }
 

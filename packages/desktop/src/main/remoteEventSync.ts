@@ -34,7 +34,7 @@ export function handleRemoteEvent(payload: RemoteEventPayload): void {
   const state = eventSyncStates.get(key)
   if (!state) return
 
-  state.lastEventId = payload.aggregateId
+  state.lastEventId = payload.eventId
   state.invalidated = true
 }
 

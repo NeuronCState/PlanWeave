@@ -1,12 +1,12 @@
-import { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import type { Server } from "node:http";
+import { networkInterfaces } from "node:os";
 import { startPlanweaveServer, type PlanweaveServer } from "@planweave-ai/server";
 import { desktopHomePaths } from "./planweaveHomePaths.js";
 import { createRemoteProfile } from "./remoteProfiles.js";
 import type { LocalTeamHost } from "../shared/remoteTypes.js";
 
-let running: { app: PlanweaveServer; http: Server; port: number } | null = null;
+let running: { app: PlanweaveServer; http: Server; port: number; networkScope: "local" | "lan"; joinToken: string; inviteUrl: string } | null = null;
 
 function lanAddress(): string {
   for (const addresses of Object.values(networkInterfaces())) {
@@ -14,7 +14,7 @@ function lanAddress(): string {
       if (address.family === "IPv4" && !address.internal) return address.address;
     }
   }
-  return "127.0.0.1";
+  throw new Error("No active IPv4 LAN interface was found");
 }
 
 export async function startLocalTeamHost(input: {
@@ -24,17 +24,31 @@ export async function startLocalTeamHost(input: {
   deviceId: string;
   joinToken: string;
   port?: number;
+  allowInsecureLan?: boolean;
 }): Promise<LocalTeamHost> {
   const port = input.port ?? 8788;
+  const networkScope = input.allowInsecureLan ? "lan" : "local";
+  const bindHost = networkScope === "lan" ? "0.0.0.0" : "127.0.0.1";
+  if (input.joinToken.trim().length < 24) throw new Error("Team join token must contain at least 24 characters");
+  if (running && (running.port !== port || running.networkScope !== networkScope || running.joinToken !== input.joinToken)) {
+    throw new Error("A local team server is already running with different network settings or credentials");
+  }
   if (!running) {
+    const inviteHost = networkScope === "lan" ? lanAddress() : "127.0.0.1";
     const dataDirectory = join(desktopHomePaths().planweaveHome, "desktop", "team-server");
-    const app = await startPlanweaveServer({ dataDirectory, databasePath: join(dataDirectory, "planweave-server.sqlite"), host: "0.0.0.0", port, busyTimeoutMs: 5000, joinToken: input.joinToken });
+    const app = await startPlanweaveServer({ dataDirectory, databasePath: join(dataDirectory, "planweave-server.sqlite"), host: bindHost, port, busyTimeoutMs: 5000, joinToken: input.joinToken });
     const http = app.createHttpServer();
-    await new Promise<void>((resolve, reject) => {
-      http.once("error", reject);
-      http.listen(port, "0.0.0.0", resolve);
-    });
-    running = { app, http, port };
+    try {
+      await new Promise<void>((resolve, reject) => {
+        http.once("error", reject);
+        http.listen(port, bindHost, resolve);
+      });
+    } catch (error) {
+      http.close();
+      app.close();
+      throw error;
+    }
+    running = { app, http, port, networkScope, joinToken: input.joinToken, inviteUrl: `http://${inviteHost}:${port}` };
   }
   const localUrl = `http://127.0.0.1:${running.port}`;
   const profile = await createRemoteProfile({
@@ -45,7 +59,7 @@ export async function startLocalTeamHost(input: {
     projectId: input.projectId,
     userId: input.userId
   });
-  return { profile, localUrl, inviteUrl: `http://${lanAddress()}:${running.port}`, port: running.port };
+  return { profile, localUrl, inviteUrl: running.inviteUrl, port: running.port, networkScope: running.networkScope };
 }
 
 export async function stopLocalTeamHost(): Promise<void> {

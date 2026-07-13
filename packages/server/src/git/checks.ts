@@ -27,10 +27,16 @@ const defaultRepositoryChecks: Array<{ name: string; command: string[] }> = [
 
 export async function runRepositoryChecks(
   worktreePath: string,
-  ctx: CheckContext
+  ctx: CheckContext,
+  enabledChecks: string[] = defaultRepositoryChecks.map((check) => check.name)
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = []
-  for (const check of defaultRepositoryChecks) {
+  const selected = enabledChecks.map((name) => {
+    const check = defaultRepositoryChecks.find((candidate) => candidate.name === name)
+    if (!check) throw new MergeQueueError("validation_failed", `Unknown repository check '${name}'.`, { checkName: name })
+    return check
+  })
+  for (const check of selected) {
     const start = Date.now()
     const { stdout, stderr, exitCode } = await ctx.worktreeManager.runCommand(
       worktreePath,

@@ -21,7 +21,7 @@ import { applyAttachmentsMigrations } from "../../attachments/migrations.js"
 import { applyAgentsMigrations } from "../migrations.js"
 import type { SqliteDatabase } from "../../sqlite.js"
 import { openServerDatabase } from "../../sqlite.js"
-import { createAgentRepository, createAgentServices, createFakeAgentProvider, AgentError, assertAgentCannotApprove, type AgentServices, type AgentProviderOutput } from "../index.js"
+import { createAgentRepository, createAgentServices, createFakeAgentProvider, AgentError, assertAgentCannotApprove, type AgentProvider, type AgentProviderContext, type AgentServices, type AgentProviderOutput } from "../index.js"
 import type { ArtifactCitation } from "../index.js"
 
 type AgentTestHarness = {
@@ -477,7 +477,14 @@ describe("A6 coordinator agent", () => {
       done: true,
       artifacts: [{ kind: "brief", title: "Brief", body: "Body", citations: [] }]
     }
-    const provider = createFakeAgentProvider({ outputs: [output] })
+    let providerCalls = 0
+    const provider: AgentProvider = {
+      type: "counting",
+      run: async () => {
+        providerCalls += 1
+        return output
+      }
+    }
     const repo = createAgentRepository({ database: harness.database })
     const services = createAgentServices({ repository: repo, provider })
 
@@ -504,6 +511,118 @@ describe("A6 coordinator agent", () => {
     })
     expect(second.replayed).toBe(true)
     expect(second.value).toEqual(first.value)
+    expect(providerCalls).toBe(1)
+  })
+
+  it("cancels an in-flight provider even when the provider ignores AbortSignal", async () => {
+    harness.seedProject("proj-inflight", "In-flight Project")
+    harness.seedUser({ userId: "user-a", projectId: "proj-inflight", role: "contributor" })
+    harness.seedRoom({ id: "room-inflight", projectId: "proj-inflight", name: "In-flight Room" })
+    const provider: AgentProvider = {
+      type: "blocking",
+      run: async () => new Promise<AgentProviderOutput>(() => {})
+    }
+    const services = createAgentServices({ repository: createAgentRepository({ database: harness.database }), provider })
+    const started = services.startRun({
+      deviceId: "dev-1",
+      idempotencyKey: "start-inflight-cancel-aaa",
+      projectId: "proj-inflight",
+      roomId: "room-inflight",
+      providerType: "blocking",
+      budget: { maxTokens: 1000, maxDurationMs: 60_000, maxRetries: 0 },
+      actorId: "user-a"
+    })
+    const row = harness.database.prepare("SELECT id FROM agent_runs WHERE room_id=? AND status='running'").get("room-inflight")
+    const runId = String(row?.id)
+    services.cancelRun({
+      deviceId: "dev-1",
+      idempotencyKey: "cancel-inflight-run-aaaa",
+      runId,
+      actorId: "user-a"
+    })
+
+    await expect(started).rejects.toMatchObject({ code: "run_cancelled" })
+    expect(services.getRun(runId)?.status).toBe("cancelled")
+  })
+
+  it("retries transient provider failures within budget", async () => {
+    harness.seedProject("proj-retry", "Retry Project")
+    harness.seedUser({ userId: "user-a", projectId: "proj-retry", role: "contributor" })
+    harness.seedRoom({ id: "room-retry", projectId: "proj-retry", name: "Retry Room" })
+    let calls = 0
+    const provider: AgentProvider = {
+      type: "retry",
+      run: async () => {
+        calls += 1
+        if (calls === 1) throw new Error("temporary")
+        return { done: true, artifacts: [] }
+      }
+    }
+    const services = createAgentServices({ repository: createAgentRepository({ database: harness.database }), provider })
+    const result = await services.startRun({
+      deviceId: "dev-1",
+      idempotencyKey: "start-retry-provider-aaaa",
+      projectId: "proj-retry",
+      roomId: "room-retry",
+      providerType: "retry",
+      budget: { maxTokens: 1000, maxDurationMs: 60_000, maxRetries: 1 },
+      actorId: "user-a"
+    })
+    expect(result.value.run.status).toBe("completed")
+    expect(calls).toBe(2)
+  })
+
+  it("times out a provider and persists a failed run", async () => {
+    harness.seedProject("proj-timeout", "Timeout Project")
+    harness.seedUser({ userId: "user-a", projectId: "proj-timeout", role: "contributor" })
+    harness.seedRoom({ id: "room-timeout", projectId: "proj-timeout", name: "Timeout Room" })
+    const provider: AgentProvider = { type: "blocking", run: async () => new Promise<AgentProviderOutput>(() => {}) }
+    const services = createAgentServices({ repository: createAgentRepository({ database: harness.database }), provider })
+
+    await expect(services.startRun({
+      deviceId: "dev-1",
+      idempotencyKey: "start-timeout-provider-aaa",
+      projectId: "proj-timeout",
+      roomId: "room-timeout",
+      providerType: "blocking",
+      budget: { maxTokens: 1000, maxDurationMs: 10, maxRetries: 0 },
+      actorId: "user-a"
+    })).rejects.toMatchObject({ code: "run_timeout" })
+    const row = harness.database.prepare("SELECT status FROM agent_runs WHERE room_id=?").get("room-timeout")
+    expect(row).toMatchObject({ status: "failed" })
+  })
+
+  it("advances message and attachment cursors independently", async () => {
+    harness.seedProject("proj-cursors", "Cursor Project")
+    harness.seedUser({ userId: "user-a", projectId: "proj-cursors", role: "contributor" })
+    harness.seedRoom({ id: "room-cursors", projectId: "proj-cursors", name: "Cursor Room" })
+    harness.seedMessage({ id: "msg-1", roomId: "room-cursors", authorUserId: "user-a", body: "one" })
+    harness.seedAttachment({ id: "att-1", projectId: "proj-cursors", uploaderUserId: "user-a", originalName: "one.txt" })
+    const contexts: AgentProviderContext[] = []
+    const provider: AgentProvider = {
+      type: "capture",
+      run: async (context) => {
+        contexts.push(context)
+        return { done: true, artifacts: [] }
+      }
+    }
+    const services = createAgentServices({ repository: createAgentRepository({ database: harness.database }), provider })
+    const run = (key: string) => services.startRun({
+      deviceId: "dev-1", idempotencyKey: key, projectId: "proj-cursors", roomId: "room-cursors",
+      providerType: "capture", budget: { maxTokens: 1000, maxDurationMs: 60_000, maxRetries: 0 }, actorId: "user-a"
+    })
+    await run("cursor-first-run-aaaaaaaa")
+    harness.seedMessage({ id: "msg-2", roomId: "room-cursors", authorUserId: "user-a", body: "two" })
+    await run("cursor-second-run-aaaaaaa")
+    harness.seedAttachment({ id: "att-2", projectId: "proj-cursors", uploaderUserId: "user-a", originalName: "two.txt" })
+    await run("cursor-third-run-aaaaaaaa")
+
+    expect(contexts[0]?.messages.map((item) => item.id)).toEqual(["msg-1"])
+    expect(contexts[0]?.attachments.map((item) => item.id)).toEqual(["att-1"])
+    expect(contexts[1]?.messages.map((item) => item.id)).toEqual(["msg-2"])
+    expect(contexts[1]?.attachments).toEqual([])
+    expect(contexts[2]?.messages).toEqual([])
+    expect(contexts[2]?.attachments.map((item) => item.id)).toEqual(["att-2"])
   })
 
   /* ------------------------------------------------------------------ *

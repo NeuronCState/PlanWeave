@@ -1,4 +1,4 @@
-import { access, mkdtemp, rm } from "node:fs/promises"
+import { access, mkdtemp, rm, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { afterEach, describe, expect, it } from "vitest"
@@ -32,7 +32,7 @@ describe("remote profiles CRUD", () => {
     expect(profile.name).toBe("Test Server")
     expect(profile.serverUrl).toBe("https://planweave.example.com")
     expect(profile.deviceId).toBe("dev-001")
-    expect(profile.apiKey).toBe("sk-test-123")
+    expect(profile).not.toHaveProperty("apiKey")
     expect(profile.id).toBeTruthy()
 
     const read = await getRemoteProfile(profile.id)
@@ -85,7 +85,7 @@ describe("remote profiles CRUD", () => {
     expect(updated.name).toBe("Updated")
     expect(updated.serverUrl).toBe("https://new.example.com")
     expect(updated.deviceId).toBe("dev-old")
-    expect(updated.apiKey).toBe("sk-old")
+    expect(updated).not.toHaveProperty("apiKey")
 
     delete process.env.PLANWEAVE_HOME
   })
@@ -94,8 +94,8 @@ describe("remote profiles CRUD", () => {
     const home = await tempHome()
     process.env.PLANWEAVE_HOME = home
 
-    await expect(updateRemoteProfile("nonexistent", { name: "Test" }))
-      .rejects.toThrow("Remote profile 'nonexistent' not found")
+    await expect(updateRemoteProfile("0000000000000000", { name: "Test" }))
+      .rejects.toThrow("Remote profile '0000000000000000' not found")
 
     delete process.env.PLANWEAVE_HOME
   })
@@ -142,6 +142,19 @@ describe("remote profiles CRUD", () => {
     const profiles = await listRemoteProfiles()
     expect(profiles).toEqual([])
 
+    delete process.env.PLANWEAVE_HOME
+  })
+
+  it("rejects profile-id traversal and stores credentials with owner-only permissions", async () => {
+    const home = await tempHome()
+    process.env.PLANWEAVE_HOME = home
+
+    const profile = await createRemoteProfile({ name: "Secure", serverUrl: "https://secure.example.com", deviceId: "device", apiKey: "secret" })
+    await expect(getRemoteProfile("../../github-auth")).rejects.toThrow("Invalid remote profile id")
+    await expect(deleteRemoteProfile("../../github-auth")).rejects.toThrow("Invalid remote profile id")
+
+    const path = join(desktopHomePaths().planweaveHome, "desktop", "remote-profiles", `${profile.id}.json`)
+    expect((await stat(path)).mode & 0o777).toBe(0o600)
     delete process.env.PLANWEAVE_HOME
   })
 })

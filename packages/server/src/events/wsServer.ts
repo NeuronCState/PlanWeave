@@ -39,6 +39,8 @@ import {
 export type EventWebSocketServerOptions = {
   publisher: EventPublisher;
   authenticator: Authenticator;
+  /** Attach upgrades to an existing application server when provided. */
+  httpServer?: Server;
   // Override the WS path (default `/events`).
   wsPath?: string;
   // Heartbeat tuning — defaults match A4 spec.
@@ -64,7 +66,8 @@ export function createEventWebSocketServer(options: EventWebSocketServerOptions)
   const heartbeatIntervalMs = options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
   const heartbeatMissLimit = options.heartbeatMissLimit ?? DEFAULT_HEARTBEAT_MISS_LIMIT;
 
-  const httpServer = createServer((request: IncomingMessage, response: ServerResponse) => {
+  const ownsHttpServer = options.httpServer === undefined;
+  const httpServer = options.httpServer ?? createServer((request: IncomingMessage, response: ServerResponse) => {
     // The dedicated listener is for WebSocket upgrades only. Anything else gets a 404
     // with the standard ApiError envelope.
     const path = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`).pathname;
@@ -147,7 +150,13 @@ export function createEventWebSocketServer(options: EventWebSocketServerOptions)
         return;
       }
       wss.handleUpgrade(request, socket, head, (ws) => {
-        const subscriber = options.publisher.attach({ identity: result.identity });
+        const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+        const afterEventId = url.searchParams.get("afterEventId") ?? "0";
+        if (!/^\d+$/.test(afterEventId)) {
+          closeSocket(ws, WS_CLOSE_RESYNC_REQUIRED, "invalid_cursor");
+          return;
+        }
+        const subscriber = options.publisher.attach({ identity: result.identity, initialLastSeenEventId: afterEventId });
         const state: ConnectionState = { subscriber, socket: ws, missedPongs: 0, lastPongAt: Date.now(), drainTimer: null, pingTimer: null, closed: false };
         connections.set(ws, state);
         liveConnections += 1;
@@ -229,6 +238,7 @@ export function createEventWebSocketServer(options: EventWebSocketServerOptions)
     },
     async start() {
       if (httpServer.listening) return;
+      if (!ownsHttpServer) return;
       await new Promise<void>((resolve, reject) => {
         httpServer.once("error", reject);
         httpServer.listen(0, "127.0.0.1", () => {
@@ -245,9 +255,13 @@ export function createEventWebSocketServer(options: EventWebSocketServerOptions)
           // ignore
         }
       }
-      await new Promise<void>((resolve) => {
-        httpServer.close(() => resolve());
-      });
+      if (ownsHttpServer) {
+        await new Promise<void>((resolve) => {
+          httpServer.close(() => resolve());
+        });
+      } else {
+        await new Promise<void>((resolve) => wss.close(() => resolve()));
+      }
     },
     connectionCount() {
       return liveConnections;

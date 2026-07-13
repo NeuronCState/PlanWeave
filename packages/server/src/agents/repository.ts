@@ -30,6 +30,8 @@ type AgentCheckpointRow = {
   run_id: string
   sequence: number
   consumed_cursor: string | null
+  message_cursor: string | null
+  attachment_cursor: string | null
   artifacts_json: string
   created_at: string
 }
@@ -121,11 +123,14 @@ export function createAgentRepository(options: CreateAgentRepositoryOptions): Ag
       .prepare("SELECT * FROM agent_checkpoints WHERE run_id=? ORDER BY sequence DESC LIMIT 1")
       .get(runId) as AgentCheckpointRow | undefined
     if (!row) return null
+    const legacy = row.consumed_cursor?.split(":") ?? []
     return {
       id: row.id,
       runId: row.run_id,
       sequence: Number(row.sequence),
       consumedCursor: row.consumed_cursor,
+      messageCursor: row.message_cursor ?? (legacy[0] === "message" ? legacy.slice(1).join(":") : null),
+      attachmentCursor: row.attachment_cursor ?? (legacy[0] === "attachment" ? legacy.slice(1).join(":") : null),
       artifactsJson: row.artifacts_json,
       createdAt: row.created_at
     }
@@ -133,17 +138,20 @@ export function createAgentRepository(options: CreateAgentRepositoryOptions): Ag
 
   const insertCheckpoint: AgentRepository["insertCheckpoint"] = (unit, input) => {
     unit.database
-      .prepare("INSERT INTO agent_checkpoints(id,run_id,sequence,consumed_cursor,artifacts_json,created_at) VALUES (?,?,?,?,?,?)")
-      .run(input.id, input.runId, input.sequence, input.consumedCursor, input.artifactsJson, input.now)
+      .prepare("INSERT INTO agent_checkpoints(id,run_id,sequence,consumed_cursor,artifacts_json,created_at,message_cursor,attachment_cursor) VALUES (?,?,?,?,?,?,?,?)")
+      .run(input.id, input.runId, input.sequence, null, input.artifactsJson, input.now, input.messageCursor, input.attachmentCursor)
     const created = unit.database
       .prepare("SELECT * FROM agent_checkpoints WHERE id=?")
       .get(input.id) as AgentCheckpointRow | undefined
     if (!created) throw new Error("Inserted agent checkpoint row not found.")
+    const legacy = created.consumed_cursor?.split(":") ?? []
     return {
       id: created.id,
       runId: created.run_id,
       sequence: Number(created.sequence),
       consumedCursor: created.consumed_cursor,
+      messageCursor: created.message_cursor ?? (legacy[0] === "message" ? legacy.slice(1).join(":") : null),
+      attachmentCursor: created.attachment_cursor ?? (legacy[0] === "attachment" ? legacy.slice(1).join(":") : null),
       artifactsJson: created.artifacts_json,
       createdAt: created.created_at
     }

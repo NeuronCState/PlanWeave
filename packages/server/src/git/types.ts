@@ -24,6 +24,8 @@ export type MergeQueueConfig = {
   bareRepoPath: string
   worktreesDir: string
   checks: string[]
+  /** Host execution is opt-in; production should supply an isolated runner instead. */
+  checkExecutionMode: "disabled" | "host"
   requireApproval: boolean
   maxConcurrent: number
   retentionDays: number
@@ -97,12 +99,26 @@ export type EnqueueCommand = {
   actorId: string
 }
 
+export type ReviewMergeQueueCommand = {
+  deviceId: string
+  idempotencyKey: string
+  entryId: string
+  actorId: string
+  verdict: "approve" | "reject"
+}
+
 export type MergeQueueRepository = {
   database: SqliteDatabase
   loadEntry(unit: UnitOfWork, entryId: string): MergeQueueEntry | null
   loadEntryBySubmission(unit: UnitOfWork, projectId: string, submissionId: string): MergeQueueEntry | null
   insertEntry(unit: UnitOfWork, input: Omit<MergeQueueEntry, "id" | "checkLogs" | "reviewVerdict" | "errorDetails" | "createdAt" | "updatedAt" | "worktreePath"> & { id: string; worktreePath: string | null; createdAt: string; updatedAt: string }): MergeQueueEntry
-  updateEntry(unit: UnitOfWork, current: MergeQueueEntry, patch: Partial<Pick<MergeQueueEntry, "status" | "worktreePath" | "checkLogs" | "reviewVerdict" | "errorDetails">>, now: string): MergeQueueEntry
+  updateEntry(
+    unit: UnitOfWork,
+    current: MergeQueueEntry,
+    patch: Partial<Pick<MergeQueueEntry, "status" | "worktreePath" | "checkLogs" | "reviewVerdict" | "errorDetails">>,
+    now: string,
+    expectedStatus?: MergeQueueStatus
+  ): MergeQueueEntry
   listEntries(unit: UnitOfWork, projectId: string): MergeQueueEntry[]
   listInterruptedEntries(unit: UnitOfWork): MergeQueueEntry[]
   loadConfig(projectId: string): MergeQueueConfig | null
@@ -112,6 +128,7 @@ export type MergeQueueRepository = {
 export type MergeQueueServices = {
   repository: MergeQueueRepository
   enqueueSubmission(command: EnqueueCommand): { replayed: boolean; value: MergeQueueEntry; eventIds: string[] }
+  reviewEntry(command: ReviewMergeQueueCommand): Promise<MergeResult>
   processEntry(entryId: string): Promise<MergeResult>
   processQueue(projectId: string): Promise<MergeResult[]>
   reconcileOnStartup(): Promise<{ reconciledEntries: string[]; eventIds: string[] }>

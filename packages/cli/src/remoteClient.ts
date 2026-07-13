@@ -2,8 +2,7 @@ import type { RemoteProfile } from "./remoteProfile.js";
 import {
   generateIdempotencyKey,
   loadCredentials,
-  updateProfileAssignment,
-  updateProfileSession
+  updateProfileAssignment
 } from "./remoteProfile.js";
 
 export type RemoteClientOptions = {
@@ -98,30 +97,6 @@ async function request<T>(options: RemoteClientOptions, method: string, path: st
 export function createRemoteClient(options: RemoteClientOptions) {
   return {
     get options() { return options; },
-
-    async createSession(): Promise<{ sessionId: string; issuedAt: string; expiresAt: string }> {
-      const key = generateIdempotencyKey();
-      const result = await request<{ session: { id: string; issuedAt: string; expiresAt: string } }>(
-        options, "POST", "/api/v1/sessions",
-        {
-          idempotencyKey: key,
-          deviceId: options.deviceId,
-          userId: options.userId,
-          deviceRefId: options.deviceId,
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-        }
-      );
-      const session = {
-        sessionId: result.session.id,
-        issuedAt: result.session.issuedAt,
-        expiresAt: result.session.expiresAt
-      };
-      await updateProfileSession(options.profileName, {
-        sessionId: session.sessionId,
-        sessionExpiresAt: session.expiresAt
-      });
-      return session;
-    },
 
     async claimTask(params: {
       taskId: string;
@@ -268,21 +243,12 @@ export async function connectRemoteClient(
   });
 
   if (!creds?.sessionToken) {
-    const session = await client.createSession();
-    await updateProfileSession(profile.name, {
-      sessionId: session.sessionId,
-      sessionExpiresAt: session.expiresAt
-    });
-    const recred = await loadCredentials(profile.name);
-    return createRemoteClient({
-      serverUrl: profile.serverUrl,
-      profileName: profile.name,
-      sessionToken: recred?.sessionToken ?? null,
-      deviceSecret: recred?.deviceSecret ?? "",
-      deviceId: profile.deviceId,
-      userId: profile.userId,
-      projectId: profile.projectId
-    });
+    throw new RemoteApiError(
+      `Profile '${profile.name}' has no session credential. Rejoin the server to create a new identity.`,
+      "unauthenticated",
+      "",
+      false
+    );
   }
 
   return client;

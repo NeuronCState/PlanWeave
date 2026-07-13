@@ -22,6 +22,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WorkError, type ClaimTaskCommand, type WorkServices } from "../ids.js";
 import { cleanupHarness, createWorkHarness, type WorkTestHarness } from "./helpers.js";
+import { serverTaskId } from "../taskIds.js";
 
 describe("A2 transactional work coordination", () => {
   let harness: WorkTestHarness;
@@ -45,6 +46,15 @@ describe("A2 transactional work coordination", () => {
     expect(result.value.assignment.status).toBe("active");
     expect(result.value.task.status).toBe("leased");
     expect(result.value.assignment.branchName).toBe("feature/task-1");
+  });
+
+  it("keeps identical client task ids isolated across projects", () => {
+    harness.seedProject("project-b");
+    const first = harness.seedTask({ projectId: "project-a", taskId: "shared-id", parallel: true });
+    const second = harness.seedTask({ projectId: "project-b", taskId: "shared-id", parallel: true });
+    expect(first.serverTaskId).not.toBe(second.serverTaskId);
+    const rows = harness.database.prepare("SELECT id,project_id FROM work_tasks WHERE task_id=? ORDER BY project_id").all("shared-id");
+    expect(rows).toHaveLength(2);
   });
 
   it("rejects a second claim for a locked task (one active assignment invariant)", () => {
@@ -82,7 +92,7 @@ describe("A2 transactional work coordination", () => {
     }
     expect(caught).toBeInstanceOf(WorkError);
     expect(caught?.code).toBe("version_conflict");
-    expect(caught?.details.aggregateId).toBe("task_ver-1");
+    expect(caught?.details.aggregateId).toBe(serverTaskId("project-a", "ver-1"));
     expect(caught?.details.currentVersion).toBe(2);
   });
 
@@ -132,13 +142,53 @@ describe("A2 transactional work coordination", () => {
     expect(countEvents(harness)).toBe(eventCountAfterFirst);
   });
 
+  it("rejects heartbeat and submission after the lease deadline", () => {
+    harness.seedTask({ projectId: "project-a", taskId: "expired-command", parallel: false });
+    const claim = harness.services.claimTask(makeClaimCommand({
+      taskId: "expired-command",
+      idempotencyKey: "claim-expired-command-aa"
+    }));
+    harness.database.prepare("UPDATE work_assignments SET lease_expires_at=? WHERE id=?")
+      .run("2000-01-01T00:00:00.000Z", claim.value.assignment.id);
+
+    expect(() => harness.services.heartbeat(makeHeartbeatCommand({
+      assignmentId: claim.value.assignment.id,
+      expectedVersion: claim.value.assignment.version,
+      idempotencyKey: "heartbeat-expired-aaaa"
+    }))).toThrow(/lease has expired/);
+    expect(() => harness.services.submit(makeSubmitCommand({
+      assignmentId: claim.value.assignment.id,
+      expectedVersion: claim.value.assignment.version,
+      idempotencyKey: "submit-expired-aaaaaaa"
+    }))).toThrow(/lease has expired/);
+  });
+
+  it("reclaims an expired slot before processing the next claim", () => {
+    harness.seedTask({ projectId: "project-a", taskId: "claim-after-expiry", parallel: false });
+    const first = harness.services.claimTask(makeClaimCommand({
+      taskId: "claim-after-expiry",
+      idempotencyKey: "claim-before-expiry-aaa"
+    }));
+    harness.database.prepare("UPDATE work_assignments SET lease_expires_at=? WHERE id=?")
+      .run("2000-01-01T00:00:00.000Z", first.value.assignment.id);
+
+    const second = harness.services.claimTask(makeClaimCommand({
+      taskId: "claim-after-expiry",
+      idempotencyKey: "claim-after-expiry-aaaa"
+    }));
+    expect(second.value.assignment.id).not.toBe(first.value.assignment.id);
+    expect(second.value.assignment.status).toBe("active");
+    const old = harness.database.prepare("SELECT status FROM work_assignments WHERE id=?").get(first.value.assignment.id);
+    expect(old).toMatchObject({ status: "expired" });
+  });
+
   it("rejects a claim whose dependencies are not all in a terminal-success state", () => {
     harness.seedTask({ projectId: "project-a", taskId: "dep-target", parallel: true });
     harness.seedTask({ projectId: "project-a", taskId: "dep-prereq", parallel: true });
     // Wire the dep edge manually (the harness helper only seeds self-contained tasks)
     harness.database
       .prepare("INSERT INTO work_task_dependencies(project_id,task_id,depends_on_task_id) VALUES (?,?,?)")
-      .run("project-a", "task_dep-target", "task_dep-prereq");
+      .run("project-a", serverTaskId("project-a", "dep-target"), serverTaskId("project-a", "dep-prereq"));
 
     let caught: WorkError | null = null;
     try {
@@ -151,7 +201,7 @@ describe("A2 transactional work coordination", () => {
     }
     expect(caught).toBeInstanceOf(WorkError);
     expect(caught?.code).toBe("state_conflict");
-    expect(caught?.details.blockingDependencyIds).toEqual(["task_dep-prereq"]);
+    expect(caught?.details.blockingDependencyIds).toEqual([serverTaskId("project-a", "dep-prereq")]);
   });
 
   it("allows two active assignments when the task is parallel (one per task)", () => {
@@ -205,7 +255,7 @@ describe("A2 transactional work coordination", () => {
     expect(row.base_commit).toBe(originalBaseCommit);
 
     // Task is back to `ready` and version bumped so the next claim succeeds
-    const task = harness.services.repository.loadTaskByServerId("project-a", "task_lease-1");
+    const task = harness.services.repository.loadTaskByServerId("project-a", serverTaskId("project-a", "lease-1"));
     expect(task?.status).toBe("ready");
     expect(task?.version).toBeGreaterThan(1);
 
@@ -216,6 +266,23 @@ describe("A2 transactional work coordination", () => {
       .prepare("SELECT type FROM domain_events ORDER BY event_id DESC LIMIT 1")
       .get() as { type: string };
     expect(lastEvent.type).toBe("task.lease_expired");
+  });
+
+  it("does not duplicate lease reclamation events for an identical lifecycle tick", () => {
+    harness.seedTask({ projectId: "project-a", taskId: "lease-replay", parallel: false });
+    const claim = harness.services.claimTask(makeClaimCommand({
+      taskId: "lease-replay",
+      idempotencyKey: "claim-lease-replay-aaaa"
+    }));
+    harness.database.prepare("UPDATE work_assignments SET lease_expires_at=? WHERE id=?")
+      .run("2000-01-01T00:00:00.000Z", claim.value.assignment.id);
+    const tick = "2026-01-01T00:00:00.000Z";
+    const first = harness.services.reclaimExpiredLeases(tick);
+    const eventCount = countEvents(harness);
+    const second = harness.services.reclaimExpiredLeases(tick);
+    expect(first.expiredAssignmentIds).toEqual([claim.value.assignment.id]);
+    expect(second.expiredAssignmentIds).toEqual([]);
+    expect(countEvents(harness)).toBe(eventCount);
   });
 
   it("produces exactly one active assignment from 20 barrier-synchronized claims for the same task", async () => {
@@ -263,7 +330,7 @@ describe("A2 transactional work coordination", () => {
     // The database invariant: exactly one active assignment row for the task
     const activeCount = harness.database
       .prepare("SELECT COUNT(*) AS c FROM work_assignments WHERE project_id=? AND task_id=? AND status='active'")
-      .get("project-a", "task_race-1") as { c: number };
+      .get("project-a", serverTaskId("project-a", "race-1")) as { c: number };
     expect(activeCount.c).toBe(1);
   });
 });

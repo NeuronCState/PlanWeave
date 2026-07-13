@@ -45,8 +45,8 @@ export async function loadAuthStore(): Promise<AuthStore | null> {
 
 export async function saveAuthStore(store: AuthStore): Promise<void> {
   const dir = planweaveConfigDir();
-  await mkdir(dir, { recursive: true });
-  await writeFile(authFilePath(), JSON.stringify(store, null, 2), "utf-8");
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  await writeFile(authFilePath(), JSON.stringify(store, null, 2), { encoding: "utf-8", mode: 0o600 });
 }
 
 export async function clearAuthStore(): Promise<void> {

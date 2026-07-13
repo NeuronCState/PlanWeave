@@ -192,6 +192,25 @@ describe("A4 durable events and WebSocket sync", () => {
       expect(subscriber.lastSeenEventId).toBe(id3);
     });
 
+    it("continues polling after the first publisher batch", async () => {
+      const { database } = await createTestDb();
+      const publisher = createEventPublisher({ database, authenticator: makeAuthenticator(), publisherBatchSize: 2, disablePersistence: true });
+      const subscriber = publisher.attach({ identity: { userId: "user-alice", sessionId: "s1", projectId: "project-a", role: "owner" } });
+      const ids = Array.from({ length: 5 }, (_, index) => insertEvent(database, {
+        projectId: "project-a", type: "project.renamed", aggregateId: "project-a", aggregateVersion: index + 2
+      }));
+      const received: string[] = [];
+      for (let batch = 0; batch < 3; batch += 1) {
+        await publisher.tick();
+        let event: EventEnvelopeV1 | undefined;
+        while ((event = dequeue(subscriber))) {
+          received.push(event.eventId);
+          publisher.acknowledgeDelivery(subscriber, event.eventId);
+        }
+      }
+      expect(received).toEqual(ids);
+    });
+
     it("duplicate: same eventId dispatched twice — subscribers dedupe and do not double-process", async () => {
       const { database } = await createTestDb();
       const publisher = createEventPublisher({ database, authenticator: makeAuthenticator(), pollIntervalMs: 50, disablePersistence: true });

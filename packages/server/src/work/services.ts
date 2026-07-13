@@ -18,7 +18,7 @@
  * The HTTP layer (A7/A8) maps these to the CONTRACTS-v1 `ApiError` envelope.
  */
 
-import { executeIdempotent, type IdempotentCommand, type UnitOfWork } from "../store.js";
+import { executeIdempotent, executeInUnitOfWork, type IdempotentCommand, type UnitOfWork } from "../store.js";
 import {
   assertExpectedVersion,
   assertIdempotencyKey,
@@ -110,6 +110,9 @@ export function createWorkServices(options: CreateWorkServicesOptions): WorkServ
     if (!Number.isInteger(command.leaseDurationSeconds) || command.leaseDurationSeconds < 1) {
       throw new WorkError("validation_failed", "leaseDurationSeconds must be a positive integer.", {});
     }
+    // Do not let an expired-but-not-yet-swept row hold the partial unique
+    // assignment slot until the next background lifecycle tick.
+    reclaimExpiredLeases(clock());
     const fingerprint = requestFingerprintFor(command, {
       projectId: command.projectId,
       taskId: command.taskId,
@@ -271,6 +274,7 @@ export function createWorkServices(options: CreateWorkServicesOptions): WorkServ
           });
         }
         const now = clock();
+        assertActiveLease(current, now);
         const newLeaseExpiresAt = new Date(Date.parse(now) + command.leaseDurationSeconds * 1000).toISOString();
         const updated = repository.updateAssignment(unit, current, { leaseExpiresAt: newLeaseExpiresAt }, now);
         const eventId = unit.appendEvent({
@@ -335,6 +339,7 @@ export function createWorkServices(options: CreateWorkServicesOptions): WorkServ
           });
         }
         const now = clock();
+        if (current.status === "active") assertActiveLease(current, now);
         const submissionId = `sub_${cryptoRandomId()}`;
         const submission = repository.insertSubmission(unit, {
           id: submissionId,
@@ -511,6 +516,7 @@ export function createWorkServices(options: CreateWorkServicesOptions): WorkServ
           });
         }
         const now = clock();
+        assertActiveLease(current, now);
         const updated = repository.updateAssignment(unit, current, { status: "withdrawn" }, now);
         // Re-arm the task so a new claim can take the slot
         const taskRow = unit.database
@@ -550,17 +556,12 @@ export function createWorkServices(options: CreateWorkServicesOptions): WorkServ
    */
   const reclaimExpiredLeases: WorkServices["reclaimExpiredLeases"] = (nowArg) => {
     const now = nowArg ?? clock();
-    const eventIds: string[] = [];
-    const expiredIds: string[] = [];
-    // Use a single write transaction for the whole batch; idempotent over
-    // a clock that has not moved between calls within the same tick.
-    executeIdempotent(repository.database, {
-      deviceId: "system",
-      route: "system://work/reclaim",
-      projectId: "system",
-      key: `reclaim-${now}`,
-      requestFingerprint: `reclaim-${now}`,
-      execute: (unit) => {
+    // Use a single write transaction for the whole batch. Status filtering
+    // makes repeated sweeps naturally idempotent without growing the client
+    // idempotency-key table every five seconds.
+    return executeInUnitOfWork(repository.database, (unit) => {
+        const eventIds: string[] = [];
+        const expiredIds: string[] = [];
         const expired = repository.listExpiredAssignments(unit, now);
         for (const assignment of expired) {
           const updated = repository.updateAssignment(unit, assignment, { status: "expired" }, now);
@@ -592,9 +593,7 @@ export function createWorkServices(options: CreateWorkServicesOptions): WorkServ
           expiredIds.push(updated.id);
         }
         return { expiredAssignmentIds: expiredIds, eventIds };
-      }
     });
-    return { expiredAssignmentIds: expiredIds, eventIds };
   };
 
   return {
@@ -607,6 +606,17 @@ export function createWorkServices(options: CreateWorkServicesOptions): WorkServ
     reclaimExpiredLeases,
     appendEvent
   };
+}
+
+function assertActiveLease(assignment: { id: string; leaseExpiresAt: string }, now: string): void {
+  const expiry = Date.parse(assignment.leaseExpiresAt);
+  const currentTime = Date.parse(now);
+  if (!Number.isFinite(expiry) || !Number.isFinite(currentTime) || expiry <= currentTime) {
+    throw new WorkError("state_conflict", `Assignment '${assignment.id}' lease has expired.`, {
+      aggregateType: "assignment",
+      aggregateId: assignment.id
+    });
+  }
 }
 
 /** Cryptographically-random short id used for row primary keys. */

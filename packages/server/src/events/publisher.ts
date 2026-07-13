@@ -226,12 +226,19 @@ export function createEventPublisher(options: EventPublisherOptions): EventPubli
         byProject.set(subscriber.projectId, list);
       }
       for (const [projectId, list] of byProject) {
-        // Read all events > 0 sorted by event_id; the cap is the publisher batch size.
-        // Each subscriber advances its own lastSeenEventId.
-        const events = readEventsForPublisher(options.database, { projectId, afterEventId: "0", limit: opts.publisherBatchSize });
+        // Subscribers at the same cursor share one durable read. Querying from each
+        // cursor (instead of always from zero) ensures streams continue beyond the
+        // first publisher batch.
+        const byCursor = new Map<string, Subscriber[]>();
         for (const subscriber of list) {
+          const cursorList = byCursor.get(subscriber.lastSeenEventId) ?? [];
+          cursorList.push(subscriber);
+          byCursor.set(subscriber.lastSeenEventId, cursorList);
+        }
+        for (const [afterEventId, cursorSubscribers] of byCursor) {
+          const events = readEventsForPublisher(options.database, { projectId, afterEventId, limit: opts.publisherBatchSize });
+          for (const subscriber of cursorSubscribers) {
           for (const event of events) {
-            if (BigInt(event.eventId) <= BigInt(subscriber.lastSeenEventId)) continue;
             const outcome = enqueueEvent(subscriber, event);
             if (outcome === "delivered") delivered += 1;
             else if (outcome === "duplicate") duplicates += 1;
@@ -243,6 +250,7 @@ export function createEventPublisher(options: EventPublisherOptions): EventPubli
               break;
             }
             polled += 1;
+          }
           }
         }
       }

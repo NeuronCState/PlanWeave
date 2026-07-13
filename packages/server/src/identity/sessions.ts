@@ -85,6 +85,7 @@ export function resolveActiveSession(database: SqliteDatabase, sessionId: string
   if (!user) throw unauthenticated("Session user no longer exists");
   const device = database.prepare("SELECT id, user_id, device_name, public_key_fingerprint, last_seen_at, status, created_at FROM devices WHERE id=?").get(session.deviceId);
   if (!device) throw unauthenticated("Session device no longer exists");
+  if (String(device.user_id) !== session.userId) throw forbidden("Session device does not belong to session user", { sessionId, deviceId: session.deviceId });
   if (device.status === "revoked") throw forbidden("Session device has been revoked", { sessionId, deviceId: session.deviceId });
   return { session, user: { id: String(user.id), displayName: String(user.display_name), email: user.email === null ? null : String(user.email), createdAt: String(user.created_at) }, device: { id: String(device.id), userId: String(device.user_id), deviceName: String(device.device_name), publicKeyFingerprint: device.public_key_fingerprint === null ? null : String(device.public_key_fingerprint), lastSeenAt: device.last_seen_at === null ? null : String(device.last_seen_at), status: device.status === "revoked" ? "revoked" : "active", createdAt: String(device.created_at) } };
 }

@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
 
-export type SqliteStatement = { run(...values: unknown[]): { lastInsertRowid: number | bigint }; get(...values: unknown[]): Record<string, unknown> | undefined; all(...values: unknown[]): Array<Record<string, unknown>> };
+export type SqliteStatement = { run(...values: unknown[]): { lastInsertRowid: number | bigint; changes: number }; get(...values: unknown[]): Record<string, unknown> | undefined; all(...values: unknown[]): Array<Record<string, unknown>> };
 export type SqliteDatabase = { exec(sql: string): void; prepare(sql: string): SqliteStatement; close(): void };
 const require = createRequire(import.meta.url);
 

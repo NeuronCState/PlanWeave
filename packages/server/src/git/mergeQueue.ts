@@ -3,7 +3,7 @@ import { createMergeQueueRepository } from "./repository.js"
 import { createWorktreeManager } from "./worktreeManager.js"
 import { runRepositoryChecks, runTargetedChecks, retainCheckLogs } from "./checks.js"
 import { validateCommitAncestry, validatePathWithinScope } from "./validation.js"
-import { MergeQueueError, type CheckResult, type EnqueueCommand, type MergeQueueConfig, type MergeQueueEntry, type MergeQueueRepository, type MergeQueueServices, type MergeResult } from "./types.js"
+import { MergeQueueError, type CheckResult, type EnqueueCommand, type MergeQueueConfig, type MergeQueueEntry, type MergeQueueRepository, type MergeQueueServices, type MergeResult, type ReviewMergeQueueCommand } from "./types.js"
 import type { SqliteDatabase } from "../sqlite.js"
 
 function cryptoRandomId(): string {
@@ -27,6 +27,7 @@ export function createMergeQueueServices(options: CreateMergeQueueServicesOption
     bareRepoPath: options.config.bareRepoPath ?? `${dataDir}/bare-repo`,
     worktreesDir: options.config.worktreesDir ?? `${dataDir}/worktrees`,
     checks: options.config.checks ?? ["pnpm-lint", "pnpm-build", "pnpm-test"],
+    checkExecutionMode: options.config.checkExecutionMode ?? "disabled",
     requireApproval: options.config.requireApproval ?? true,
     maxConcurrent: options.config.maxConcurrent ?? 4,
     retentionDays: options.config.retentionDays ?? 7
@@ -135,7 +136,7 @@ export function createMergeQueueServices(options: CreateMergeQueueServicesOption
       }
 
       // Transition to checking
-      entry = await transitionEntry(entry.id, "checking", null, null, null)
+      entry = await transitionEntry(entry.id, "checking", null, null, null, "pending")
 
       // Validate ancestry
       await validateCommitAncestry(entry, validationCtx)
@@ -144,7 +145,7 @@ export function createMergeQueueServices(options: CreateMergeQueueServicesOption
 
       // Create worktree
       worktreePath = await worktreeManager.createWorktree(entry, config)
-      entry = await transitionEntry(entry.id, "checking", worktreePath, null, null)
+      entry = await transitionEntry(entry.id, "checking", worktreePath, null, null, "checking")
 
       // Snapshot target head for final check
       const targetHeadBefore = await worktreeManager.getTargetHead(config.bareRepoPath, entry.targetBranch)
@@ -152,18 +153,21 @@ export function createMergeQueueServices(options: CreateMergeQueueServicesOption
       // Run repository checks
       const checkResults: CheckResult[] = []
       try {
+        if (config.checkExecutionMode !== "host") {
+          throw new MergeQueueError("validation_failed", "Merge checks require an explicitly configured isolated runner; host command execution is disabled.", {})
+        }
         if (taskPolicy) {
           const targeted = await runTargetedChecks(worktreePath, taskPolicy.acceptanceChecks, { worktreeManager })
           checkResults.push(...targeted)
           const failed = targeted.find((result) => !result.passed)
           if (failed) throw new MergeQueueError("check_failed", `Task acceptance check '${failed.name}' failed with exit code ${failed.exitCode}.`, { checkName: failed.name, exitCode: failed.exitCode })
         }
-        const repoChecks = await runRepositoryChecks(worktreePath, { worktreeManager })
+        const repoChecks = await runRepositoryChecks(worktreePath, { worktreeManager }, config.checks)
         checkResults.push(...repoChecks)
       } catch (error) {
         if (error instanceof MergeQueueError && error.code === "check_failed") {
           const failLogs = retainCheckLogs(checkResults)
-          await transitionEntry(entry.id, "failed", worktreePath, failLogs, error.message)
+          await transitionEntry(entry.id, "failed", worktreePath, failLogs, error.message, "checking")
           await cleanupWorktree(worktreePath)
           return { entryId, status: "failed", error: error.message }
         }
@@ -173,13 +177,13 @@ export function createMergeQueueServices(options: CreateMergeQueueServicesOption
       const checkLogs = retainCheckLogs(checkResults)
 
       // Review gate
-      if (config.requireApproval) {
-        entry = await transitionEntry(entry.id, "reviewing", worktreePath, checkLogs, null)
+      if (config.requireApproval && entry.reviewVerdict !== "approved") {
+        entry = await transitionEntry(entry.id, "reviewing", worktreePath, checkLogs, null, "checking")
         return { entryId, status: "reviewing" }
       }
 
       // Transition to merging
-      entry = await transitionEntry(entry.id, "merging", worktreePath, checkLogs, null)
+      entry = await transitionEntry(entry.id, "merging", worktreePath, checkLogs, null, "checking")
 
       // Final target-head check before merge (serialized mutation)
       await validateTargetHeadStale(entry, targetHeadBefore)
@@ -189,30 +193,82 @@ export function createMergeQueueServices(options: CreateMergeQueueServicesOption
       const mergeResult = await worktreeManager.mergeEntry(worktreePath, headBranch, entry.targetBranch)
       if (mergeResult.conflict) {
         const errorMsg = `Merge conflict with target branch '${entry.targetBranch}'.`
-        await transitionEntry(entry.id, "conflict", worktreePath, checkLogs, errorMsg)
+        await transitionEntry(entry.id, "conflict", worktreePath, checkLogs, errorMsg, "merging")
         await cleanupWorktree(worktreePath)
         return { entryId, status: "conflict", error: errorMsg }
       }
 
-      await transitionEntry(entry.id, "merged", worktreePath, checkLogs, null)
+      await transitionEntry(entry.id, "merged", worktreePath, checkLogs, null, "merging")
       await cleanupWorktree(worktreePath)
 
       return { entryId, status: "merged", mergeCommit: mergeResult.mergeCommit }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
+      if (error instanceof MergeQueueError && error.code === "state_conflict") {
+        const current = repository.loadEntry(readUnit, entryId)
+        return { entryId, status: current?.status ?? "failed", error: current ? undefined : errorMsg }
+      }
       if (error instanceof MergeQueueError) {
         const failStatus = error.code === "conflict" ? "conflict" : "failed"
-        if (entry) {
-          await transitionEntry(entry.id, failStatus, worktreePath, entry.checkLogs, errorMsg)
-        }
+        if (entry) await transitionIfActive(entry.id, failStatus, worktreePath, entry.checkLogs, errorMsg)
         if (worktreePath) await cleanupWorktree(worktreePath)
         return { entryId, status: failStatus, error: errorMsg }
       }
-      if (entry) {
-        await transitionEntry(entry.id, "failed", worktreePath, entry.checkLogs, errorMsg)
-      }
+      if (entry) await transitionIfActive(entry.id, "failed", worktreePath, entry.checkLogs, errorMsg)
       if (worktreePath) await cleanupWorktree(worktreePath)
       return { entryId, status: "failed", error: errorMsg }
+    }
+  }
+
+  const reviewEntry = async (command: ReviewMergeQueueCommand): Promise<MergeResult> => {
+    if (!/^[\x21-\x7E]{16,128}$/.test(command.idempotencyKey)) {
+      throw new MergeQueueError("validation_failed", "Idempotency-Key must be 16..128 ASCII printable characters.", {})
+    }
+    const readUnit: UnitOfWork = { database, appendEvent: () => "", audit: () => {} }
+    const before = repository.loadEntry(readUnit, command.entryId)
+    const worktreePath = before?.worktreePath ?? null
+    const idempotent: IdempotentCommand<MergeQueueEntry> = {
+      deviceId: command.deviceId,
+      route: `/api/v1/merge-queue/${command.entryId}/review`,
+      projectId: before?.projectId,
+      key: command.idempotencyKey,
+      requestFingerprint: `review:${command.entryId}:${command.verdict}`,
+      execute: (unit) => {
+        const current = repository.loadEntry(unit, command.entryId)
+        if (!current) throw new MergeQueueError("not_found", `Entry '${command.entryId}' not found.`, { entryId: command.entryId })
+        validateReviewAuthority(unit.database, current.projectId, command)
+        if (current.status !== "reviewing") {
+          throw new MergeQueueError("state_conflict", `Entry '${command.entryId}' is not awaiting review.`, { entryId: command.entryId })
+        }
+        const approved = command.verdict === "approve"
+        const next = repository.updateEntry(unit, current, {
+          status: approved ? "pending" : "failed",
+          worktreePath: null,
+          reviewVerdict: approved ? "approved" : "rejected",
+          errorDetails: approved ? null : "Rejected by reviewer."
+        }, clock(), "reviewing")
+        unit.audit({
+          projectId: current.projectId,
+          actorId: command.actorId,
+          action: approved ? "merge_queue.approve" : "merge_queue.reject",
+          aggregateType: "merge_queue_entry",
+          aggregateId: current.id,
+          details: { verdict: command.verdict }
+        })
+        return next
+      }
+    }
+    const reviewed = executeIdempotent(repository.database, idempotent)
+    if (!reviewed.replayed) await cleanupWorktree(worktreePath)
+    if (command.verdict === "reject") return { entryId: command.entryId, status: "failed", error: "Rejected by reviewer." }
+    return processEntry(command.entryId)
+  }
+
+  function validateReviewAuthority(database: SqliteDatabase, projectId: string, command: ReviewMergeQueueCommand): void {
+    const membership = database.prepare("SELECT role FROM memberships WHERE project_id=? AND user_id=?").get(projectId, command.actorId)
+    const role = membership ? String(membership.role) : ""
+    if (role !== "owner" && role !== "maintainer") {
+      throw new MergeQueueError("validation_failed", "Only a project owner or maintainer may review merge queue entries.", {})
     }
   }
 
@@ -260,8 +316,8 @@ export function createMergeQueueServices(options: CreateMergeQueueServicesOption
         requestFingerprint: `reconcile-${entry.id}`,
         execute: (unit) => {
           const current = repository.loadEntry(unit, entry.id)
-          if (current && (current.status === "checking" || current.status === "reviewing" || current.status === "merging")) {
-            repository.updateEntry(unit, current, { status: "pending", worktreePath: null }, clock())
+          if (current && (current.status === "checking" || current.status === "merging")) {
+            repository.updateEntry(unit, current, { status: "pending", worktreePath: null }, clock(), current.status)
           }
           return entry.id
         }
@@ -280,7 +336,8 @@ export function createMergeQueueServices(options: CreateMergeQueueServicesOption
     status: MergeQueueEntry["status"],
     worktreePath: string | null,
     checkLogs: string | null,
-    errorDetails: string | null
+    errorDetails: string | null,
+    expectedStatus: MergeQueueEntry["status"]
   ): Promise<MergeQueueEntry> {
     const now = clock()
     const keySuffix = cryptoRandomId()
@@ -297,11 +354,28 @@ export function createMergeQueueServices(options: CreateMergeQueueServicesOption
         if (worktreePath !== undefined) patch.worktreePath = worktreePath
         if (checkLogs !== undefined) patch.checkLogs = checkLogs
         if (errorDetails !== undefined) patch.errorDetails = errorDetails
-        return repository.updateEntry(unit, current, patch, now)
+        return repository.updateEntry(unit, current, patch, now, expectedStatus)
       }
     }
     const result = executeIdempotent(repository.database, idempotent)
     return result.value
+  }
+
+  async function transitionIfActive(
+    entryId: string,
+    status: "failed" | "conflict",
+    worktreePath: string | null,
+    checkLogs: string | null,
+    errorDetails: string
+  ): Promise<void> {
+    const readUnit: UnitOfWork = { database, appendEvent: () => "", audit: () => {} }
+    const current = repository.loadEntry(readUnit, entryId)
+    if (!current || !["pending", "checking", "merging"].includes(current.status)) return
+    try {
+      await transitionEntry(entryId, status, worktreePath, checkLogs, errorDetails, current.status)
+    } catch (transitionError) {
+      if (!(transitionError instanceof MergeQueueError) || transitionError.code !== "state_conflict") throw transitionError
+    }
   }
 
   async function validateTargetHeadStale(entry: MergeQueueEntry, previousHead: string): Promise<void> {
@@ -324,6 +398,7 @@ export function createMergeQueueServices(options: CreateMergeQueueServicesOption
   return {
     repository,
     enqueueSubmission,
+    reviewEntry,
     processEntry,
     processQueue,
     reconcileOnStartup,

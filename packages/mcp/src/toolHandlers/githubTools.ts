@@ -69,7 +69,8 @@ export const githubToolHandlers = {
     const { projectId } = parseProjectArgs(args);
     const record = readObjectArgs(args);
     const prNumber = typeof record.prNumber === "number" ? record.prNumber : 0;
+    const method = record.method === "squash" || record.method === "rebase" || record.method === "merge" ? record.method : undefined;
     if (!prNumber || prNumber < 1) throw new Error("prNumber is required (positive integer)");
-    return jsonToolResult({ merge: await gateway.githubMergePR(projectId, prNumber) });
+    return jsonToolResult({ merge: await gateway.githubMergePR(projectId, prNumber, method) });
   },
 } satisfies PlanweavePartialToolHandlerRegistry;

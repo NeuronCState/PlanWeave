@@ -12,6 +12,7 @@
 
 import type { SqliteDatabase } from "../sqlite.js";
 import type { UnitOfWork } from "../store.js";
+import { serverTaskId } from "./taskIds.js";
 import type {
   WorkAssignment,
   WorkRepository,
@@ -153,13 +154,16 @@ export function createWorkRepository(options: CreateWorkRepositoryOptions): Work
   const insertTask: WorkRepository["insertTask"] = (unit, input) => {
     const now = input.now;
     const version = 1;
+    const id = serverTaskId(input.projectId, input.taskId);
     unit.database
       .prepare("INSERT INTO work_tasks(id,project_id,task_id,title,parallel,locks_json,ownership_scopes_json,acceptance_checks_json,reviewers_json,version,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(`task_${input.taskId}`, input.projectId, input.taskId, input.title, input.policy.parallel ? 1 : 0, JSON.stringify(input.policy.locks), JSON.stringify(input.policy.ownershipScopes ?? []), JSON.stringify(input.policy.acceptanceChecks ?? []), JSON.stringify(input.policy.reviewers ?? []), version, "ready", now, now);
+      .run(id, input.projectId, input.taskId, input.title, input.policy.parallel ? 1 : 0, JSON.stringify(input.policy.locks), JSON.stringify(input.policy.ownershipScopes ?? []), JSON.stringify(input.policy.acceptanceChecks ?? []), JSON.stringify(input.policy.reviewers ?? []), version, "ready", now, now);
     for (const dependency of input.dependencyIds) {
-      unit.database.prepare("INSERT INTO work_task_dependencies(project_id,task_id,depends_on_task_id) VALUES (?,?,?)").run(input.projectId, `task_${input.taskId}`, dependency);
+      const dependencyRow = unit.database.prepare("SELECT id FROM work_tasks WHERE project_id=? AND (id=? OR task_id=?)").get(input.projectId, dependency, dependency);
+      if (!dependencyRow) throw new Error(`Dependency '${dependency}' does not exist in project '${input.projectId}'.`);
+      unit.database.prepare("INSERT INTO work_task_dependencies(project_id,task_id,depends_on_task_id) VALUES (?,?,?)").run(input.projectId, id, String(dependencyRow.id));
     }
-    const created = loadTaskByServerId(input.projectId, `task_${input.taskId}`);
+    const created = loadTaskByServerId(input.projectId, id);
     if (!created) throw new Error("Inserted task row not found.");
     return created;
   };

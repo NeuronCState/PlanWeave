@@ -55,7 +55,18 @@ CREATE INDEX idx_agent_artifacts_run ON agent_artifacts(run_id);
 CREATE INDEX idx_agent_artifacts_checkpoint ON agent_artifacts(checkpoint_id);
 `
 
-export const agentMigrations = [{ version: 1, sql: agentMigration1 }] as const
+const agentMigration2 = `
+ALTER TABLE agent_checkpoints ADD COLUMN message_cursor TEXT;
+ALTER TABLE agent_checkpoints ADD COLUMN attachment_cursor TEXT;
+UPDATE agent_checkpoints
+SET message_cursor = CASE WHEN consumed_cursor LIKE 'message:%' THEN substr(consumed_cursor, 9) ELSE NULL END,
+    attachment_cursor = CASE WHEN consumed_cursor LIKE 'attachment:%' THEN substr(consumed_cursor, 12) ELSE NULL END;
+`
+
+export const agentMigrations = [
+  { version: 1, sql: agentMigration1 },
+  { version: 2, sql: agentMigration2 }
+] as const
 
 export function applyAgentsMigrations(database: SqliteDatabase): void {
   database.exec("CREATE TABLE IF NOT EXISTS agents_schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)")

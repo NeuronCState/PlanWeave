@@ -75,7 +75,19 @@ function makeServerHandler(): Server {
 
     // Real team join handshake
     if (req.method === "POST" && path === "/api/v1/join") {
-      readBody().then((body) => json(201, { session: { id: `session_${randomUUID()}`, issuedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() }, projectId: body.projectId, role: "contributor" }))
+      readBody().then((body) => {
+        if (body.joinToken !== "team-secret") {
+          json(401, { error: { code: "unauthenticated", message: "Invalid join token", requestId: "", retryable: false } });
+          return;
+        }
+        json(201, {
+          session: { id: `session_${randomUUID()}`, issuedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() },
+          projectId: body.projectId,
+          userId: `user_${randomUUID()}`,
+          deviceId: `device_${randomUUID()}`,
+          role: "contributor"
+        });
+      })
         .catch(() => json(422, { error: { code: "validation_failed", message: "Invalid body", requestId: "", retryable: false } }));
       return;
     }
@@ -252,11 +264,11 @@ describe("remote CLI E2E", () => {
     const e = env();
 
     // User A joins
-    const joinA = await runCliJson(["server", "join", "--url", serverUrl, "--name", "alice-lab", "--project", "proj-1", "--user", "user-alice"], e);
+    const joinA = await runCliJson(["server", "join", "--url", serverUrl, "--name", "alice-lab", "--project", "proj-1", "--user", "user-alice", "--token", "team-secret"], e);
     expect(joinA.kind).toBe("joined");
 
     // User B joins
-    const joinB = await runCliJson(["server", "join", "--url", serverUrl, "--name", "bob-office", "--project", "proj-1", "--user", "user-bob"], e);
+    const joinB = await runCliJson(["server", "join", "--url", serverUrl, "--name", "bob-office", "--project", "proj-1", "--user", "user-bob", "--token", "team-secret"], e);
     expect(joinB.kind).toBe("joined");
 
     // List profiles
@@ -308,8 +320,8 @@ describe("remote CLI E2E", () => {
 
   it("duplicate join is rejected", { timeout: 30_000 }, async () => {
     const e = env();
-    await runCli(["server", "join", "--url", serverUrl, "--name", "dup-test", "--project", "p", "--user", "u"], e);
-    const result = await runCliJson(["server", "join", "--url", serverUrl, "--name", "dup-test", "--project", "p", "--user", "u"], e);
+    await runCli(["server", "join", "--url", serverUrl, "--name", "dup-test", "--project", "p", "--user", "u", "--token", "team-secret"], e);
+    const result = await runCliJson(["server", "join", "--url", serverUrl, "--name", "dup-test", "--project", "p", "--user", "u", "--token", "team-secret"], e);
     expect(result.kind).toBe("blocked");
     expect(result.reason).toBe("Profile 'dup-test' already exists.");
     await runCli(["server", "forget", "--name", "dup-test"], e);
@@ -318,12 +330,12 @@ describe("remote CLI E2E", () => {
   it("reconnects (re-joins) after forgetting", { timeout: 30_000 }, async () => {
     const e = env();
     // Join
-    const join1 = await runCliJson(["server", "join", "--url", serverUrl, "--name", "reconnect-test", "--project", "p", "--user", "u"], e);
+    const join1 = await runCliJson(["server", "join", "--url", serverUrl, "--name", "reconnect-test", "--project", "p", "--user", "u", "--token", "team-secret"], e);
     expect(join1.kind).toBe("joined");
     // Forget
     await runCli(["server", "forget", "--name", "reconnect-test"], e);
     // Re-join
-    const join2 = await runCliJson(["server", "join", "--url", serverUrl, "--name", "reconnect-test", "--project", "p", "--user", "u"], e);
+    const join2 = await runCliJson(["server", "join", "--url", serverUrl, "--name", "reconnect-test", "--project", "p", "--user", "u", "--token", "team-secret"], e);
     expect(join2.kind).toBe("joined");
     // Cleanup
     await runCli(["server", "forget", "--name", "reconnect-test"], e);
